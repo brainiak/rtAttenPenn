@@ -22,6 +22,13 @@
 % Version: 2.0
 % Last modified: 10/14/11
 
+%% Initialize Python
+% pyversion
+% pyversion /usr/local/bin/python3
+insert(py.sys.path, int32(0), '.')
+rtAttenPy = py.importlib.import_module('rtAttenPy')
+% rtAttenPy = py.importlib.reload(rtAttenPy)
+
 %% Boilerplate
 
 seed = sum(100*clock); %get random seed
@@ -45,7 +52,7 @@ RandStream.setGlobalStream(RandStream('mt19937ar','seed',seed));%set seed
 %     runHeader = [dataHeader '/run' num2str(runNum)];
 %     classOutputDir = [runHeader '/controlneverseenclassoutput'];
 % end
-runNum = 1;
+runNum = 2;
 
 
 subjectNum = 3;
@@ -61,7 +68,7 @@ runDataDir = [currentDir '/data/output/run' num2str(runNum)];
 if ~exist(runDataDir)
   mkdir(runDataDir)
 end
-fname = findNewestFile(inputDataDir, fullfile(inputDataDir, ['patternsdesign_' num2str(runNum) '*.mat']));
+fname = char(rtAttenPy.findNewestFile(inputDataDir, fullfile(inputDataDir, ['patternsdesign_' num2str(runNum) '*.mat'])));
 % This is where patterns variable comes from
 load(fname);
 %imgDir = [imgDirHeader datestr(now,10) datestr(now,5) datestr(now,7) '.' subjectName '.' subjectName '/'];
@@ -79,14 +86,14 @@ load(fname);
 
 %load previous patterns
 if runNum>1
-    patsfn= findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum-1) '*.mat']));
+    patsfn= char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum-1) '*.mat'])));
     oldpats = load(deblank(patsfn));
-    modelfn= findNewestFile(outputDataDir, fullfile(outputDataDir, ['trainedModel_' num2str(runNum-1) '*.mat']));
+    modelfn= char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['trainedModel_' num2str(runNum-1) '*.mat'])));
     % trainedmodel variables loaded here
     load(deblank(modelfn),'trainedModel');
 end
 % LOAD CURRENT PATTERNS DATA
-pfn = findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum) '*.mat']));
+pfn = char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum) '*.mat'])));
 p = load(deblank(pfn));
 %% Experimental Parameters
 
