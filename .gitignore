@@ -1,3 +1,9 @@
+# Matlab files
+*.mat
+*.mex*
+*.tgz
+*.tar.gz
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

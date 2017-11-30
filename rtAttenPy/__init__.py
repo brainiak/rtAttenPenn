@@ -1,1 +1,5 @@
-from rtAttenPy.FindNewestFile import findNewestFile
+from .FindNewestFile import findNewestFile
+
+__all__ = [
+    'findNewestFile'
+]
