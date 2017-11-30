@@ -11,9 +11,13 @@ source venv/bin/activate
 pip install -e .
 pip install brainiak
 
-/Applications/MATLAB_R2017b.app/bin/mex highpass_gaussian_realtime.c
-/Applications/MATLAB_R2017b.app/bin/mex highpass_gaussian_betweenruns.c
+pushd /Applications/MATLAB_R2017b.app/extern/engines/python
+pip install .
+popd
 
 deactivate
+
+/Applications/MATLAB_R2017b.app/bin/mex highpass_gaussian_realtime.c
+/Applications/MATLAB_R2017b.app/bin/mex highpass_gaussian_betweenruns.c
 
 popd
