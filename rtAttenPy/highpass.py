@@ -52,7 +52,7 @@ def highpass(data, sigma):
             if tmpdenom != 0:
                 c = (B * C - A * D) / tmpdenom
                 if done_c0 == 0:
-                    c0 = 0
+                    c0 = c
                     done_c0 = 1
 
                 result[v][t] = c0 + data[v][t] - c
