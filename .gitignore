@@ -1,4 +1,6 @@
 # Matlab files
+data
+datasets
 *.mat
 *.mex*
 *.tgz

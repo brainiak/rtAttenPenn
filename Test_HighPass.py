@@ -11,4 +11,4 @@ with Timer() as t:
     result = rtAttenPy.highpass_opt(a['a']['data'][0][0], 28)
 print('New: %0.2fs' % t.elapsed)
 
-np.testing.assert_array_almost_equal(result, expected)
+np.testing.assert_array_almost_equal(result, b['b'])
