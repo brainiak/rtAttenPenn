@@ -1,9 +1,10 @@
 from .FindNewestFile import findNewestFile
-from .highpass import highpass, hp_convkernel
+from .highpass import highpass, highpass_opt, hp_convkernel
 
 __all__ = [
     'findNewestFile',
 
     'highpass',
+    'highpass_opt',
     'hp_convkernel'
 ]

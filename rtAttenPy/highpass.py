@@ -1,3 +1,4 @@
+import scipy.ndimage
 import numpy as np
 
 # TODO: Verify index bug in hp_convkernel
@@ -60,3 +61,7 @@ def highpass(data, sigma):
                 result[v][t] = data[v][t]
 
     return result
+
+def highpass_opt(data, sigma):
+    data = np.transpose(data)
+    return data - scipy.ndimage.gaussian_filter1d(data, sigma)

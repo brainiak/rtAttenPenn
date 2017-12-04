@@ -7,6 +7,7 @@ setup(
         'click',
         'pathos',
         'tqdm',
+        'contexttimer',
         'watchdog',
         'binaryornot',
         'matplotlib',

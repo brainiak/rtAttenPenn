@@ -3,6 +3,7 @@
 *.mex*
 *.tgz
 *.tar.gz
+*.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
