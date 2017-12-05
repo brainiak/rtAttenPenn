@@ -7,6 +7,13 @@ datasets
 *.tar.gz
 *.zip
 
+# Profiling
+*.prof
+
+# Cython
+rtAttenPy/*.c
+rtAttenPy/*.html
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
