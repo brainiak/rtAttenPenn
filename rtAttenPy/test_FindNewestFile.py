@@ -28,26 +28,25 @@ class TestFindNewestFile(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def test_findnewest(self):
-        # normal case
+    def test_normalCase(self):
         filename = fn.findNewestFile('/tmp/testdir', 'file1_20170101*')
         self.assert_result_matches_filename(filename)
 
-        # empty path case
+    def test_emptyPath(self):
         filename = fn.findNewestFile('', '/tmp/testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
-        # path is also in pattern case
+    def test_pathInPattern(self):
         filename = fn.findNewestFile('/tmp/testdir', '/tmp/testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
-        # path is split between path and pattern
+    def test_pathPartiallyInPattern(self):
         filename = fn.findNewestFile('/tmp', 'testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
-        # path is split between path and pattern
-        filename = fn.findNewestFile('/tmp/', 'testdir/file1_20170101*')
-        self.assert_result_matches_filename(filename)
+    def test_noMatchingFiles(self):
+        filename = fn.findNewestFile('/tmp/testdir/', 'no_such_file')
+        self.assertEqual(filename, '')
 
     def assert_result_matches_filename(self, filename):
         self.assertEqual(filename, TEST_BASE_FILENAME + str(NUM_TEST_FILES-1))
