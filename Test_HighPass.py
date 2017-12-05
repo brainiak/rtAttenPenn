@@ -15,3 +15,7 @@ with Timer() as t:
 print('New: %0.2fs' % t.elapsed)
 np.testing.assert_array_almost_equal(np.transpose(result), b['b'])
 
+<<<<<<< HEAD
+=======
+np.testing.assert_array_almost_equal(result, b['b'])
+>>>>>>> a688ee566705f08b319f43d94067ef0da0bf8306
