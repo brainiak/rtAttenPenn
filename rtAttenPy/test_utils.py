@@ -3,7 +3,7 @@
 import unittest
 import os, time, pathlib
 from glob import iglob
-import FindNewestFile as fn
+from rtAttenPy.utils import findNewestFile
 
 TEST_BASE_FILENAME = '/tmp/testdir/file1_20170101T01010'
 NUM_TEST_FILES = 5
@@ -29,23 +29,23 @@ class TestFindNewestFile(unittest.TestCase):
         pass
 
     def test_normalCase(self):
-        filename = fn.findNewestFile('/tmp/testdir', 'file1_20170101*')
+        filename = findNewestFile('/tmp/testdir', 'file1_20170101*')
         self.assert_result_matches_filename(filename)
 
     def test_emptyPath(self):
-        filename = fn.findNewestFile('', '/tmp/testdir/file1_20170101*')
+        filename = findNewestFile('', '/tmp/testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
     def test_pathInPattern(self):
-        filename = fn.findNewestFile('/tmp/testdir', '/tmp/testdir/file1_20170101*')
+        filename = findNewestFile('/tmp/testdir', '/tmp/testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
     def test_pathPartiallyInPattern(self):
-        filename = fn.findNewestFile('/tmp', 'testdir/file1_20170101*')
+        filename = findNewestFile('/tmp', 'testdir/file1_20170101*')
         self.assert_result_matches_filename(filename)
 
     def test_noMatchingFiles(self):
-        filename = fn.findNewestFile('/tmp/testdir/', 'no_such_file')
+        filename = findNewestFile('/tmp/testdir/', 'no_such_file')
         self.assertEqual(filename, '')
 
     def assert_result_matches_filename(self, filename):
