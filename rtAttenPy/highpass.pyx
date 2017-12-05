@@ -1,5 +1,5 @@
 #!python
-# cython: embedsignature=True, binding=True, boundscheck=False, wraparound=False, nonecheck=False, profile=True
+# cython: embedsignature=True, binding=True, boundscheck=False, wraparound=False, nonecheck=False
 # source: https://github.com/brainiak/rtAttenPenn/blob/9fc5bb8ae5485fef345736566f972ee538ef348c/highpass_gaussian_betweenruns.c
 
 from __future__ import division
