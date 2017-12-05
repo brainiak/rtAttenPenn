@@ -1,4 +1,5 @@
-from setuptools import setup
+from setuptools import setup, Extension
+import numpy
 
 setup(
     name='rtAttenPy',
@@ -31,6 +32,12 @@ setup(
     license='Apache 2',
     keywords='neuroscience, algorithm, fMRI, distributed, scalable',
     packages=['rtAttenPy'],
+    ext_modules=[
+        Extension('rtAttenPy.highpass',
+                  ['rtAttenPy/highpass.pyx'],
+                  include_dirs=[numpy.get_include()]
+                  )
+    ],
     python_requires='>=3.4',
     entry_points='''
         [console_scripts]
