@@ -16,6 +16,7 @@ setup(
         'nilearn',
         'numpy',
         'scipy',
+        'scikit-learn',
         'pybind11',
         'cython',
         'ipython',
