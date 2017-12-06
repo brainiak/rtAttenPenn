@@ -38,7 +38,7 @@ class MatlabStructDict(dict):
             val = struct[key]
         except KeyError:
             val = None
-        if isinstance(val, np.ndarray) and val.shape == (1, 1):
+        while isinstance(val, np.ndarray) and val.shape == (1, 1):
             val = val[0][0]
         return val
 
