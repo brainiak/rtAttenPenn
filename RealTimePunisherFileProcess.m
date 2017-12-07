@@ -52,7 +52,7 @@ RandStream.setGlobalStream(RandStream('mt19937ar','seed',seed));%set seed
 %     runHeader = [dataHeader '/run' num2str(runNum)];
 %     classOutputDir = [runHeader '/controlneverseenclassoutput'];
 % end
-runNum = 2;
+runNum = 1;
 
 
 subjectNum = 3;
