@@ -1,4 +1,3 @@
-import numpy as np
 import sklearn.linear_model
 
 # TODO: This is not the API we want for sklearn classifier
