@@ -19,9 +19,9 @@ The code expects a data/ directory
 
 ## Issues
 - Double check gaussian with NTB
-- Add z-scoring
+- Add z-scoring [scipy link](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.zscore.html)
 - Check logistic regularization
-- Between runs vs realtime
+- Between runs vs realtime (how do we handle time)
 - Parallelize ```highpass.pyx```
 - MATLAB to use virtualenv python
 - Figure out how to automatically pull in Python changes when running from MATLAB
