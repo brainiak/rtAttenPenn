@@ -57,8 +57,6 @@ class TestFindNewestFile(unittest.TestCase):
         self.assertEqual(filename, '')
 
 
-
-
 #import matlab.engine
 import scipy.io as sio
 import numpy as np
@@ -79,7 +77,8 @@ class TestMatlabStructDict(unittest.TestCase):
         pass
     def test_loadStruct(self):
         print("Test MatlabStructDict:")
-        teststruct = sio.loadmat('teststruct.mat')
+        file_path = os.path.dirname(utils.__file__)
+        teststruct = sio.loadmat(os.path.join(file_path,'teststruct.mat'))
         test = utils.MatlabStructDict(teststruct, 'test')
         self.assertEqual(test.sub2, 12)
         self.assertEqual(test.top1, 21)
@@ -92,6 +91,27 @@ class TestMatlabStructDict(unittest.TestCase):
         self.assertTrue(np.array_equal(test.sub3, np.array([1, 2, 3])))
         test.top3 = np.array([[4, 5, 6], [7, 8, 9]])
         self.assertTrue(np.array_equal(test.top3, np.array([[4, 5, 6], [7, 8, 9]])))
+
+class TestCompareArrays(unittest.TestCase):
+    def setUp(self):
+        self.max_deviation = .01
+        arrayDims = [100, 100, 100]
+        self.A = np.random.random(arrayDims)
+        delta = np.random.random(arrayDims) * self.max_deviation
+        self.B = self.A + (self.A * delta)
+        pass
+    def tearDown(self):
+        pass
+    def test_compareArrays(self):
+        print("Test comparArrays")
+        result = utils.compareArrays(self.B, self.A)
+        self.assertTrue(result['mean'] < 2/3 * self.max_deviation)
+        self.assertTrue(result['max'] < self.max_deviation)
+    def test_areArraysClose(self):
+        print("Test areArraysClose")
+        max_mean = 2/3 * self.max_deviation
+        self.assertTrue(utils.areArraysClose(self.B, self.A, mean_limit = max_mean))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,8 +7,8 @@ import numpy as np
 
 
 def findNewestFile(filepath, filepattern):
-    '''Find newest file according to filesystem creation time
-        and return the filename.
+    '''Find newest file matching pattern according to filesystem creation time.
+       Return the filename
     '''
     full_path_pattern = ''
     if os.path.basename(filepattern) == filepath:
@@ -28,6 +28,8 @@ def findNewestFile(filepath, filepattern):
     except ValueError:
         return ''
 
+# Data loaded from matlab is as a structured array. But it's not easy to add
+#  new fields to a structured array, so convert it to a dictionary for easier use
 def convertStructuredArrayToDict(sArray):
     '''Convert a NumPy structured array to a dictionary. Return the dictionary'''
     rvDict = dict()
@@ -42,6 +44,7 @@ def convertStructuredArrayToDict(sArray):
             pass
     return rvDict
 
+# Class to make it easier to access fields in matlab structs loaded into python
 class MatlabStructDict(dict):
     '''Subclass dictionary so that elements can be accessed either as dict['key']
         of dict.key. If elements are of type NumPy structured arrays, convert
@@ -84,6 +87,12 @@ class MatlabStructDict(dict):
         if re.match('__.*__', key):
             super().__setattr__(key, val)
             return
+        # make sure we aren't setting something that should go in the special name field
+        if self.__name__ is not None:
+            try:
+                assert key not in self[self.__name__].keys()
+            except AttributeError:
+                pass
         # pack ints in 2d array [[int]] as matlab does
         if isinstance(val, int):
             field_type = None
@@ -105,3 +114,37 @@ class MatlabStructDict(dict):
         s = set().union(self.keys(), struct_fields)
         # TODO - remove fields with __*__ pattern
         return s
+
+def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
+    """Compute element-wise percent difference between A and B
+       Return the mean, max, stddev, histocounts, histobins in a Dict
+    """
+    assert isinstance(A, np.ndarray) and isinstance(B, np.ndarray), "assert numpy arrays failed"
+    assert A.size == B.size, "assert equal size arrays failed"
+    if A.shape != B.shape:
+        if A.shape[-1] == 1:
+            A = A.reshape(A.shape[:-1])
+        if B.shape[-1] == 1:
+            B = B.reshape(B.shape[:-1])
+        assert len(A.shape) == len(B.shape), "assert same number of dimensions"
+        assert A.shape[::-1] == B.shape, "assert similar shape arrays"
+        A = A.reshape(B.shape)
+    diff = abs(A - B) / B
+    histobins = [0, 0.005, .01, .02, .03, .04, .05, .06, .07, .09, .1, 1]
+    histocounts, histobins = np.histogram(diff, histobins)
+    result = {'min': np.min(diff), 'max': np.max(diff),
+              'mean': np.mean(diff), 'stddev': np.std(diff),
+              'histocounts': histocounts, 'histobins': histobins}
+    return result
+
+def areArraysClose(A: np.ndarray, B: np.ndarray, mean_limit=.01, stddev_limit=1.0) -> bool:
+    '''Compare to arrays element-wise and compute the percent difference.
+       Return True if the mean and stddev are withing the supplied limits.
+       Default limits: {mean: .01, stddev: 1.0} , i.e. no stddev limit by default
+    '''
+    res = compareArrays(A, B)
+    if res['mean'] > mean_limit:
+        return False
+    if res['stddev'] > stddev_limit:
+        return False
+    return True
