@@ -10,7 +10,7 @@ import rtAttenPy
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
 
-def realTimePunisherProcess():
+def realTimePunisherProcess(TestUsing=None):
     ## Boilerplate ##
     # TODO - set random Seed
     seed = time.time()
@@ -23,7 +23,6 @@ def realTimePunisherProcess():
     else:
         rtfeedback = 0
 
-
     workingDir = os.getcwd() # os.path.dirname(os.getcwd())
     inputDataDir = os.path.join(workingDir, 'data/input')
     outputDataDir = os.path.join(workingDir, 'data/output')
@@ -31,25 +30,47 @@ def realTimePunisherProcess():
     if not os.path.exists(runDataDir):
         os.makedirs(runDataDir)
 
-    fname = utils.findNewestFile(inputDataDir, 'patternsdesign_'+str(runNum)+'*.mat')
-    patterns0 = sio.loadmat(fname)
+    # set filenames
+    patternsdesign_fname = utils.findNewestFile(inputDataDir, 'patternsdesign_'+str(runNum)+'*.mat')
+    curr_patterns_fname = utils.findNewestFile(outputDataDir, 'patternsdata_'+str(runNum)+'*.mat')
+    prev_patterns_fname = utils.findNewestFile(outputDataDir, 'patternsdata_'+str(runNum-1)+'*.mat')
+    model_fname = utils.findNewestFile(outputDataDir, 'trainedModel_'+str(runNum-1)+'*.mat')
+    # if TestUsing is set then set the filenames based on those parameters
+    if TestUsing is not None:
+        mean_limit = .0075  # within 3/4 of a percent error
+        # i.e. use data/output/trace_params_run2_20171214T173415.mat
+        assert os.path.isfile(TestUsing), 'Failed to find file {}'.format(TestUsing)
+        test_params = sio.loadmat(TestUsing)
+        test_params = utils.MatlabStructDict(test_params, 'params')
+        patternsdesign_fname = test_params.patternsdesign_filename[0]
+        curr_patterns_fname = test_params.cur_patterns_filename[0]
+        prev_patterns_fname = test_params.prev_patterns_filename[0]
+        model_fname = test_params.model_filename[0]
+        runNum = test_params.runNum
+        subjectNum = test_params.subjectNum
+        rtfeedback = test_params.rtfeedback
+        # load the result files that we will compare to
+        target_patterns_fn = test_params.params.result_patterns_filename
+        target_model_fn = test_params.result_model_filename
+        target_patterns0 = sio.loadmat(target_patterns_fn[0])
+        target_patterns = utils.MatlabStructDict(target_patterns0, 'patterns')
+        target_model0 = sio.loadmat(target_model_fn[0])
+        target_model = utils.MatlabStructDict(target_model0, 'trainedModel')
+
+    patterns0 = sio.loadmat(patternsdesign_fname)
     patterns = utils.MatlabStructDict(patterns0, 'patterns')
+
     ## TODO - recreate patternsdesign for python case, for now fix up a little
-    # patterns.firstVolPhase2 = patterns.firstVolPhase2 - 1
-    # patterns.lastVolPhase1 = patterns.lastVolPhase1 - 1
 
     #load previous patterns
     if runNum > 1:
-        patsfn = utils.findNewestFile(outputDataDir, 'patternsdata_'+str(runNum-1)+'*.mat')
-        oldpats0 = sio.loadmat(patsfn.strip())
+        oldpats0 = sio.loadmat(prev_patterns_fname.strip())
         oldpats = utils.MatlabStructDict(oldpats0, 'patterns')
-        modelfn = utils.findNewestFile(outputDataDir, 'trainedModel_'+str(runNum-1)+'*.mat')
-        trainedModel0 = sio.loadmat(modelfn.strip())
+        trainedModel0 = sio.loadmat(model_fname.strip())
         trainedModel = utils.MatlabStructDict(trainedModel0, 'trainedModel')
 
     # load current patterns data
-    pfn = utils.findNewestFile(outputDataDir, 'patternsdata_'+str(runNum)+'*.mat')
-    p0 = sio.loadmat(pfn.strip())
+    p0 = sio.loadmat(curr_patterns_fname.strip())
     p = utils.MatlabStructDict(p0, 'patterns')
 
     ## Experimental Parameters ##
@@ -65,10 +86,10 @@ def realTimePunisherProcess():
     inds = np.nonzero(roi)
     # We need to first convert to Matlab column order raveled indicies in order to
     #  sort the indicies in that order (the order the data appears in the p.raw matrix)
-    indsMatRav = np.ravel_multi_index(inds, roiDims, order='F')
-    indsMatRav.sort()
+    indsMatRavel = np.ravel_multi_index(inds, roiDims, order='F')
+    indsMatRavel.sort()
     # convert back to python raveled indices
-    indsMat = np.unravel_index(indsMatRav, roiDims, order='F')
+    indsMat = np.unravel_index(indsMatRavel, roiDims, order='F')
     roiInds = np.ravel_multi_index(indsMat, roiDims, order='C')
     # assert that the number of non-zero entries in mask equals the supplied data elements in one image
     assert roiInds.size == p.raw[0].size
@@ -162,7 +183,8 @@ def realTimePunisherProcess():
 
     # end Phase1 loop - fileCounter will be at 115 here
     assert fileCounter == 115
-    # sio.savemat('tmp/py_patterns_raw_sm_run2.mat', patterns)
+    if TestUsing:
+        assert utils.areArraysClose(patterns.raw_sm, target_patterns.raw_sm, mean_limit), "compare raw_sm failed"
 
     # quick highpass filter!
     dataFile.write('\n*********************************************\n')
@@ -177,9 +199,20 @@ def realTimePunisherProcess():
     patterns.patterns.phase1Y[0,:] = np.mean(np.square(patterns.raw_sm_filt[i1:i2,:]), axis=0)
     patterns.patterns.phase1Std[0,:] = np.std(patterns.raw_sm_filt[i1:i2,:], axis=0)
     patterns.patterns.phase1Var[0,:] = np.square(patterns.phase1Std[0,:])
-    tmpL = patterns.raw_sm_filt[i1:i2,:] - np.tile(patterns.phase1Mean,[i2,1])
-    tmpR = np.tile(patterns.phase1Std, [i2 ,1])
+    tmpL = patterns.raw_sm_filt[i1:i2,:] - np.tile(patterns.phase1Mean,[i2,1]) # TODO [i2,0]?
+    tmpR = np.tile(patterns.phase1Std, [i2 ,1]) # TODO [i2,0]?
     patterns.raw_sm_filt_z[i1:i2,:] = np.divide(tmpL, tmpR)
+
+    if TestUsing:
+        # TODO - change to call compareMatStructs() with fields = [raw_sm_filt, phase1Mean ... etc]
+        # TODO - pull out the mean diff stats from the result and compare to some theshold.
+        assert utils.areArraysClose(patterns.raw_sm_filt[i1:i2, :], target_patterns.raw_sm_filt[i1:i2, :], mean_limit), 'compare raw_sm_filt failed'
+        assert utils.areArraysClose(patterns.phase1Mean[0, :], target_patterns.phase1Mean[0, :], mean_limit), 'compare phase1Mean failed'
+        assert utils.areArraysClose(patterns.phase1Y[0,:], target_patterns.phase1Y[0,:], mean_limit), 'compare phase1Y failed'
+        assert utils.areArraysClose(patterns.phase1Std[0,:], target_patterns.phase1Std[0,:], mean_limit), 'compare phase1Std failed'
+        assert utils.areArraysClose(patterns.phase1Var[0,:], target_patterns.phase1Var[0,:], mean_limit), 'compare phase1Var failed'
+        assert utils.areArraysClose(patterns.raw_sm_filt_z[i1:i2,:], target_patterns.raw_sm_filt_z[i1:i2,:], mean_limit), 'compare raw_sm_filt_z failed'
+
 
     ## testing ##
     dataFile.write('\n*********************************************\n')

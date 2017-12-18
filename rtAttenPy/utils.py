@@ -26,7 +26,7 @@ def findNewestFile(filepath, filepattern):
     try:
         return max(glob.iglob(full_path_pattern), key=os.path.getctime)
     except ValueError:
-        return ''
+        return None
 
 # Data loaded from matlab is as a structured array. But it's not easy to add
 #  new fields to a structured array, so convert it to a dictionary for easier use
@@ -43,6 +43,13 @@ def convertStructuredArrayToDict(sArray):
         except KeyError:
             pass
     return rvDict
+
+
+class StructDict(dict):
+    # TODO
+    ''' TODO - make this the main class that MatlabStructDict is a subclass of'''
+    def __init__(self, dictionary):
+        pass
 
 # Class to make it easier to access fields in matlab structs loaded into python
 class MatlabStructDict(dict):
@@ -88,6 +95,12 @@ class MatlabStructDict(dict):
             super().__setattr__(key, val)
             return
         # make sure we aren't setting something that should go in the special name field
+        # TODO - if key exists in the lower stuct then set it's value there
+        #  otherwise, set it's value at the top level struct
+        #  If it's the first time a field is seen so being created, then set it
+        #  at the top level, or use patterns.patterns to set it at the sub struct level
+        #  Thereafter we can just use the single patterns.field to change the value
+        #  no matter what level the field is contained.
         if self.__name__ is not None:
             try:
                 assert key not in self[self.__name__].keys()
@@ -119,22 +132,29 @@ def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
     """Compute element-wise percent difference between A and B
        Return the mean, max, stddev, histocounts, histobins in a Dict
     """
-    assert isinstance(A, np.ndarray) and isinstance(B, np.ndarray), "assert numpy arrays failed"
-    assert A.size == B.size, "assert equal size arrays failed"
+    assert isinstance(A, np.ndarray) and isinstance(B, np.ndarray), "compareArrays: assert expecting ndarrays got {} {}".format(type(A), type(B))
+    assert A.size == B.size, "compareArrays: assert equal size arrays failed"
     if A.shape != B.shape:
-        if A.shape[-1] == 1:
-            A = A.reshape(A.shape[:-1])
-        if B.shape[-1] == 1:
-            B = B.reshape(B.shape[:-1])
-        assert len(A.shape) == len(B.shape), "assert same number of dimensions"
-        assert A.shape[::-1] == B.shape, "assert similar shape arrays"
-        A = A.reshape(B.shape)
-    diff = abs(A - B) / B
+        def flatten_1Ds(M):
+            if 1 in M.shape:
+                newShape = [x for x in M.shape if x > 1]
+                M = M.reshape(newshape)
+        flatten_1Ds(A)
+        flatten_1Ds(B)
+        assert len(A.shape) == len(B.shape), "compareArrays: expecting same num dimension but got {} {}".format(len(A.shape), len(B.shape))
+        if A.shape != B.shape:
+            # maybe the shape dimensions are reversed
+            assert A.shape[::-1] == B.shape, "compareArrays: expecting similar shape arrays got {} {}".format(A.shape, B.shape)
+            A = A.reshape(B.shape)
+        assert shape.A == shape.B, "compareArrays: expecting arrays to have the same shape got {} {}".format(A.shape, B.shape)
+    diff = A / B - 1
+    diff = np.nan_to_num(diff)
     histobins = [0, 0.005, .01, .02, .03, .04, .05, .06, .07, .09, .1, 1]
     histocounts, histobins = np.histogram(diff, histobins)
     result = {'min': np.min(diff), 'max': np.max(diff),
               'mean': np.mean(diff), 'stddev': np.std(diff),
-              'histocounts': histocounts, 'histobins': histobins}
+              'histocounts': histocounts, 'histobins': histobins,
+              'count': A.size, 'histopct': histocounts / A.size * 100}
     return result
 
 def areArraysClose(A: np.ndarray, B: np.ndarray, mean_limit=.01, stddev_limit=1.0) -> bool:
@@ -148,3 +168,24 @@ def areArraysClose(A: np.ndarray, B: np.ndarray, mean_limit=.01, stddev_limit=1.
     if res['stddev'] > stddev_limit:
         return False
     return True
+
+def compareMatStructs(A: StructDict, B: StructDict, field_list=None) -> dict:
+    '''For each field, not __*__, walk the fields and compare the values.
+       If a field is missing from one of the structs raise an exception.
+       If field_list is supplied, then only compare those fields.
+       Return a dict with {fieldname: stat_results}.'''
+    pass
+
+def compareMatFiles(F1: str, F2: str):
+    '''Load both matlab files and call compareMatStructs.
+       Inspect the resulting stats_result to see if any mean difference is beyond
+       some threshold. Also print out the stats results.
+       Return the result stats.
+    '''
+    pass
+
+def xassert(bool_val, str):
+    # TODO - extended assertion info
+    if bool_val is False:
+        xstr = "__filename__, __fileline__, __func__, AssertionFailed: " + str
+        assert bool, xstr

@@ -54,7 +54,7 @@ class TestFindNewestFile(unittest.TestCase):
     def test_noMatchingFiles(self):
         print("Test findNewestFile no matching files:")
         filename = utils.findNewestFile('/tmp/testdir/', 'no_such_file')
-        self.assertEqual(filename, '')
+        self.assertEqual(filename, None)
 
 
 #import matlab.engine
@@ -78,7 +78,7 @@ class TestMatlabStructDict(unittest.TestCase):
     def test_loadStruct(self):
         print("Test MatlabStructDict:")
         file_path = os.path.dirname(utils.__file__)
-        teststruct = sio.loadmat(os.path.join(file_path,'teststruct.mat'))
+        teststruct = sio.loadmat(os.path.join(file_path,'test_input/teststruct.mat'))
         test = utils.MatlabStructDict(teststruct, 'test')
         self.assertEqual(test.sub2, 12)
         self.assertEqual(test.top1, 21)
