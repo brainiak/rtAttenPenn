@@ -6,6 +6,7 @@ import scipy.io as sio
 import numpy as np
 from rtAttenPy import utils
 import rtAttenPy
+import scipy.stats as sstats
 
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
@@ -193,26 +194,28 @@ def realTimePunisherProcess(TestUsing=None):
     print('beginning highpassfilter/zscore...')
     i1 = 0
     i2 = patterns.firstVolPhase2-1
-    # HERE - load matlab raw_sm and then run remaining here to look if is equal
+    # TODO - load matlab raw_sm and then run remaining here to look if is equal
     patterns.patterns.raw_sm_filt[i1:i2, :] = np.transpose(rtAttenPy.highpass(np.transpose(patterns.raw_sm[i1:i2,:]), cutoff/(2*patterns.TR)))
     patterns.patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2,:], axis=0)
     patterns.patterns.phase1Y[0,:] = np.mean(np.square(patterns.raw_sm_filt[i1:i2,:]), axis=0)
     patterns.patterns.phase1Std[0,:] = np.std(patterns.raw_sm_filt[i1:i2,:], axis=0)
     patterns.patterns.phase1Var[0,:] = np.square(patterns.phase1Std[0,:])
-    tmpL = patterns.raw_sm_filt[i1:i2,:] - np.tile(patterns.phase1Mean,[i2,1]) # TODO [i2,0]?
-    tmpR = np.tile(patterns.phase1Std, [i2 ,1]) # TODO [i2,0]?
-    patterns.raw_sm_filt_z[i1:i2,:] = np.divide(tmpL, tmpR)
+    tileSize = [patterns.raw_sm_filt[i1:i2,:].shape[0], 1]
+    patterns.raw_sm_filt_z[i1:i2,:] = np.divide((patterns.raw_sm_filt[i1:i2,:] - np.tile(patterns.phase1Mean,tileSize)), np.tile(patterns.phase1Std, tileSize))
 
     if TestUsing:
-        # TODO - change to call compareMatStructs() with fields = [raw_sm_filt, phase1Mean ... etc]
-        # TODO - pull out the mean diff stats from the result and compare to some theshold.
-        assert utils.areArraysClose(patterns.raw_sm_filt[i1:i2, :], target_patterns.raw_sm_filt[i1:i2, :], mean_limit), 'compare raw_sm_filt failed'
-        assert utils.areArraysClose(patterns.phase1Mean[0, :], target_patterns.phase1Mean[0, :], mean_limit), 'compare phase1Mean failed'
-        assert utils.areArraysClose(patterns.phase1Y[0,:], target_patterns.phase1Y[0,:], mean_limit), 'compare phase1Y failed'
-        assert utils.areArraysClose(patterns.phase1Std[0,:], target_patterns.phase1Std[0,:], mean_limit), 'compare phase1Std failed'
-        assert utils.areArraysClose(patterns.phase1Var[0,:], target_patterns.phase1Var[0,:], mean_limit), 'compare phase1Var failed'
-        assert utils.areArraysClose(patterns.raw_sm_filt_z[i1:i2,:], target_patterns.raw_sm_filt_z[i1:i2,:], mean_limit), 'compare raw_sm_filt_z failed'
-
+        res = utils.compareMatStructs(patterns, target_patterns, ['raw_sm', 'raw_sm_filt', 'raw_sm_filt_z', 'phase1Mean', 'phase1Y', 'phase1Std', 'phase1Var'])
+        res_means = {key:value['mean'] for key, value in res.items()}
+        # calculate the pierson correlation for raw_sm_filt_z
+        pearsons = []
+        num_cols = patterns.raw_sm_filt_z.shape[1]
+        for col in range(num_cols):
+            pearcol = sstats.pearsonr(patterns.raw_sm_filt_z[i1:i2, col], target_patterns.raw_sm_filt_z[i1:i2, col])
+            pearsons.append(pearcol)
+        pearsons = np.array(pearsons)
+        pearsons_mean = np.mean(pearsons[:, 0])
+        print("sm_filt_z mean pearsons correlation {}".format(pearsons_mean))
+        assert pearsons_mean > .995, "Pearsons mean {} too low".format(pearsons_mean)
 
     ## testing ##
     dataFile.write('\n*********************************************\n')

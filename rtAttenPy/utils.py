@@ -4,6 +4,8 @@ import os
 import glob
 import re
 import numpy as np
+import numbers
+import scipy.io as sio
 
 
 def findNewestFile(filepath, filepattern):
@@ -46,13 +48,22 @@ def convertStructuredArrayToDict(sArray):
 
 
 class StructDict(dict):
-    # TODO
-    ''' TODO - make this the main class that MatlabStructDict is a subclass of'''
-    def __init__(self, dictionary):
-        pass
+    '''Subclass dictionary so that elements can be accessed either as dict['key'] or dict.key.'''
+    def __getattr__(self, key):
+        '''Implement get attribute so that experssions like data.field can be used'''
+        try:
+            val = self[key]
+        except KeyError:
+            val = None
+        return val
+
+    def __setattr__(self, key, val):
+        '''Implement set attribute for dictionary so that form data.field=x can be used'''
+        self[key] = val
+
 
 # Class to make it easier to access fields in matlab structs loaded into python
-class MatlabStructDict(dict):
+class MatlabStructDict(StructDict):
     '''Subclass dictionary so that elements can be accessed either as dict['key']
         of dict.key. If elements are of type NumPy structured arrays, convert
         them to dictionaries and then to MatlabStructDict also.
@@ -94,39 +105,42 @@ class MatlabStructDict(dict):
         if re.match('__.*__', key):
             super().__setattr__(key, val)
             return
-        # make sure we aren't setting something that should go in the special name field
-        # TODO - if key exists in the lower stuct then set it's value there
-        #  otherwise, set it's value at the top level struct
-        #  If it's the first time a field is seen so being created, then set it
-        #  at the top level, or use patterns.patterns to set it at the sub struct level
-        #  Thereafter we can just use the single patterns.field to change the value
-        #  no matter what level the field is contained.
-        if self.__name__ is not None:
-            try:
-                assert key not in self[self.__name__].keys()
-            except AttributeError:
-                pass
+        # if the key isn't found at the top level, check if it is a sub-field of
+        # the special 'name' field so we can set the value there
+        struct = self
+        if key not in self.keys() and self.__name__ in self.keys():
+            if key in self[self.__name__].keys():
+                struct = self[self.__name__]
+
         # pack ints in 2d array [[int]] as matlab does
         if isinstance(val, int):
             field_type = None
             if val in range(256):
                 field_type = np.uint8
-            self[key] = np.array([[val]], dtype=field_type)
+            struct[key] = np.array([[val]], dtype=field_type)
         else:
-            self[key] = val
+            struct[key] = val
+
+    def copy(self):
+        return MatlabStructDict(super().copy(), self.__name__)
 
     def fields(self):
         '''list out all fields including the subfields of the special 'name' field'''
         struct_fields = ()
         try:
             struct = self[self.__name__]
-            if isinstance(struct, np.ndarray):
-                struct_fields = struct.dtype.names
+            if isinstance(struct, MatlabStructDict):
+                struct_fields = struct.keys()
         except KeyError:
             pass
-        s = set().union(self.keys(), struct_fields)
-        # TODO - remove fields with __*__ pattern
+        allfields = set().union(self.keys(), struct_fields)
+        s = set([field for field in allfields if not re.match('__.*__', field)])
         return s
+
+# Globals
+numpyAllNumCodes = np.typecodes['AllFloat'] + np.typecodes['AllInteger']
+StatsEqual = {'mean': 0, 'count': 1, 'min': 0, 'max': 0, 'stddev': 0, 'histocounts': None, 'histobins': None, 'histopct': None}
+StatsNotEqual = {'mean': 1, 'count': 1, 'min': 1, 'max': 1, 'stddev': 1, 'histocounts': None, 'histobins': None, 'histopct': None}
 
 def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
     """Compute element-wise percent difference between A and B
@@ -138,7 +152,7 @@ def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
         def flatten_1Ds(M):
             if 1 in M.shape:
                 newShape = [x for x in M.shape if x > 1]
-                M = M.reshape(newshape)
+                M = M.reshape(newShape)
         flatten_1Ds(A)
         flatten_1Ds(B)
         assert len(A.shape) == len(B.shape), "compareArrays: expecting same num dimension but got {} {}".format(len(A.shape), len(B.shape))
@@ -146,15 +160,19 @@ def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
             # maybe the shape dimensions are reversed
             assert A.shape[::-1] == B.shape, "compareArrays: expecting similar shape arrays got {} {}".format(A.shape, B.shape)
             A = A.reshape(B.shape)
-        assert shape.A == shape.B, "compareArrays: expecting arrays to have the same shape got {} {}".format(A.shape, B.shape)
-    diff = A / B - 1
+        assert A.shape == B.shape, "compareArrays: expecting arrays to have the same shape got {} {}".format(A.shape, B.shape)
+    if A.dtype.kind not in numpyAllNumCodes:
+        # Not a numeric array
+        return StatsEqual if np.array_equal(A, B) else StatsNotEqual
+    # Numeric arrays
+    diff = abs((A / B) - 1)
     diff = np.nan_to_num(diff)
     histobins = [0, 0.005, .01, .02, .03, .04, .05, .06, .07, .09, .1, 1]
     histocounts, histobins = np.histogram(diff, histobins)
-    result = {'min': np.min(diff), 'max': np.max(diff),
-              'mean': np.mean(diff), 'stddev': np.std(diff),
+    result = {'mean': np.mean(diff), 'count': A.size,
+              'min': np.min(diff), 'max': np.max(diff), 'stddev': np.std(diff),
               'histocounts': histocounts, 'histobins': histobins,
-              'count': A.size, 'histopct': histocounts / A.size * 100}
+               'histopct': histocounts / A.size * 100}
     return result
 
 def areArraysClose(A: np.ndarray, B: np.ndarray, mean_limit=.01, stddev_limit=1.0) -> bool:
@@ -169,23 +187,94 @@ def areArraysClose(A: np.ndarray, B: np.ndarray, mean_limit=.01, stddev_limit=1.
         return False
     return True
 
-def compareMatStructs(A: StructDict, B: StructDict, field_list=None) -> dict:
-    '''For each field, not __*__, walk the fields and compare the values.
+class StructureMismatchError(ValueError):
+    pass
+
+def compareMatStructs(A: MatlabStructDict, B: MatlabStructDict, field_list=None) -> dict:
+    '''For each field, not like __*__, walk the fields and compare the values.
        If a field is missing from one of the structs raise an exception.
        If field_list is supplied, then only compare those fields.
        Return a dict with {fieldname: stat_results}.'''
+    result = {}
+    if field_list is None:
+        field_list = A.fields()
+    fieldSet = set(field_list)
+    ASet = set(A.fields())
+    BSet = set(B.fields())
+    if not fieldSet <= ASet or not fieldSet <= BSet:
+        raise StructureMismatchError("missing fields: {}, {}".format(ASet-fieldSet, BSet-fieldSet))
+
+    for key in field_list:
+        valA = getattr(A, key)
+        valB = getattr(B, key)
+        if type(valA) != type(valB):
+            raise StructureMismatchError("field {} has different types {}, {}".format(key, type(valA), type(valB)))
+
+        if isinstance(valA, MatlabStructDict):
+            stats = compareMatStructs(valA, valB)
+            for subkey, subresult in stats.items():
+                result[subkey] = subresult
+        elif isinstance(valA, np.ndarray):
+            stats = compareArrays(valA, valB)
+            result[key] = stats
+        else:
+            diff = 0
+            if isinstance(valA, numbers.Number):
+                diff = abs((valA / valB) - 1)
+            else:
+                try:
+                    diff = 0 if (valA == valB) else 1
+                except ValueError:
+                    print("Error comparing {} {} or type {}".format(valA, valB, type(valA)))
+                    raise
+            stats = {'mean': diff, 'count': 1, 'min': diff, 'max': diff, 'stddev': 0, 'histocounts': None, 'histobins': None, 'histopct': None}
+            result[key] = stats
+    return result
+
+def isMeanWithinThreshold(cmpStats: dict, threshold: float) -> bool:
+    '''Examine all mean stats in dictionary and compare the the threshold value'''
+    means = [value['mean'] for key, value in cmpStats.items()]
+    assert len(means) == len(cmpStats.keys()), "isMeanWithinThreshold: assertion failed, length means mismatch {} {}".format(len(means), len(cmpStats.keys()))
+    return all(mean <= threshold for mean in means)
+
+class TooManySubStructsError(ValueError):
     pass
 
-def compareMatFiles(F1: str, F2: str):
+def isStructuredArray(var) -> bool:
+    return True if isinstance(var, np.ndarray) and (var.dtype.names is not None) and len(var.dtype.names) > 0 else False
+
+def loadMatFile(filename: str) -> MatlabStructDict:
+    '''Load matlab data file and convert it to a MatlabStructDict object for
+       easier python access. Expect only one substructure array, and use that
+       one as the name variable in MatlabStructDict.
+       Return the MatlabStructDict object
+    '''
+    top_struct = sio.loadmat(filename)
+    substruct_names = [key for key in top_struct.keys() if isStructuredArray(top_struct[key])]
+    if len(substruct_names) > 1:
+        # Currently we only support one sub structured array
+        raise TooManySubStructsError("Too many substructs: {}".format(substruct_names))
+    substruct_name = substruct_names[0] if len(substruct_names) > 0 else None
+    matstruct = MatlabStructDict(top_struct, substruct_name)
+    return matstruct
+
+def compareMatFiles(filename1: str, filename2: str) -> dict:
     '''Load both matlab files and call compareMatStructs.
        Inspect the resulting stats_result to see if any mean difference is beyond
        some threshold. Also print out the stats results.
        Return the result stats.
     '''
-    pass
+    matstruct1 = loadMatFile(filename1)
+    matstruct2 = loadMatFile(filename2)
+    if matstruct1.__name__ != matstruct2.__name__:
+        raise StructureMismatchError("Substructures don't match A {}, B {}".format(matstruct1.__name__, matstruct2.__name__))
+    result = compareMatStructs(matstruct1, matstruct2)
+    return result
 
-def xassert(bool_val, str):
-    # TODO - extended assertion info
+import inspect
+def xassert(bool_val, message):
+    print("in assert")
     if bool_val is False:
-        xstr = "__filename__, __fileline__, __func__, AssertionFailed: " + str
-        assert bool, xstr
+        frame = inspect.currentframe()
+        xstr = "File: {}, Line: {} AssertionFailed: {}".format(os.path.basename(frame.f_code.co_filename), frame.f_lineno, message)
+        assert False, xstr
