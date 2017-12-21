@@ -95,15 +95,15 @@ def realTimePunisherProcess(ValidationFile=None):
     firstVolPhase1 = np.min(np.where(patterns.block.squeeze() == 1))  # find first one
     # Matlab: lastVolPhase1 = find(patterns.block==nBlocksPerPhase,1,'last');
     lastVolPhase1 = np.max(np.where(patterns.block.squeeze()==patterns.nBlocksPerPhase)) # find last one
-    assert lastVolPhase1 == patterns.lastVolPhase1, "assert calulated lastVolPhase1 is same as load from patternsdesign {} {}".format(lastVolPhase1, patterns.lastVolPhase1)
+    assert lastVolPhase1 == patterns.lastVolPhase1-1, "assert calulated lastVolPhase1 is same as loaded from patternsdesign {} {}".format(lastVolPhase1, patterns.lastVolPhase1)
     nVolsPhase1 = lastVolPhase1 - firstVolPhase1 + 1
     # Matlab: WAIT first vol are with any patterns in the block and then lastvolphase2
     # is SHIFTED??!?!? or no???
     # Matlab: lastVolPhase2 = find(patterns.type~=0,1,'last');
-    firstVolPhase2_test = np.min(np.where(patterns.block.squeeze() == (patterns.nBlocksPerPhase+1)))
-    assert firstVolPhase2_test == patterns.firstVolPhase2, "assert calulated firstVolPhase2 is same as load from patternsdesign {} {}".format(firstVolPhase2_test, patterns.firstVolPhase2)
+    firstVolPhase2 = np.min(np.where(patterns.block.squeeze() == (patterns.nBlocksPerPhase+1)))
+    assert firstVolPhase2 == patterns.firstVolPhase2-1, "assert calulated firstVolPhase2 is same as load from patternsdesign {} {}".format(firstVolPhase2, patterns.firstVolPhase2)
     lastVolPhase2 = np.max(np.where(patterns.type.squeeze() != 0))
-    nVolsPhase2 = lastVolPhase2 - patterns.firstVolPhase2 + 1
+    nVolsPhase2 = lastVolPhase2 - firstVolPhase2 + 1
     nVols = patterns.block.shape[1]            # (matlab: size(patterns.block,2))
     patterns.patterns.fileAvail = np.zeros((1,patterns.nTRs), dtype=np.uint8) # (matlab: zeros(1,nTRs))
     patterns.patterns.fileNum = np.full((1,patterns.nTRs), np.nan) # (matlab: NaN(1,nTRs))
@@ -119,6 +119,8 @@ def realTimePunisherProcess(ValidationFile=None):
     patterns.patterns.phase1Std = np.full((1,nVoxels), np.nan)
     patterns.patterns.phase1Var = np.full((1,nVoxels), np.nan)
     patterns.patterns.categoryseparation = np.full((1,patterns.nTRs), np.nan)  # (matlab: NaN(1,nTRs))
+    patterns.patterns.predict = np.full((1,nVols), np.nan)
+    patterns.patterns.activations = np.full((2,nVols), np.nan)
     # Matlab: patterns.firstTestTR = find(patterns.regressor(1,:)+patterns.regressor(2,:),1,'first')
     sumRegressor = patterns.regressor[0,:] + patterns.regressor[1,:]
     patterns.patterns.firstTestTR = np.min(np.where(sumRegressor == 1)) #(because took out first 10)
@@ -152,7 +154,7 @@ def realTimePunisherProcess(ValidationFile=None):
     ## acquiring files ##
 
     fileCounter = firstVolPhase1 # file number = # of TR pulses
-    for iTrialPhase1 in range(patterns.firstVolPhase2-1):
+    for iTrialPhase1 in range(firstVolPhase2):
         # increase the count of TR pulses
         fileCounter = fileCounter+1 # so fileCounter begins at firstVolPhase1
 
@@ -160,11 +162,11 @@ def realTimePunisherProcess(ValidationFile=None):
         patterns.raw_sm[iTrialPhase1, :] = rtAttenPy.smooth(patterns.raw[iTrialPhase1, :], roiDims, roiInds, FWHM)
 
         # print trial results
-        output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}\n'.format(\
+        output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(\
             runNum, patterns.block[0][iTrialPhase1], iTrialPhase1, patterns.type[0][iTrialPhase1], \
             patterns.attCateg[0][iTrialPhase1], patterns.stim[0][iTrialPhase1], \
             patterns.fileNum[0][iTrialPhase1], patterns.fileAvail[0][iTrialPhase1], np.nan, np.nan)
-        dataFile.write(output_str)
+        dataFile.write(output_str + '\n')
         print(output_str)
 
     # end Phase1 loop - fileCounter will be at 115 here
@@ -178,9 +180,8 @@ def realTimePunisherProcess(ValidationFile=None):
     print('\n*********************************************')
     print('beginning highpassfilter/zscore...')
     i1 = 0
-    i2 = patterns.firstVolPhase2-1
-    # TODO - load matlab raw_sm and then run remaining here to look if is equal
-    patterns.raw_sm_filt[i1:i2, :] = np.transpose(rtAttenPy.highpass(np.transpose(patterns.raw_sm[i1:i2,:]), cutoff/(2*patterns.TR), False))
+    i2 = firstVolPhase2
+    patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2,:], patterns.TR, cutoff)
     patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2,:], axis=0)
     patterns.phase1Y[0,:] = np.mean(patterns.raw_sm_filt[i1:i2,:]**2, axis=0)
     patterns.phase1Std[0,:] = np.std(patterns.raw_sm_filt[i1:i2,:], axis=0)
@@ -213,71 +214,43 @@ def realTimePunisherProcess(ValidationFile=None):
     dataFile.write('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
     print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
 
-    for iTrialPhase2 in range(patterns.firstVolPhase2 - 1, nVols): # TODO check that firstVolPhase2 -1 is correct
-        zscoreLen = float(iTrialPhase2)
-        zscoreLen1 = float(iTrialPhase2 - 1)
-        zscoreConst = 1.0/zscoreLen
-        zscoreConst1 = 1.0/zscoreLen1
-
+    for iTrialPhase2 in range(firstVolPhase2, nVols): # TODO check that firstVolPhase2 -1 is correct
         fileCounter = fileCounter+1
 
-        patterns.fileNum[iTrialPhase2] = fileCounter+patterns.disdaqs/patterns.TR # disdaqs/TR is num TRs pause before each phase
+        patterns.fileNum[0, iTrialPhase2] = fileCounter+patterns.disdaqs//patterns.TR # disdaqs/TR is num TRs pause before each phase
 
         # smooth
         patterns.raw_sm[iTrialPhase2,:] = rtAttenPy.smooth(patterns.raw[iTrialPhase2,:], roiDims, roiInds, FWHM)
 
         # detrend
-        patterns.raw_sm_filt[iTrialPhase2,:] = np.transpose(rtAttenPy.highpass(np.transpose(patterns.raw_sm[0:iTrialPhase2,:]), cutoff/(2*patterns.TR), True))
+        patterns.raw_sm_filt[iTrialPhase2,:] = highPassRealTime(patterns.raw_sm[0:iTrialPhase2,:], patterns.TR, cutoff)
 
         # only update if the latest file wasn't nan
         #if patterns.fileload(iTrialPhase2)
 
-        patterns.patterns.realtimeMean[0,:] = np.mean(patterns.raw_sm_filt[0:iTrialPhase2,:], axis=0) # TODO - looks like this and line 263 are doing the same thing
-        patterns.patterns.realtimeY[0,:] = np.mean(patterns.raw_sm_filt[0:iTrialPhase2,:]**2, axis=0)
-        patterns.patterns.realtimeStd[0,:] = np.std(patterns.raw_sm_filt[0:iTrialPhase2,:], axis=0) # TODO - Matlab had flag to use N instead of N-1
-        patterns.patterns.realtimeVar[0,:] = patterns.realtimeStd[0,:]**2
-
-        #record last history
-        patterns.paterns.realtimeLastMean[0,:] = patterns.realtimeMean[0,:]
-        patterns.paterns.realtimeLastY[0,:] = patterns.realtimeY[0,:]
-        patterns.paterns.realtimeLastVar[0,:] = patterns.realtimeVar[0,:]
-        #update mean
-        patterns.realtimeMean[0,:] = (patterns.realtimeMean[0,:] * zscoreLen1 + patterns.raw_sm_filt[iTrialPhase2,:]) * zscoreConst
-        #update y = E(X^2)
-        patterns.realtimeY[0,:] = (patterns.realtimeY[0,:] * zscoreLen1 + patterns.raw_sm_filt[iTrialPhase2,:]**2) * zscoreConst
-        #update var
-        if useHistory:
-            patterns.realtimeVar[0,:] = patterns.realtimeLastVar[0,:] + \
-                patterns.realtimeLastMean[0,:]**2 - patterns.realtimeMean[0,:]**2 + \
-                patterns.realtimeY[0,:] - patterns.realtimeLastY[0,:]
-        else:
-            # update var
-            patterns.realtimeVar[0,:] = patterns.realtimeVar[0,:] - patterns.realtimeMean[0,:]**2 + \
-                np.square((patterns.realtimeMean[0,:] * zscoreLen - patterns.raw_sm_filt[iTrialPhase2,:]) * zscoreConst1) + \
-                (patterns.raw_sm_filt[iTrialPhase2,:]**2 - patterns.realtimeY[0,:]) * zscoreConst1
-
-        patterns.raw_sm_filt_z[iTrialPhase2,:] = (patterns.raw_sm_filt[iTrialPhase2,:] - patterns.realtimeMean[0,:]) / patterns.realtimeStd[0,:]
+        patterns.raw_sm_filt_z[iTrialPhase2,:] = (patterns.raw_sm_filt[iTrialPhase2,:] - patterns.phase1Mean[0,:]) / patterns.phase1Std[0,:]
 
         if rtfeedback:
             if np.any(patterns.regressor[:,iTrialPhase2]):
-                patterns.predict[iTrialPhase2],_,_,patterns.activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])  # ok<NODEF>
+                # HERE - Debugging here
+                patterns.predict[0, iTrialPhase2],_,_,patterns.activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])  # ok<NODEF>
 
                 categ = utils.find(patterns.regressor[:,iTrialPhase2])
                 #otherCateg = np.mod(categ,2)+1 # TODO - what is this doing, since the indicies are row-major now I think this breaks
                 otherCateg = np.tile([0, nVoxels], patterns.activations.shape[1]) # TODO test this
-                patterns.categoryseparation[iTrialPhase2] = patterns.activations[categ,iTrialPhase2]-patterns.activations[otherCateg,iTrialPhase2]
+                patterns.categoryseparation[0,iTrialPhase2] = patterns.activations[categ,iTrialPhase2]-patterns.activations[otherCateg,iTrialPhase2]
 
-                classOutput = patterns.categoryseparation[iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, '/vol_', str(patterns.fileNum[iTrialPhase2])), 'w+') as volFile:
-                    volFile.write(classOutput)
+                classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2])), 'w+') as volFile:
+                    volFile.write(str(classOutput))
             else:
-                patterns.categoryseparation[iTrialPhase2] = np.nan
+                patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
-                classOutput = patterns.categoryseparation[iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, '/vol_', str(patterns.fileNum[iTrialPhase2])), 'w+') as volFile:
-                    volFile.write(classOutput)
+                classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2])), 'w+') as volFile:
+                    volFile.write(str(classOutput))
         else:
-            patterns.categoryseparation[iTrialPhase2] = np.nan
+            patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
         # print trial results
         output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}\n'.format(\
@@ -285,7 +258,7 @@ def realTimePunisherProcess(ValidationFile=None):
             patterns.attCateg[0][iTrialPhase2], patterns.stim[0][iTrialPhase2], \
             patterns.fileNum[0][iTrialPhase2], patterns.fileAvail[0][iTrialPhase2], \
             patterns.categoryseparation[0][iTrialPhase2], \
-            np.nanmean(patterns.categoryseparation[patterns.firstVolPhase2:iTrialPhase2]))
+            np.nanmean(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2]))
         dataFile.write(output_str)
         print(output_str)
 
@@ -293,3 +266,11 @@ def realTimePunisherProcess(ValidationFile=None):
 
     ## end clean up
     dataFile.close()
+
+
+def highPassBetweenRuns(A_matrix, TR, cutoff):
+    return np.transpose(rtAttenPy.highpass(np.transpose(A_matrix), cutoff/(2*TR), False))
+
+def highPassRealTime(A_matrix, TR, cutoff):
+    full_matrix = np.transpose(rtAttenPy.highpass(np.transpose(A_matrix), cutoff/(2*TR), True))
+    return full_matrix[-1,:]
