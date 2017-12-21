@@ -39,7 +39,7 @@ cdef inline np.ndarray[DTYPE_t, ndim=1] hp_convkernel(int hp_mask_size, int sigm
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def highpass(np.ndarray[DTYPE_t, ndim=2] data, int sigma):
+def highpass(np.ndarray[DTYPE_t, ndim=2] data, int sigma, bint realtime):
     cdef int hp_mask_size = sigma * 3
 
     # Get number of voxels and time points
@@ -63,6 +63,8 @@ def highpass(np.ndarray[DTYPE_t, ndim=2] data, int sigma):
         done_c0 = 0
         c0 = 0
         for t in range(nt):
+            if realtime and t not in (0, nv-1):
+                continue
             A = B = C = D = N = 0
             tt_left = int_max(t - hp_mask_size, 0)
             tt_right = int_min(t + hp_mask_size, nt - 1)

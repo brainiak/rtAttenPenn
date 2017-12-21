@@ -271,6 +271,23 @@ def compareMatFiles(filename1: str, filename2: str) -> dict:
     result = compareMatStructs(matstruct1, matstruct2)
     return result
 
+
+def find(A: np.ndarray):
+    '''Find nonzero elements of A in flat "C" row-major indexing order
+       but sorted as in "F" column indexing order'''
+    # find indices of non-zero elements in roi
+    inds = np.nonzero(A)
+    dims = A.shape
+    # We need to first convert to Matlab column order raveled indicies in order to
+    #  sort the indicies in that order (the order the data appears in the p.raw matrix)
+    indsMatRavel = np.ravel_multi_index(inds, dims, order='F')
+    indsMatRavel.sort()
+    # convert back to python raveled indices
+    indsMat = np.unravel_index(indsMatRavel, dims, order='F')
+    resInds = np.ravel_multi_index(indsMat, dims, order='C')
+    return resInds
+
+
 import inspect
 def xassert(bool_val, message):
     print("in assert")
