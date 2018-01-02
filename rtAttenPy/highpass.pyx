@@ -63,8 +63,10 @@ def highpass(np.ndarray[DTYPE_t, ndim=2] data, int sigma, bint realtime):
         done_c0 = 0
         c0 = 0
         for t in range(nt):
-            if realtime and t not in (0, nv-1):
+            if realtime == True and (t != 0 and t != nt-1):
+                # in realtime case only process first and last col
                 continue
+
             A = B = C = D = N = 0
             tt_left = int_max(t - hp_mask_size, 0)
             tt_right = int_min(t + hp_mask_size, nt - 1)

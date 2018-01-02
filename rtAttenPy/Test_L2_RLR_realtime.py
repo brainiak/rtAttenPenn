@@ -8,11 +8,13 @@ def Test_L2_RLR_realtime(trainedModel, examplesTest, labelsTest):
 
     x = np.dot(examplesTest, trainedModel.weights) + trainedModel.biases
     activations = np.transpose(scisp.expit(x))
+    # reduce dimensions with only 1 entry, i.e. go from array(2,1) to array(2)
+    activations = np.squeeze(activations)
 
     labelsPredicted = np.argmax(activations, axis=0)
 
     if np.any(labelsTest):
-        if labelsPredicted == np.nonzero(labelsTest)[0]:
+        if labelsPredicted == np.flatnonzero(labelsTest):
             testAccuracy = 1
         else:
             testAccuracy = 0

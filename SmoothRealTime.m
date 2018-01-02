@@ -42,4 +42,4 @@ result(isnan(mask)) = NaN;
 %replace in pattern matrix
 outputLastPat = result(roiInds);
 
-break_here = 1
+% break_here = 1;

@@ -106,7 +106,7 @@ def realTimePunisherProcess(ValidationFile=None):
     nVolsPhase2 = lastVolPhase2 - firstVolPhase2 + 1
     nVols = patterns.block.shape[1]            # (matlab: size(patterns.block,2))
     patterns.patterns.fileAvail = np.zeros((1,patterns.nTRs), dtype=np.uint8) # (matlab: zeros(1,nTRs))
-    patterns.patterns.fileNum = np.full((1,patterns.nTRs), np.nan) # (matlab: NaN(1,nTRs))
+    patterns.patterns.fileNum = np.full((1,patterns.nTRs), np.nan, dtype=np.uint16) # (matlab: NaN(1,nTRs))
     patterns.patterns.newFile = [np.nan] * patterns.nTRs  # emplty list (matlab: cell(1,nTRs))
     patterns.patterns.timeRead = [np.nan] * patterns.nTRs  # emplty list (matlab: cell(1,nTRs))
     patterns.patterns.fileload = np.full((1,patterns.nTRs), np.nan) # (matlab: NaN(1,nTRs))
@@ -149,7 +149,7 @@ def realTimePunisherProcess(ValidationFile=None):
     ## Start Experiment ##
     # prepare for trial sequence
     dataFile.write('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
-    print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
+    print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
 
     ## acquiring files ##
 
@@ -211,8 +211,8 @@ def realTimePunisherProcess(ValidationFile=None):
     print('beginning model testing...')
 
     # prepare for trial sequence
-    dataFile.write('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
-    print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
+    dataFile.write('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
+    print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg')
 
     for iTrialPhase2 in range(firstVolPhase2, nVols): # TODO check that firstVolPhase2 -1 is correct
         fileCounter = fileCounter+1
@@ -223,7 +223,7 @@ def realTimePunisherProcess(ValidationFile=None):
         patterns.raw_sm[iTrialPhase2,:] = rtAttenPy.smooth(patterns.raw[iTrialPhase2,:], roiDims, roiInds, FWHM)
 
         # detrend
-        patterns.raw_sm_filt[iTrialPhase2,:] = highPassRealTime(patterns.raw_sm[0:iTrialPhase2,:], patterns.TR, cutoff)
+        patterns.raw_sm_filt[iTrialPhase2,:] = highPassRealTime(patterns.raw_sm[0:iTrialPhase2+1,:], patterns.TR, cutoff)
 
         # only update if the latest file wasn't nan
         #if patterns.fileload(iTrialPhase2)
@@ -232,12 +232,11 @@ def realTimePunisherProcess(ValidationFile=None):
 
         if rtfeedback:
             if np.any(patterns.regressor[:,iTrialPhase2]):
-                # HERE - Debugging here
                 patterns.predict[0, iTrialPhase2],_,_,patterns.activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])  # ok<NODEF>
-
-                categ = utils.find(patterns.regressor[:,iTrialPhase2])
-                #otherCateg = np.mod(categ,2)+1 # TODO - what is this doing, since the indicies are row-major now I think this breaks
-                otherCateg = np.tile([0, nVoxels], patterns.activations.shape[1]) # TODO test this
+                # determine whether expecting face or scene for this trial
+                categ = np.flatnonzero(patterns.regressor[:,iTrialPhase2])
+                # the other category will be categ+1 mod 2 since there are only two category types
+                otherCateg = (categ + 1) %2
                 patterns.categoryseparation[0,iTrialPhase2] = patterns.activations[categ,iTrialPhase2]-patterns.activations[otherCateg,iTrialPhase2]
 
                 classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
@@ -253,16 +252,36 @@ def realTimePunisherProcess(ValidationFile=None):
             patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
         # print trial results
-        output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}\n'.format(\
+        output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.1f}\t{:.3f}\t{:.3f}'.format(\
             runNum, patterns.block[0][iTrialPhase2], iTrialPhase2, patterns.type[0][iTrialPhase2], \
             patterns.attCateg[0][iTrialPhase2], patterns.stim[0][iTrialPhase2], \
             patterns.fileNum[0][iTrialPhase2], patterns.fileAvail[0][iTrialPhase2], \
-            patterns.categoryseparation[0][iTrialPhase2], \
-            np.nanmean(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2]))
-        dataFile.write(output_str)
+            patterns.predict[0][iTrialPhase2], patterns.categoryseparation[0][iTrialPhase2], \
+            np.nanmean(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2+1]))
+        dataFile.write(output_str + '\n')
         print(output_str)
 
     # end Phase 2 loop
+    if ValidationFile:
+        res = utils.compareMatStructs(patterns, target_patterns, ['raw_sm', 'raw_sm_filt', 'raw_sm_filt_z', 'categoryseparation'])
+        res_means = {key:value['mean'] for key, value in res.items()}
+        print("Validation Means: ", res_means)
+        # Make sure the predict array values are identical
+        target_predictions = target_patterns.predict-1 # matlab is ones based and python zeroes based
+        predictions_match = np.allclose(target_predictions, patterns.predict, rtol=0, atol=0, equal_nan=True)
+        assert predictions_match, "prediction arrays differ"
+        print("All predictions match: " + str(predictions_match))
+        # calculate the pierson correlation for raw_sm_filt_z
+        pearsons = []
+        num_cols = patterns.raw_sm_filt_z.shape[1]
+        for col in range(num_cols):
+            pearcol = sstats.pearsonr(patterns.raw_sm_filt_z[i1:i2, col], target_patterns.raw_sm_filt_z[i1:i2, col])
+            pearsons.append(pearcol)
+        pearsons = np.array(pearsons)
+        pearsons_mean = np.mean(pearsons[:, 0])
+        print("sm_filt_z mean pearsons correlation {}".format(pearsons_mean))
+        assert pearsons_mean > .995, "Pearsons mean {} too low".format(pearsons_mean)
+
 
     ## end clean up
     dataFile.close()
