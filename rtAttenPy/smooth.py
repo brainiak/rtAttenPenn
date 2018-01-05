@@ -35,6 +35,7 @@ def smooth(data, dims, inds, fwhm, voxel_size=3):
 
     volSmooth = scipy.ndimage.filters.gaussian_filter(vol, sigma)
     normSmooth = scipy.ndimage.filters.gaussian_filter(norm, sigma)
+    normSmooth[np.where(normSmooth == 0)] = 1
 
     resultVol = volSmooth / normSmooth
     resultVol[np.isnan(mask)] = np.nan

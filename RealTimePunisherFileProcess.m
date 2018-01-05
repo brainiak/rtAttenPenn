@@ -1,4 +1,4 @@
-%function [patterns] = RealTimePunisherFileProcess(subjectNum,subjectName,matchNum,runNum,fMRI,rtData)
+function [patterns] = RealTimePunisherFileProcess(subjectNum,runNum, date_pattern)
 % function [patterns] = RealTimePunisherFileProcess(subjectNum,subjectName,runNum,fMRI,rtData)
 %
 % this function describes the file processing procedure for the realtime
@@ -25,9 +25,13 @@
 %% Initialize Python
 % pyversion
 % pyversion /usr/local/bin/python3
-insert(py.sys.path, int32(0), '.')
-rtAttenPy = py.importlib.import_module('rtAttenPy')
+%insert(py.sys.path, int32(0), '.')
+%rtAttenPy = py.importlib.import_module('rtAttenPy')
 % rtAttenPy = py.importlib.reload(rtAttenPy)
+
+record_trace_params = 2;
+% if record_trace is true then record parameters used so that the trace
+% can be reproduced for python testing
 
 %% Boilerplate
 
@@ -52,26 +56,47 @@ RandStream.setGlobalStream(RandStream('mt19937ar','seed',seed));%set seed
 %     runHeader = [dataHeader '/run' num2str(runNum)];
 %     classOutputDir = [runHeader '/controlneverseenclassoutput'];
 % end
-runNum = 2;
 
-
-subjectNum = 3;
 if runNum >1
     rtfeedback = 1;
 else
     rtfeedback = 0;
 end
+
+if record_trace_params
+    % record parameters 
+    params.runNum = runNum;
+    params.subjectNum = subjectNum;
+    params.rtfeedback = rtfeedback;
+end
+
 currentDir = pwd;
-inputDataDir = [currentDir '/data/input']
-outputDataDir = [currentDir '/data/output']
+inputDataDir = [currentDir '/data/input'];
+outputDataDir = [currentDir '/data/output'];
 runDataDir = [currentDir '/data/output/run' num2str(runNum)];
 if ~exist(runDataDir)
-  mkdir(runDataDir)
+  mkdir(runDataDir);
 end
-fname = char(rtAttenPy.findNewestFile(inputDataDir, fullfile(inputDataDir, ['patternsdesign_' num2str(runNum) '*.mat'])));
+
+
+%     patternsdesign_fname = '/Users/gwallace/src/github/brainiak/rtAttenPenn/data/input/patternsdesign_2_20170526T111239.mat'
+%     curr_pdata_fname = '/Users/gwallace/src/github/brainiak/rtAttenPenn/data/output/patternsdata_2_20171122T105650.mat'
+%     prev_pdata_fname = '/Users/gwallace/src/github/brainiak/rtAttenPenn/data/output/patternsdata_1_20171122T105012.mat'
+%     model_fname = '/Users/gwallace/src/github/brainiak/rtAttenPenn/data/output/trainedModel_1_20171122T105153.mat'
+patternsdesign_fname = char(findNewestFile(inputDataDir, fullfile(inputDataDir, ['patternsdesign_' num2str(runNum) '_' date_pattern '*.mat'])));
+curr_pdata_fname = char(findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum) '_' date_pattern '*.mat'])));
+prev_pdata_fname = char(findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum-1) '_' date_pattern '*.mat'])));
+model_fname = char(findNewestFile(outputDataDir, fullfile(outputDataDir, ['trainedModel_' num2str(runNum-1) '_' date_pattern '*.mat'])));
+
+
+
 % This is where patterns variable comes from
-load(fname);
+load(patternsdesign_fname);
 %imgDir = [imgDirHeader datestr(now,10) datestr(now,5) datestr(now,7) '.' subjectName '.' subjectName '/'];
+
+if record_trace_params
+    params.patternsdesign_filename = patternsdesign_fname;
+end
 
 %%%%%%%%
 %DELETE AFTER
@@ -86,15 +111,19 @@ load(fname);
 
 %load previous patterns
 if runNum>1
-    patsfn= char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum-1) '*.mat'])));
-    oldpats = load(deblank(patsfn));
-    modelfn= char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['trainedModel_' num2str(runNum-1) '*.mat'])));
+    oldpats = load(deblank(prev_pdata_fname));
     % trainedmodel variables loaded here
-    load(deblank(modelfn),'trainedModel');
+    load(deblank(model_fname),'trainedModel');
 end
 % LOAD CURRENT PATTERNS DATA
-pfn = char(rtAttenPy.findNewestFile(outputDataDir, fullfile(outputDataDir, ['patternsdata_' num2str(runNum) '*.mat'])));
-p = load(deblank(pfn));
+p = load(deblank(curr_pdata_fname));
+
+if record_trace_params
+    params.prev_pdata_filename = prev_pdata_fname;
+    params.curr_pdata_filename = curr_pdata_fname;
+    params.model_filename = model_fname;
+end
+
 %% Experimental Parameters
 
 %scanning parameters
@@ -133,6 +162,7 @@ patterns.raw = p.patterns.raw;
 patterns.raw_sm = nan(nTRs,numel(roiInds));
 patterns.raw_sm_filt = nan(nTRs,numel(roiInds));
 patterns.raw_sm_filt_z = nan(nTRs,numel(roiInds));
+patterns.predict = NaN(1,nTRs);
 patterns.categoryseparation = NaN(1,nTRs);
 patterns.firstTestTR = find(patterns.regressor(1,:)+patterns.regressor(2,:),1,'first') ; %(because took out first 10)
 
@@ -215,6 +245,7 @@ for iTrialPhase1 = 1:(firstVolPhase2-1) % (change ACM 8/10/17: keeping this goin
     
 end % Phase1 loop
 % fileCounter will be at 115 here
+% save('raw_sm.run2.mat', 'patterns.raw_sm')
 
 % quick highpass filter!
 fprintf(dataFile,'\n*********************************************\n');
@@ -242,7 +273,7 @@ fprintf('beginning model testing...\n');
 
 % prepare for trial sequence
 fprintf(dataFile,'run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n');
-fprintf('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n');
+fprintf('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg\n');
 
 for iTrialPhase2=firstVolPhase2:nVols
     zscoreLen = double(iTrialPhase2);
@@ -293,34 +324,8 @@ for iTrialPhase2=firstVolPhase2:nVols
     % only update if the latest file wasn't nan
     %if patterns.fileload(iTrialPhase2)
         
-        patterns.realtimeMean(1,:) = mean(patterns.raw_sm_filt(1:iTrialPhase2,:),1);
-        patterns.realtimeY(1,:) = mean(patterns.raw_sm_filt(1:iTrialPhase2,:).^2,1);
-        patterns.realtimeStd(1,:) = std(patterns.raw_sm_filt(1:iTrialPhase2,:),1,1); %flag to use N instead of N-1
-        patterns.realtimeVar(1,:) = patterns.realtimeStd(1,:).^2;
-        
-        
-        %record last history
-        patterns.realtimeLastMean(1,:) = patterns.realtimeMean(1,:);
-        patterns.realtimeLastY(1,:) = patterns.realtimeY(1,:);
-        patterns.realtimeLastVar(1,:) = patterns.realtimeVar(1,:);
-        %update mean
-        patterns.realtimeMean(1,:) = (patterns.realtimeMean(1,:).*zscoreLen1 + patterns.raw_sm_filt(iTrialPhase2,:)).*zscoreConst;
-        %update y = E(X^2)
-        patterns.realtimeY(1,:) = (patterns.realtimeY(1,:).*zscoreLen1+ patterns.raw_sm_filt(iTrialPhase2,:).^2).*zscoreConst;
-        %update var
-        if useHistory
-            patterns.realtimeVar(1,:) = patterns.realtimeLastVar(1,:) ...
-                + patterns.realtimeLastMean(1,:).^2 - patterns.realtimeMean(1,:).^2 ...
-                + patterns.realtimeY(1,:) - patterns.realtimeLastY(1,:);
-        else
-            % update var
-            patterns.realtimeVar(1,:) = patterns.realtimeVar(1,:) - patterns.realtimeMean(1,:).^2 ...
-                + ((patterns.realtimeMean(1,:).*zscoreLen - patterns.raw_sm_filt(iTrialPhase2,:)).*zscoreConst1).^2 ...
-                + (patterns.raw_sm_filt(iTrialPhase2,:).^2 - patterns.realtimeY(1,:)).*zscoreConst1;
-        end
-    %end
-    patterns.raw_sm_filt_z(iTrialPhase2,:) = (patterns.raw_sm_filt(iTrialPhase2,:) - patterns.realtimeMean(1,:))./patterns.realtimeStd(1,:);
-    
+    patterns.raw_sm_filt_z(iTrialPhase2,:) = (patterns.raw_sm_filt(iTrialPhase2,:) - patterns.phase1Mean(1,:))./patterns.phase1Std(1,:);
+
     if rtfeedback
         if any(patterns.regressor(:,iTrialPhase2))
             [patterns.predict(iTrialPhase2),~,~,patterns.activations(:,iTrialPhase2)] = Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z(iTrialPhase2,:),patterns.regressor(:,iTrialPhase2)); %#ok<NODEF>
@@ -344,12 +349,12 @@ for iTrialPhase2=firstVolPhase2:nVols
     
     % print trial results
     fprintf(dataFile,'%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3f\t%.3f\n',runNum,patterns.block(iTrialPhase2),iTrialPhase2,patterns.type(iTrialPhase2),patterns.attCateg(iTrialPhase2),patterns.stim(iTrialPhase2),patterns.fileNum(iTrialPhase2),patterns.fileAvail(iTrialPhase2),patterns.categoryseparation(iTrialPhase2),nanmean(patterns.categoryseparation(firstVolPhase2:iTrialPhase2)));
-    fprintf('%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3f\t%.3f\n',runNum,patterns.block(iTrialPhase2),iTrialPhase2,patterns.type(iTrialPhase2),patterns.attCateg(iTrialPhase2),patterns.stim(iTrialPhase2),patterns.fileNum(iTrialPhase2),patterns.fileAvail(iTrialPhase2),patterns.categoryseparation(iTrialPhase2),nanmean(patterns.categoryseparation(firstVolPhase2:iTrialPhase2)));
+    fprintf('%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3f\t%.3f\n',runNum,patterns.block(iTrialPhase2),iTrialPhase2,patterns.type(iTrialPhase2),patterns.attCateg(iTrialPhase2),patterns.stim(iTrialPhase2),patterns.fileNum(iTrialPhase2),patterns.fileAvail(iTrialPhase2),patterns.predict(iTrialPhase2), patterns.categoryseparation(iTrialPhase2),nanmean(patterns.categoryseparation(firstVolPhase2:iTrialPhase2)));
     
     
 end % Phase 2 loop
 
-patterns.runStd = std(patterns.raw_sm_filt,[],1); %std dev across all volumes per voxel
+patterns.runStd = nanstd(patterns.raw_sm_filt,[],1); %std dev across all volumes per voxel
 
 %% training
 trainStart = tic; %start timing
@@ -392,7 +397,7 @@ else
     trainLabels1 = oldpats.patterns.regressor(:,trainIdx1)'; %find the labels of those indices
     trainPats1 = oldpats.patterns.raw_sm_filt_z(trainIdx1,:); %retrieve the patterns of those indices
     
-    trainIdx2 = any(patterns.regressor(:,i_phase1),1);
+    trainIdx2 = find(any(patterns.regressor(:,i_phase1),1));
     trainLabels2 = patterns.regressor(:,trainIdx2)'; %find the labels of those indices
     trainPats2 = patterns.raw_sm_filt_z(trainIdx2,:); %retrieve the patterns of those indices
 end
@@ -415,8 +420,16 @@ end
 
 %%
 
-save([outputDataDir '/patternsdata_' num2str(runNum) '_' datestr(now,30)],'patterns');
-save([outputDataDir '/trainedModel_' num2str(runNum) '_' datestr(now,30)],'trainedModel','trainPats','trainLabels');
+output_patterns_fn = [outputDataDir '/patternsdata_' num2str(runNum) '_' datestr(now,30)];
+output_trainedModel_fn = [outputDataDir '/trainedModel_' num2str(runNum) '_' datestr(now,30)];
+save(output_patterns_fn,'patterns');
+save(output_trainedModel_fn,'trainedModel','trainPats','trainLabels');
+
+if record_trace_params == 2
+    params.result_patterns_filename = output_patterns_fn;
+    params.result_model_filename = output_trainedModel_fn;
+    save([outputDataDir '/trace_params_run' num2str(runNum) '_' datestr(now, 30)], 'params');
+end
 
 % clean up and go home
 fclose('all');

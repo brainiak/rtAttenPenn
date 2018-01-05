@@ -11,14 +11,12 @@ from sklearn.linear_model import LogisticRegression
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
 
-def realTimePunisherProcess(ValidationFile=None):
+def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
     ## Boilerplate ##
     # TODO - set random Seed
     seed = time.time()
 
     ## Load or Initialize Real-Time Data
-    runNum = 2
-    subjectNum = 3
     if runNum > 1:
         rtfeedback = 1
     else:
@@ -43,21 +41,20 @@ def realTimePunisherProcess(ValidationFile=None):
         assert os.path.isfile(ValidationFile), 'Failed to find file {}'.format(ValidationFile)
         test_params = utils.loadMatFile(ValidationFile)
         patternsdesign_fname = test_params.patternsdesign_filename[0]
-        curr_patterns_fname = test_params.cur_patterns_filename[0]
-        prev_patterns_fname = test_params.prev_patterns_filename[0]
-        model_fname = test_params.model_filename[0]
-        runNum = test_params.runNum
-        subjectNum = test_params.subjectNum
-        rtfeedback = test_params.rtfeedback
+        curr_patterns_fname = test_params.curr_pdata_filename[0]
+        if test_params.runNum > 1:
+            prev_patterns_fname = test_params.prev_pdata_filename[0]
+            model_fname = test_params.model_filename[0]
         # load the result files that we will compare to
-        target_patterns_fn = test_params.params.result_patterns_filename
+        target_patterns_fn = test_params.result_patterns_filename
         target_model_fn = test_params.result_model_filename
         target_patterns = utils.loadMatFile(target_patterns_fn[0])
         target_model = utils.loadMatFile(target_model_fn[0])
+        assert runNum == test_params.runNum, "trace file runNum doesn't agree"
+        assert subjectNum == test_params.subjectNum, "trace file subjectNum doesn't agree"
+        assert rtfeedback == test_params.rtfeedback, "trace file rtfeedback doesn't agree"
 
     patterns = utils.loadMatFile(patternsdesign_fname)
-
-    ## TODO - recreate patternsdesign for python case, for now fix up a little
 
     #load previous patterns
     if runNum > 1:
@@ -139,13 +136,13 @@ def realTimePunisherProcess(ValidationFile=None):
     dataFile.write('*********************************************\n\n')
 
     # print header to command window
-    print('\n*********************************************\n')
-    print('* rtAttenPenn v.1.0\n')
-    print(['* Date/Time: ' + now.isoformat() + '\n'])
-    print(['* Seed: ' + str(seed) + '\n'])
-    print(['* Subject Number: ' + str(subjectNum) + '\n'])
-    print(['* Run Number: ' + str(runNum) + '\n'])
-    print('*********************************************\n\n')
+    print('*********************************************')
+    print('* rtAttenPenn v.1.0')
+    print('* Date/Time: ' + now.isoformat())
+    print('* Seed: ' + str(seed))
+    print('* Subject Number: ' + str(subjectNum))
+    print('* Run Number: ' + str(runNum))
+    print('*********************************************\n')
 
     ## Start Experiment ##
     # prepare for trial sequence
@@ -209,7 +206,7 @@ def realTimePunisherProcess(ValidationFile=None):
     dataFile.write('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
     print('run\tblock\ttrial\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg')
 
-    for iTrialPhase2 in range(firstVolPhase2, nVols): # TODO check that firstVolPhase2 -1 is correct
+    for iTrialPhase2 in range(firstVolPhase2, nVols):
         fileCounter = fileCounter+1
 
         patterns.fileNum[0, iTrialPhase2] = fileCounter+patterns.disdaqs//patterns.TR # disdaqs/TR is num TRs pause before each phase
@@ -247,12 +244,15 @@ def realTimePunisherProcess(ValidationFile=None):
             patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
         # print trial results
+        categorysep_mean = np.nan
+        if not np.all(np.isnan(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2+1])):
+            categorysep_mean = np.nanmean(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2+1])
         output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.1f}\t{:.3f}\t{:.3f}'.format(\
             runNum, patterns.block[0][iTrialPhase2], iTrialPhase2, patterns.type[0][iTrialPhase2], \
             patterns.attCateg[0][iTrialPhase2], patterns.stim[0][iTrialPhase2], \
             patterns.fileNum[0][iTrialPhase2], patterns.fileAvail[0][iTrialPhase2], \
             patterns.predict[0][iTrialPhase2], patterns.categoryseparation[0][iTrialPhase2], \
-            np.nanmean(patterns.categoryseparation[0,firstVolPhase2:iTrialPhase2+1]))
+            categorysep_mean)
         dataFile.write(output_str + '\n')
         print(output_str)
 
@@ -351,31 +351,16 @@ def realTimePunisherProcess(ValidationFile=None):
         pearson_mean = utils.pearsons_mean_corr(newTrainedModel.weights, target_model.weights)
         print("trainedWeights mean pearsons correlation {}".format(pearson_mean))
         assert pearson_mean > .99, "Pearsons mean {} too low".format(pearson_mean)
-        # apply newTrainedModel to see if model predictions match
-        # new_predict = np.full((1,nVols), np.nan)
-        # new_activations = np.full((2,nVols), np.nan)
-        # new_categoryseparation = np.full((1,patterns.nTRs), np.nan)
-        # for iTrialPhase2 in range(firstVolPhase2, nVols):
-        #     if np.any(patterns.regressor[:,iTrialPhase2]):
-        #         new_predict[0, iTrialPhase2],_,_,new_activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(newTrainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])
-        #         categ = np.flatnonzero(patterns.regressor[:,iTrialPhase2])
-        #         otherCateg = (categ + 1) % 2
-        #         new_categoryseparation[0,iTrialPhase2] = new_activations[categ,iTrialPhase2]-new_activations[otherCateg,iTrialPhase2]
-        # target_predictions = target_patterns.predict-1 # matlab is ones based and python zeroes based
-        # predictions_match = np.allclose(target_predictions, new_predict, rtol=0, atol=0, equal_nan=True)
-        # res = utils.compareArrays(patterns.categoryseparation, new_categoryseparation)
-        # print("category separation comparision: " + res)
-        # assert predictions_match, "prediction arrays differ"
 
     trainEnd = time.time()  # end timing
     trainingOnlyTime = trainEnd - trainStart
 
     # print training timing and results
     dataFile.write('model training time: \t{:.3f}\n'.format(trainingOnlyTime))
-    print('model training time: \t{:.3f}\n'.format(trainingOnlyTime))
-    if 'baises' in trainedModel:
-        dataFile.write('model biases: \t{:.3f}\t{:.3f}\n'.format(trainedModel.biases[0],trainedModel.biases[1]))
-        print('model biases: \t{:.3f}\t{:.3f}\n'.format(trainedModel.biases[0],trainedModel.biases[1]))
+    print('model training time: \t{:.3f}'.format(trainingOnlyTime))
+    if newTrainedModel.biases is not None:
+        dataFile.write('model biases: \t{:.3f}\t{:.3f}\n'.format(newTrainedModel.biases[0,0],newTrainedModel.biases[0,1]))
+        print('model biases: \t{:.3f}\t{:.3f}'.format(newTrainedModel.biases[0,0],newTrainedModel.biases[0,1]))
 
     ##
 
@@ -383,7 +368,7 @@ def realTimePunisherProcess(ValidationFile=None):
     output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py')
     output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py')
     sio.savemat(output_patterns_fn, patterns, appendmat=False)
-    sio.savemat(output_trainedModel_fn, trainedModel, appendmat=False)
+    sio.savemat(output_trainedModel_fn, newTrainedModel, appendmat=False)
 
     # clean up and go home
     dataFile.close()
