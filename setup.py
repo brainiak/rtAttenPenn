@@ -37,6 +37,7 @@ setup(
         'ipywidgets',
         'jupyter_contrib_nbextensions',
         'jupyter',
+        'sklearn',
     ],
     extras_require={},
     author='Princeton Neuroscience Institute and Intel Corporation',

@@ -14,6 +14,14 @@ def smooth(data, dims, inds, fwhm, voxel_size=3):
     :param fwhm: full-width half-max of gaussian
     :param voxel_size: voxel size in mm
     """
+    # The smooth result can be distorted by zeros in the masked ares.
+    # Normalize this out by dividing by a similarly smoothed array with 1s in then
+    # non-masked area.
+    mask = np.full(dims, np.nan)
+    mask.flat[inds] = 1
+    norm = mask.copy()
+    norm[np.isnan(mask)] = 0
+
     vol = np.zeros(dims, dtype=float)
     vol.flat[inds] = data
 
@@ -22,4 +30,16 @@ def smooth(data, dims, inds, fwhm, voxel_size=3):
     #  t = int((((3 - 1) / 2) - 0.5) / sigma)
     sigma = (fwhm / voxel_size) / (2 * math.sqrt(2 * math.log(2)))
 
-    return scipy.ndimage.filters.gaussian_filter(vol, sigma).flat[inds]
+    # TODO - in test_mode put a comparison here to the base matlab volume
+    # Validated by hand on select instances that vol is identical to the vol used in matlab run
+
+    volSmooth = scipy.ndimage.filters.gaussian_filter(vol, sigma)
+    normSmooth = scipy.ndimage.filters.gaussian_filter(norm, sigma)
+    normSmooth[np.where(normSmooth == 0)] = 1
+
+    resultVol = volSmooth / normSmooth
+    resultVol[np.isnan(mask)] = np.nan
+
+    result = resultVol.flat[inds]
+
+    return result

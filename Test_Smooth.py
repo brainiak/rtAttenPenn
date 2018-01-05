@@ -7,8 +7,8 @@ from contexttimer import Timer
 
 print('Loading data')
 # Get smooth.tgz and tar zxvf
-a = scipy.io.loadmat('smooth_in.mat')
-b = scipy.io.loadmat('smooth_out.mat')
+a = scipy.io.loadmat('tmp/smooth_in.mat')
+b = scipy.io.loadmat('tmp/smooth_out.mat')
 
 # Full-width half-max of gaussian
 FWHM = a['a']['FWHM'][0][0][0][0]
@@ -36,4 +36,4 @@ with Timer() as t:
 
 print(t.elapsed)
 
-#  print(max(abs((result - b['b']) / b['b'])))
+#print(max(abs((result - b['b']) / b['b'])))
