@@ -5,7 +5,8 @@ import datetime, time
 import numpy as np
 from rtAttenPy import utils
 import rtAttenPy
-import scipy.stats as sstats
+import scipy.io as sio
+from sklearn.linear_model import LogisticRegression
 
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
@@ -128,7 +129,7 @@ def realTimePunisherProcess(ValidationFile=None):
     ## Output Files Setup ##
     now = datetime.datetime.now()
     # open and set-up output file
-    dataFile = open(os.path.join(runDataDir,'fileprocessing.txt'),'w+')
+    dataFile = open(os.path.join(runDataDir,'fileprocessing_py.txt'),'w+')
     dataFile.write('\n*********************************************\n')
     dataFile.write('* rtAttenPenn v.1.0\n')
     dataFile.write('* Date/Time: ' + now.isoformat() + '\n')
@@ -194,15 +195,9 @@ def realTimePunisherProcess(ValidationFile=None):
         res_means = {key:value['mean'] for key, value in res.items()}
         print("Validation Means: ", res_means)
         # calculate the pierson correlation for raw_sm_filt_z
-        pearsons = []
-        num_cols = patterns.raw_sm_filt_z.shape[1]
-        for col in range(num_cols):
-            pearcol = sstats.pearsonr(patterns.raw_sm_filt_z[i1:i2, col], target_patterns.raw_sm_filt_z[i1:i2, col])
-            pearsons.append(pearcol)
-        pearsons = np.array(pearsons)
-        pearsons_mean = np.mean(pearsons[:, 0])
-        print("sm_filt_z mean pearsons correlation {}".format(pearsons_mean))
-        assert pearsons_mean > .995, "Pearsons mean {} too low".format(pearsons_mean)
+        pearson_mean = utils.pearsons_mean_corr(patterns.raw_sm_filt_z[i1:i2,:], target_patterns.raw_sm_filt_z[i1:i2,:])
+        print("Phase1 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
+        assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
 
     ## testing ##
     dataFile.write('\n*********************************************\n')
@@ -240,13 +235,13 @@ def realTimePunisherProcess(ValidationFile=None):
                 patterns.categoryseparation[0,iTrialPhase2] = patterns.activations[categ,iTrialPhase2]-patterns.activations[otherCateg,iTrialPhase2]
 
                 classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2])), 'w+') as volFile:
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py'), 'w+') as volFile:
                     volFile.write(str(classOutput))
             else:
                 patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
                 classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2])), 'w+') as volFile:
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py'), 'w+') as volFile:
                     volFile.write(str(classOutput))
         else:
             patterns.categoryseparation[0,iTrialPhase2] = np.nan
@@ -262,8 +257,12 @@ def realTimePunisherProcess(ValidationFile=None):
         print(output_str)
 
     # end Phase 2 loop
+
+    runStd = np.nanstd(patterns.raw_sm_filt, axis=0) #std dev across all volumes per voxel
+    patterns.runStd = runStd.reshape(1,-1)
+
     if ValidationFile:
-        res = utils.compareMatStructs(patterns, target_patterns, ['raw_sm', 'raw_sm_filt', 'raw_sm_filt_z', 'categoryseparation'])
+        res = utils.compareMatStructs(patterns, target_patterns, ['raw_sm', 'raw_sm_filt', 'raw_sm_filt_z', 'categoryseparation', 'runStd'])
         res_means = {key:value['mean'] for key, value in res.items()}
         print("Validation Means: ", res_means)
         # Make sure the predict array values are identical
@@ -272,19 +271,123 @@ def realTimePunisherProcess(ValidationFile=None):
         assert predictions_match, "prediction arrays differ"
         print("All predictions match: " + str(predictions_match))
         # calculate the pierson correlation for raw_sm_filt_z
-        pearsons = []
-        num_cols = patterns.raw_sm_filt_z.shape[1]
-        for col in range(num_cols):
-            pearcol = sstats.pearsonr(patterns.raw_sm_filt_z[i1:i2, col], target_patterns.raw_sm_filt_z[i1:i2, col])
-            pearsons.append(pearcol)
-        pearsons = np.array(pearsons)
-        pearsons_mean = np.mean(pearsons[:, 0])
-        print("sm_filt_z mean pearsons correlation {}".format(pearsons_mean))
-        assert pearsons_mean > .995, "Pearsons mean {} too low".format(pearsons_mean)
+        pearson_mean = utils.pearsons_mean_corr(patterns.raw_sm_filt_z[firstVolPhase2:nVols, :], target_patterns.raw_sm_filt_z[firstVolPhase2:nVols, :])
+        print("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
+        assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
 
 
-    ## end clean up
+    ## training ##
+    trainStart = time.time()  #start timing
+
+    # print training results
+    dataFile.write('\n*********************************************\n')
+    dataFile.write('beginning model training...\n')
+    print('\n*********************************************')
+    print('beginning model training...')
+
+    # model training
+    # we have to specify which TR's are correct for first 4 blocks and second
+    # four blocks
+    # last volPhase1 and first volPhase1/2 are NOT shifted though!!
+    i_phase1 = range(0, lastVolPhase1+1+2)   # 1:lastVolPhase1+2;
+    i_phase2 = range(firstVolPhase2, nVols)  # firstVolPhase2:nVols;
+    #any(patterns.regressor(:,i_phase2),1)
+    if runNum == 1:
+        # for the first run, we're going to train on first and second part of
+        # run 1
+        trainIdx1 = utils.find(np.any(patterns.regressor[:,i_phase1], axis=0))
+        trainLabels1 = np.transpose(patterns.regressor[:,trainIdx1])  # find the labels of those indices
+        trainPats1 = patterns.raw_sm_filt_z[trainIdx1,:]  # retrieve the patterns of those indices
+
+        trainIdx2 = utils.find(np.any(patterns.regressor[:,i_phase2], axis=0))
+        trainLabels2 = np.transpose(patterns.regressor[:,(firstVolPhase2)+trainIdx2])  # find the labels of those indices
+        trainPats2 = patterns.raw_sm_filt_z[(firstVolPhase2)+trainIdx2,:]
+    elif runNum == 2:
+        # take last run from run 1 and first run from run 2
+        trainIdx1 = utils.find(np.any(oldpats.patterns.regressor[:,i_phase2], axis=0))
+        trainLabels1 = np.transpose(oldpats.patterns.regressor[:,(firstVolPhase2)+trainIdx1])  # find the labels of those indices
+        trainPats1 = oldpats.patterns.raw_sm_filt_z[(firstVolPhase2)+trainIdx1,:]
+
+        trainIdx2 = utils.find(np.any(patterns.regressor[:,i_phase1], axis=0))
+        trainLabels2 = np.transpose(patterns.regressor[:,trainIdx2])   # find the labels of those indices
+        trainPats2 = patterns.raw_sm_filt_z[trainIdx2,:]   # retrieve the patterns of those indices
+    else:
+        # take previous 2 first parts
+        trainIdx1 = utils.find(np.any(oldpats.patterns.regressor[:,i_phase1], axis=0))
+        trainLabels1 = np.transpose(oldpats.patterns.regressor[:,trainIdx1])   # find the labels of those indices
+        trainPats1 = oldpats.patterns.raw_sm_filt_z[trainIdx1,:]  # retrieve the patterns of those indices
+
+        trainIdx2 = utils.find(np.any(patterns.regressor[:,i_phase1], axis=0))
+        trainLabels2 = np.transpose(patterns.regressor[:,trainIdx2])  # find the labels of those indices
+        trainPats2 = patterns.raw_sm_filt_z[trainIdx2,:]  # retrieve the patterns of those indices
+
+    trainPats = np.concatenate((trainPats1,trainPats2))
+    trainLabels = np.concatenate((trainLabels1,trainLabels2))
+
+    # train the model
+    # sklearn LogisticRegression takes on set of labels and returns one set of weights.
+    # The version implemented in Matlab can take multple sets of labels and return multiple wieghts.
+    # To reproduct that behavior here, we will use a LogisticRegression instance for each set of lables (2 in this case)
+    lrc1 = LogisticRegression()
+    lrc2 = LogisticRegression()
+    lrc1.fit(trainPats, trainLabels[:, 0])
+    lrc2.fit(trainPats, trainLabels[:, 1])
+    newTrainedModel = utils.MatlabStructDict({}, 'trainedModel')
+    newTrainedModel.trainedModel = utils.StructDict({})
+    newTrainedModel.trainedModel.weights = np.concatenate((lrc1.coef_.T, lrc2.coef_.T), axis=1)
+    newTrainedModel.trainedModel.biases = np.concatenate((lrc1.intercept_, lrc2.intercept_)).reshape(1, 2)
+    newTrainedModel.trainPats = trainPats
+    newTrainedModel.trainLabels = trainLabels
+
+    if ValidationFile:
+        res = utils.compareMatStructs(newTrainedModel, target_model, field_list=['trainLabels', 'weights', 'biases', 'trainPats'])
+        res_means = {key:value['mean'] for key, value in res.items()}
+        print("TrainModel Validation Means: ", res_means)
+        # calculate the pierson correlation for trainPats
+        pearson_mean = utils.pearsons_mean_corr(trainPats, target_model.trainPats)
+        print("trainPats mean pearsons correlation {}".format(pearson_mean))
+        assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
+        # calculate the pierson correlation for model weights
+        pearson_mean = utils.pearsons_mean_corr(newTrainedModel.weights, target_model.weights)
+        print("trainedWeights mean pearsons correlation {}".format(pearson_mean))
+        assert pearson_mean > .99, "Pearsons mean {} too low".format(pearson_mean)
+        # apply newTrainedModel to see if model predictions match
+        # new_predict = np.full((1,nVols), np.nan)
+        # new_activations = np.full((2,nVols), np.nan)
+        # new_categoryseparation = np.full((1,patterns.nTRs), np.nan)
+        # for iTrialPhase2 in range(firstVolPhase2, nVols):
+        #     if np.any(patterns.regressor[:,iTrialPhase2]):
+        #         new_predict[0, iTrialPhase2],_,_,new_activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(newTrainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])
+        #         categ = np.flatnonzero(patterns.regressor[:,iTrialPhase2])
+        #         otherCateg = (categ + 1) % 2
+        #         new_categoryseparation[0,iTrialPhase2] = new_activations[categ,iTrialPhase2]-new_activations[otherCateg,iTrialPhase2]
+        # target_predictions = target_patterns.predict-1 # matlab is ones based and python zeroes based
+        # predictions_match = np.allclose(target_predictions, new_predict, rtol=0, atol=0, equal_nan=True)
+        # res = utils.compareArrays(patterns.categoryseparation, new_categoryseparation)
+        # print("category separation comparision: " + res)
+        # assert predictions_match, "prediction arrays differ"
+
+    trainEnd = time.time()  # end timing
+    trainingOnlyTime = trainEnd - trainStart
+
+    # print training timing and results
+    dataFile.write('model training time: \t{:.3f}\n'.format(trainingOnlyTime))
+    print('model training time: \t{:.3f}\n'.format(trainingOnlyTime))
+    if 'baises' in trainedModel:
+        dataFile.write('model biases: \t{:.3f}\t{:.3f}\n'.format(trainedModel.biases[0],trainedModel.biases[1]))
+        print('model biases: \t{:.3f}\t{:.3f}\n'.format(trainedModel.biases[0],trainedModel.biases[1]))
+
+    ##
+
+    datestr = time.strftime("%Y%m%dT%H%M%S", time.localtime())
+    output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py')
+    output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py')
+    sio.savemat(output_patterns_fn, patterns, appendmat=False)
+    sio.savemat(output_trainedModel_fn, trainedModel, appendmat=False)
+
+    # clean up and go home
     dataFile.close()
+    # end
 
 
 def highPassBetweenRuns(A_matrix, TR, cutoff):

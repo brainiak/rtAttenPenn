@@ -6,6 +6,7 @@ import re
 import numpy as np
 import numbers
 import scipy.io as sio
+import scipy.stats as sstats
 
 
 def findNewestFile(filepath, filepattern):
@@ -129,7 +130,7 @@ class MatlabStructDict(StructDict):
         struct_fields = ()
         try:
             struct = self[self.__name__]
-            if isinstance(struct, MatlabStructDict):
+            if isinstance(struct, StructDict):
                 struct_fields = struct.keys()
         except KeyError:
             pass
@@ -138,7 +139,7 @@ class MatlabStructDict(StructDict):
         return s
 
 # Globals
-numpyAllNumCodes = np.typecodes['AllFloat'] + np.typecodes['AllInteger']
+numpyAllNumCodes = np.typecodes['AllFloat'] + np.typecodes['AllInteger'] + np.typecodes['UnsignedInteger']
 StatsEqual = {'mean': 0, 'count': 1, 'min': 0, 'max': 0, 'stddev': 0, 'histocounts': None, 'histobins': None, 'histopct': None}
 StatsNotEqual = {'mean': 1, 'count': 1, 'min': 1, 'max': 1, 'stddev': 1, 'histocounts': None, 'histobins': None, 'histopct': None}
 
@@ -287,6 +288,24 @@ def find(A: np.ndarray):
     resInds = np.ravel_multi_index(indsMat, dims, order='C')
     return resInds
 
+def pearsons_mean_corr(A: np.ndarray, B: np.ndarray):
+    pearsons = []
+    assert(A.shape == B.shape)
+    num_cols = A.shape[1]
+    for col in range(num_cols):
+        A_col = A[:, col]
+        B_col = B[:, col]
+        # ignore NaN values
+        nans = np.logical_or(np.isnan(A_col), np.isnan(B_col))
+        if np.all(nans == True):
+            continue
+        pearcol = sstats.pearsonr(A_col[~nans], B_col[~nans])
+        pearsons.append(pearcol)
+    pearsons = np.array(pearsons)
+    if pearsons.size == 0:
+        return np.nan
+    pearsons_mean = np.mean(pearsons[:, 0])
+    return pearsons_mean
 
 import inspect
 def xassert(bool_val, message):
