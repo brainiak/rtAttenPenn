@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-import rtAttenPy
+import rtAttenPy_v0
 
-trace_file_date_pattern = '20180105T145'
+trace_file_date_pattern = '20180111T1'
 subjectNum = 3
 
-for runNum in (1, 2):
+# for runNum in (1,):
+for runNum in (1, 2, 3):
     trace_file_pattern = 'trace_params_run' + str(runNum) + '_' + trace_file_date_pattern + '*.mat'
-    trace_file = rtAttenPy.findNewestFile('data/output', trace_file_pattern)
+    trace_file = rtAttenPy_v0.findNewestFile('data/output', trace_file_pattern)
     print("Start run {}: {}".format(runNum, trace_file))
-    rtAttenPy.realTimePunisherProcess(subjectNum, runNum, ValidationFile=trace_file)
+    rtAttenPy_v0.realTimePunisherProcess(subjectNum, runNum, ValidationFile=trace_file)
     print("End run {}".format(runNum))

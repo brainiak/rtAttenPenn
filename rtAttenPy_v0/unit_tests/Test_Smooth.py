@@ -1,14 +1,14 @@
 import math
 import scipy.io
-import rtAttenPy
+import rtAttenPy_v0
 import numpy as np
 from contexttimer import Timer
 
 
 print('Loading data')
 # Get smooth.tgz and tar zxvf
-a = scipy.io.loadmat('tmp/smooth_in.mat')
-b = scipy.io.loadmat('tmp/smooth_out.mat')
+a = scipy.io.loadmat('test_input/smooth_in.mat')
+b = scipy.io.loadmat('test_input/smooth_out.mat')
 
 # Full-width half-max of gaussian
 FWHM = a['a']['FWHM'][0][0][0][0]
@@ -31,7 +31,7 @@ sigma = (FWHM / voxel_size) / (2 * math.sqrt(2 * math.log(2)))
 
 print('Computing smooth')
 with Timer() as t:
-    result = rtAttenPy.smooth(a['a']['raw'][0][0].astype(float), dims,
+    result = rtAttenPy_v0.smooth(a['a']['raw'][0][0].astype(float), dims,
                               inds, FWHM)
 
 print(t.elapsed)

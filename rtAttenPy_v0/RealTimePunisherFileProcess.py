@@ -3,8 +3,8 @@
 import os
 import datetime, time
 import numpy as np
-from rtAttenPy import utils
-import rtAttenPy
+from rtAttenPy_v0 import utils
+import rtAttenPy_v0
 import scipy.io as sio
 from sklearn.linear_model import LogisticRegression
 
@@ -157,7 +157,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
         fileCounter = fileCounter+1 # so fileCounter begins at firstVolPhase1
 
         # smooth files
-        patterns.raw_sm[iTrialPhase1, :] = rtAttenPy.smooth(patterns.raw[iTrialPhase1, :], roiDims, roiInds, FWHM)
+        patterns.raw_sm[iTrialPhase1, :] = rtAttenPy_v0.smooth(patterns.raw[iTrialPhase1, :], roiDims, roiInds, FWHM)
 
         # print trial results
         output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(\
@@ -212,7 +212,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
         patterns.fileNum[0, iTrialPhase2] = fileCounter+patterns.disdaqs//patterns.TR # disdaqs/TR is num TRs pause before each phase
 
         # smooth
-        patterns.raw_sm[iTrialPhase2,:] = rtAttenPy.smooth(patterns.raw[iTrialPhase2,:], roiDims, roiInds, FWHM)
+        patterns.raw_sm[iTrialPhase2,:] = rtAttenPy_v0.smooth(patterns.raw[iTrialPhase2,:], roiDims, roiInds, FWHM)
 
         # detrend
         patterns.raw_sm_filt[iTrialPhase2,:] = highPassRealTime(patterns.raw_sm[0:iTrialPhase2+1,:], patterns.TR, cutoff)
@@ -224,7 +224,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
 
         if rtfeedback:
             if np.any(patterns.regressor[:,iTrialPhase2]):
-                patterns.predict[0, iTrialPhase2],_,_,patterns.activations[:,iTrialPhase2] = rtAttenPy.Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])  # ok<NODEF>
+                patterns.predict[0, iTrialPhase2],_,_,patterns.activations[:,iTrialPhase2] = rtAttenPy_v0.Test_L2_RLR_realtime(trainedModel,patterns.raw_sm_filt_z[iTrialPhase2,:],patterns.regressor[:,iTrialPhase2])  # ok<NODEF>
                 # determine whether expecting face or scene for this trial
                 categ = np.flatnonzero(patterns.regressor[:,iTrialPhase2])
                 # the other category will be categ+1 mod 2 since there are only two category types
@@ -268,8 +268,12 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
         # Make sure the predict array values are identical
         target_predictions = target_patterns.predict-1 # matlab is ones based and python zeroes based
         predictions_match = np.allclose(target_predictions, patterns.predict, rtol=0, atol=0, equal_nan=True)
-        assert predictions_match, "prediction arrays differ"
-        print("All predictions match: " + str(predictions_match))
+        if predictions_match:
+            print("All predictions match: " + str(predictions_match))
+        else:
+            mask = ~np.isnan(target_predictions)
+            miss_count = np.sum(patterns.predict[mask] != target_predictions[mask])
+            print("WARNING: predictions differ in {} trials".format(miss_count))
         # calculate the pierson correlation for raw_sm_filt_z
         pearson_mean = utils.pearsons_mean_corr(patterns.raw_sm_filt_z[firstVolPhase2:nVols, :], target_patterns.raw_sm_filt_z[firstVolPhase2:nVols, :])
         print("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
@@ -365,8 +369,8 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
     ##
 
     datestr = time.strftime("%Y%m%dT%H%M%S", time.localtime())
-    output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py')
-    output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py')
+    output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py.mat')
+    output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py.mat')
     sio.savemat(output_patterns_fn, patterns, appendmat=False)
     sio.savemat(output_trainedModel_fn, newTrainedModel, appendmat=False)
 
@@ -376,8 +380,8 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
 
 
 def highPassBetweenRuns(A_matrix, TR, cutoff):
-    return np.transpose(rtAttenPy.highpass(np.transpose(A_matrix), cutoff/(2*TR), False))
+    return np.transpose(rtAttenPy_v0.highpass(np.transpose(A_matrix), cutoff/(2*TR), False))
 
 def highPassRealTime(A_matrix, TR, cutoff):
-    full_matrix = np.transpose(rtAttenPy.highpass(np.transpose(A_matrix), cutoff/(2*TR), True))
+    full_matrix = np.transpose(rtAttenPy_v0.highpass(np.transpose(A_matrix), cutoff/(2*TR), True))
     return full_matrix[-1,:]

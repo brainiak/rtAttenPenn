@@ -12,7 +12,7 @@ class build_ext(_build_ext):
 
 
 setup(
-    name='rtAttenPy',
+    name='rtAttenPy_v0',
     version='0.0.1',
     setup_requires=[
         'numpy'
@@ -42,15 +42,15 @@ setup(
     extras_require={},
     author='Princeton Neuroscience Institute and Intel Corporation',
     author_email='dsuo@princeton.edu',
-    url='https://github.com/brainiak/rtAttenPy',
+    url='https://github.com/brainiak/rtAttenPy_v0',
     description='Brain Imaging Analysis Kit Cloud',
     license='Apache 2',
     keywords='neuroscience, algorithm, fMRI, distributed, scalable',
     cmdclass={'build_ext': build_ext},
-    packages=['rtAttenPy'],
+    packages=['rtAttenPy_v0'],
     ext_modules=[
-        Extension('rtAttenPy.highpass',
-                  ['rtAttenPy/highpass.pyx']
+        Extension('rtAttenPy_v0.highpass',
+                  ['rtAttenPy_v0/highpass.pyx']
                   )
     ],
     python_requires='>=3.4',

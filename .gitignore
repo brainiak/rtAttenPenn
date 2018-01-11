@@ -11,6 +11,8 @@ datasets
 *.prof
 
 # Cython
+rtAttenPy_v0/*.c
+rtAttenPy_v0/*.html
 rtAttenPy/*.c
 rtAttenPy/*.html
 

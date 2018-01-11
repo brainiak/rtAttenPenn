@@ -2,7 +2,7 @@
 
 import unittest
 import os, time, random, pathlib
-from rtAttenPy import utils
+from rtAttenPy_v0 import utils
 from glob import iglob
 
 TEST_BASE_FILENAME = '/tmp/testdir/file1_20170101T01010'
@@ -62,7 +62,7 @@ import scipy.io as sio
 import numpy as np
 import copy
 
-matTestFilename = os.path.join(os.path.dirname(utils.__file__),'test_input/teststruct.mat')
+matTestFilename = os.path.join(os.path.dirname(__file__),'test_input/teststruct.mat')
 
 class TestMatlabStructDict(unittest.TestCase):
     def setUp(self):
