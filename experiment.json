@@ -1,0 +1,39 @@
+{
+  "experiment": {"experimentId": "base_01"},
+  "session": {"sessionId": "20180115T000000"},
+  "runs":
+    [{"runId": "01",
+      "blockGroups":
+        [{"blockGroupId": "01", "type": "train", "range": "01:04",
+          "blocks":
+            [{"blockId": "01", "trials": "00:05"},
+             {"blockId": "02", "trials": "05:10"},
+             {"blockId": "03", "trials": "10:15"},
+             {"blockId": "04", "trials": "15:20"}]
+        },
+        {"blockGroupId": "02", "type": "train", "range": "05:08",
+          "blocks":
+            [{"blockId": "05", "trials": "20:25"},
+             {"blockId": "06", "trials": "25:30"},
+             {"blockId": "07", "trials": "30:35"},
+             {"blockId": "08", "trials": "35:40"}]
+        }]
+    },
+    {"runId": "02",
+      "blockGroups":
+        [{"blockGroupId": "01", "type": "train", "range": "01:04",
+          "blocks":
+            [{"blockId": "01", "trials": "00:05"},
+             {"blockId": "02", "trials": "05:10"},
+             {"blockId": "03", "trials": "10:15"},
+             {"blockId": "04", "trials": "15:20"}]
+        },
+        {"blockGroupId": "02", "type": "predict", "range": "05:08",
+          "blocks":
+            [{"blockId": "05", "trials": "20:25"},
+             {"blockId": "06", "trials": "25:30"},
+             {"blockId": "07", "trials": "30:35"},
+             {"blockId": "08", "trials": "35:40"}]
+        }]
+    }]
+}
