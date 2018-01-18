@@ -7,11 +7,12 @@ import getopt
 import logging
 from rtfMRI.RtfMRIServer import RtfMRIServer
 from rtfMRI.StructDict import StructDict
-from rtfMRI.Errors import *
+from rtfMRI.Errors import InvocationError
 
 defaultSettings = {
-    'port':5500,
+    'port': 5500,
 }
+
 
 def printUsage(argv):
     usage_format = """Usage:
@@ -19,6 +20,7 @@ def printUsage(argv):
     options:
         -p [--port] -- server port"""
     print(usage_format.format(argv[0]))
+
 
 def parseArgs(argv, settings):
     try:
@@ -32,6 +34,7 @@ def parseArgs(argv, settings):
         else:
             raise InvocationError("unimplemented option {} {}", opt, arg)
     return settings
+
 
 def server_main(argv):
     logging.basicConfig(level=logging.INFO)
@@ -50,6 +53,7 @@ def server_main(argv):
     except Exception as err:
         logging.error(repr(err))
         raise err
+
 
 if __name__ == "__main__":
     server_main(sys.argv)

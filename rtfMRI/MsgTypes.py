@@ -1,5 +1,6 @@
 """A set of common message types for rtfMRI client and server"""
 
+
 class MsgType:
     NoneType  = 11
     Init      = 12

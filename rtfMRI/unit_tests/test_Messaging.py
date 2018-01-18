@@ -1,11 +1,14 @@
 import unittest
 import threading
-from rtfMRI.MsgTypes import MsgType, MsgEvent
-from rtfMRI.Messaging import Message, RtMessagingServer, RtMessagingClient
+from rtfMRI.MsgTypes import MsgType, MsgEvent  # type: ignore
+from rtfMRI.Messaging import RtMessagingServer, Message   # type: ignore
+from rtfMRI.Messaging import RtMessagingClient
+
 
 class Test_Messaging(unittest.TestCase):
     def setUp(self):
         self.server = RtMessagingServer(5501)
+
         def serveRequests():
             while True:
                 req = self.server.getRequest()
@@ -17,12 +20,16 @@ class Test_Messaging(unittest.TestCase):
                 reply.event_type = MsgEvent.Success
                 self.server.sendReply(reply)
             self.server.close()
-        self.server_thread = threading.Thread(name='server', target=serveRequests)
+        self.server_thread = threading.Thread(
+            name='server', target=serveRequests)
         self.server_thread.setDaemon(True)
         self.server_thread.start()
+
     def tearDown(self):
         self.server.close()
+
     def test_sendMessages(self):
+        print("test_sendMessages")
         client = RtMessagingClient('localhost', 5501)
         msg = Message()
         msg.id = 1
@@ -35,7 +42,7 @@ class Test_Messaging(unittest.TestCase):
         self.assertTrue(reply.type == MsgType.Reply)
         self.assertTrue(reply.event_type == MsgEvent.Success)
         client.close()
-        # Reconnect client
+        # Reconnect to client
         client = RtMessagingClient('localhost', 5501)
         client.sendRequest(msg)
         reply = client.getReply()
@@ -45,6 +52,7 @@ class Test_Messaging(unittest.TestCase):
         client.sendRequest(msg)
         self.server_thread.join()
         client.close()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,7 +11,8 @@ An experiment is comprised as follows:
 import logging
 from .Messaging import Message
 from .MsgTypes import MsgType, MsgEvent
-from .Errors import *
+from .Errors import ValidationError
+
 
 class BaseModel():
     def __init__(self):
@@ -66,24 +67,28 @@ class BaseModel():
     def validateMsg(self, msg):
         if msg.event_type > MsgEvent.StartExperiment:
             if msg.fields.experimentId != self.experimentId:
-                raise ValidationError("experimentId mismatch {} {}"\
-                    .format(self.experimentId, msg.fields.experimentId))
+                raise ValidationError("experimentId mismatch {} {}"
+                                      .format(self.experimentId,
+                                              msg.fields.experimentId))
         if msg.event_type > MsgEvent.StartSession:
             if msg.fields.sessionId != self.sessionId:
-                raise ValidationError("sessionId mismatch {} {}"\
-                    .format(self.sessionId, msg.fields.sessionId))
+                raise ValidationError("sessionId mismatch {} {}"
+                                      .format(self.sessionId,
+                                              msg.fields.sessionId))
         if msg.event_type > MsgEvent.StartRun:
             if msg.fields.runId != self.runId:
-                raise ValidationError("runId mismatch {} {}"\
-                    .format(self.runId, msg.fields.runId))
+                raise ValidationError("runId mismatch {} {}"
+                                      .format(self.runId, msg.fields.runId))
         if msg.event_type > MsgEvent.StartBlockGroup:
             if msg.fields.blockGroupId != self.blockGroupId:
-                raise ValidationError("blockGroupId mismatch {} {}"\
-                    .format(self.blockId, msg.fields.blockId))
+                raise ValidationError("blockGroupId mismatch {} {}"
+                                      .format(self.blockId,
+                                              msg.fields.blockId))
         if msg.event_type > MsgEvent.StartBlock:
             if msg.fields.blockId != self.blockId:
-                raise ValidationError("blockId mismatch {} {}"\
-                    .format(self.blockId, msg.fields.blockId))
+                raise ValidationError("blockId mismatch {} {}"
+                                      .format(self.blockId,
+                                              msg.fields.blockId))
         return
 
     def createReplyMessage(self, msg_id, event_type):
