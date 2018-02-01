@@ -273,7 +273,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
         else:
             mask = ~np.isnan(target_predictions)
             miss_count = np.sum(patterns.predict[mask] != target_predictions[mask])
-            print("WARNING: predictions differ in {} trials".format(miss_count))
+            print("WARNING: predictions differ in {} TRs".format(miss_count))
         # calculate the pierson correlation for raw_sm_filt_z
         pearson_mean = utils.pearsons_mean_corr(patterns.raw_sm_filt_z[firstVolPhase2:nVols, :], target_patterns.raw_sm_filt_z[firstVolPhase2:nVols, :])
         print("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))

@@ -5,12 +5,12 @@ Top level routine for client side rtfMRI processing
 import sys
 import threading
 import getopt
-import json
-import toml  # type: ignore
-import pathlib
+
 import logging
-from rtfMRI.StructDict import StructDict, recurseCreateStructDict
+
 from rtfMRI.RtfMRIClient import RtfMRIClient
+from rtfMRI.rtAtten.RtAttenClient import RtAttenClient
+from rtfMRI.StructDict import StructDict
 from rtfMRI.Errors import InvocationError
 
 defaultSettings = {
@@ -60,15 +60,21 @@ def parseArgs(argv, settings):
 
 def client_main(argv):
     logging.basicConfig(level=logging.INFO)
+    # TODO get model type from config file
     settings = StructDict(defaultSettings)
     try:
         settings = parseArgs(argv, settings)
-        cfg = loadConfigFile(settings.experiment_file)
         if settings.run_local is True:
             startLocalServer(settings)
-        client = RtfMRIClient(settings.addr, settings.port)
-        client.initModel(settings.model)
-        client.run(cfg)
+
+        if settings.model == 'base':
+            client = RtfMRIClient(settings)
+        elif settings.model == 'rtAtten':
+            client = RtAttenClient(settings)
+        else:
+            raise InvocationError("Unsupported model %s" % (settings.model))
+        client.initModel()
+        client.runSession(settings.experiment_file)
         if settings.run_local is True:
             client.sendShutdownServer()
         client.close()
@@ -91,21 +97,6 @@ def startLocalServer(settings):
     server_thread = threading.Thread(name='server', target=start_server)
     server_thread.setDaemon(True)
     server_thread.start()
-
-
-def loadConfigFile(filename):
-    file_suffix = pathlib.Path(filename).suffix
-    if file_suffix == '.json':
-        # load json
-        with open(filename) as fp:
-            cfg_dict = json.load(fp)
-    elif file_suffix == '.toml':
-        # load toml
-        cfg_dict = toml.load(filename)
-    else:
-        raise InvocationError("experiment file requires to be .json or .toml")
-    cfg_struct = recurseCreateStructDict(cfg_dict)
-    return cfg_struct
 
 
 if __name__ == "__main__":

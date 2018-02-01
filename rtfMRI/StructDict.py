@@ -39,6 +39,18 @@ class StructDict(dict):
         self.update(dict_entries)
 
 
+def copy_toplevel(data):
+    cptl = StructDict()
+    for key, val in data.items():
+        if isinstance(val, dict):
+            continue
+        if type(val) == list:
+            if isinstance(val[0], dict):
+                continue
+        cptl[key] = val
+    return cptl
+
+
 def recurseCreateStructDict(data):
     '''Given a recursive dictionary, i.e. a dictionary that has
             child dictionaries or lists of dictionaries,

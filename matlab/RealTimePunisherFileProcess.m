@@ -70,10 +70,10 @@ if record_trace_params
     params.rtfeedback = rtfeedback;
 end
 
-currentDir = pwd;
-inputDataDir = [currentDir '/data/input'];
-outputDataDir = [currentDir '/data/output'];
-runDataDir = [currentDir '/data/output/run' num2str(runNum)];
+[TopDir,~,~] = fileparts(pwd);
+inputDataDir = [TopDir '/data/input'];
+outputDataDir = [TopDir '/data/output'];
+runDataDir = [TopDir '/data/output/run' num2str(runNum)];
 if ~exist(runDataDir)
   mkdir(runDataDir);
 end

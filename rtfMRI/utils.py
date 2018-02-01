@@ -19,9 +19,10 @@ def loadMatFile(filename: str) -> MatlabStructDict:
        one as the name variable in MatlabStructDict.
        Return the MatlabStructDict object
     '''
+    if not os.path.isfile(filename):
+        raise FileNotFoundError("File \'{}\' not found".format(filename))
     top_struct = sio.loadmat(filename)
-    substruct_names = [key for key in top_struct.keys(
-    ) if isStructuredArray(top_struct[key])]
+    substruct_names = [key for key in top_struct.keys() if isStructuredArray(top_struct[key])]
     if len(substruct_names) > 1:
         # Currently we only support one sub structured array
         raise TooManySubStructsError(
@@ -68,6 +69,13 @@ def findNewestFile(filepath, filepattern):
         return max(glob.iglob(full_path_pattern), key=os.path.getctime)
     except ValueError:
         return None
+
+
+def flatten_1Ds(M):
+    if 1 in M.shape:
+        newShape = [x for x in M.shape if x > 1]
+        M = M.reshape(newShape)
+    return M
 
 
 '''

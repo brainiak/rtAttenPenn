@@ -23,7 +23,7 @@ hdrStruct = struct.Struct("!IHHI")  # I=unsigned int, H=unsigned short
 HDR_SIZE = hdrStruct.size
 HDR_MAGIC = 0xFEEDFEED
 MAX_DATA_SIZE = 1024 * 1024
-MAX_META_SIZE = 4 * 1024
+MAX_META_SIZE = 64 * 1024
 
 
 class Message():
@@ -96,7 +96,9 @@ class RtMessagingServer:
             try:
                 if self.conn is None:
                     # accept a new connection
+                    logging.info("RtMessagingServer: waiting for connection ...")
                     self.conn, _ = self.socket.accept()
+                    logging.info("RtMessagingServer: connected to {}".format(self.conn.getpeername()))
                 # read from the connection
                 msg = recvMsg(self.conn)
                 return msg
@@ -146,10 +148,10 @@ def validateHeader(msg_type, msg_event_type, msg_size):
         raise MessageError("Invalid event_type {}".format(msg_event_type))
     if msg_size > MAX_DATA_SIZE:
         raise MessageError("Message size exceeded {}".format(msg_size))
-    if msg_size > MAX_META_SIZE:
-        if msg_type != MsgType.Command or msg_event_type != MsgEvent.TrialData:
-            raise MessageError("Invalid (type, size) ({}, {})".format(
-                msg_event_type, msg_size))
+    # if msg_size > MAX_META_SIZE:
+    #     if msg_type != MsgType.Command or msg_event_type != MsgEvent.TRData:
+    #         raise MessageError("Invalid (type, size) ({}, {})".format(
+    #             msg_event_type, msg_size))
 
 
 def recvall(conn, count):

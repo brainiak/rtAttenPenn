@@ -12,19 +12,17 @@ class MsgType:
 
 class MsgEvent:
     NoneType        = 31
-    StartExperiment = 32
-    EndExperiment   = 33
-    StartSession    = 34
-    EndSession      = 35
-    StartRun        = 36
-    EndRun          = 37
-    StartBlockGroup = 38
-    EndBlockGroup   = 39
-    StartBlock      = 40
-    EndBlock        = 41
-    TrialData       = 42
-    TrainModel      = 43
-    Success         = 44
-    Error           = 45
-    FeedSync        = 46
-    MaxType         = 47
+    Success         = 32
+    Error           = 33
+    FeedSync        = 34
+    StartSession    = 35
+    EndSession      = 36
+    StartRun        = 37
+    EndRun          = 38
+    TrainModel      = 39
+    StartBlockGroup = 40
+    EndBlockGroup   = 41
+    StartBlock      = 42
+    EndBlock        = 43
+    TRData          = 44
+    MaxType         = 45

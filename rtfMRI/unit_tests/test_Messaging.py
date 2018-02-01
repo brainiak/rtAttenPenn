@@ -34,7 +34,7 @@ class Test_Messaging(unittest.TestCase):
         msg = Message()
         msg.id = 1
         msg.type = MsgType.Command
-        msg.event_type = MsgEvent.TrialData
+        msg.event_type = MsgEvent.TRData
         msg.fields.a = 10
         msg.data = [1, 2, 3, 4, 5]
         client.sendRequest(msg)

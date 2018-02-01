@@ -28,19 +28,23 @@ class RtfMRIServer():
                 msg = self.messaging.getRequest()
                 reply = successReply(msg.id)
                 if msg.type == MsgType.Init:
-                    if msg.fields.modelType == 'base':
+                    modelType = msg.fields.cfg.modelType
+                    if modelType == 'base':
                         logging.info("RtfMRIServer: init base model")
                         self.model = BaseModel()
-                    elif msg.fields.modelType == 'rtAtten':
+                    elif modelType == 'rtAtten':
+                        logging.info("RtfMRIServer: init rtAtten model")
                         self.model = RtAttenModel()
                     else:
                         raise RequestError(
                             "unknown model type '{}'".
-                            format(msg.fields.modelType))
+                            format(modelType))
                 elif msg.type == MsgType.Command:
                     if self.model is None:
                         raise StateError("No model object exists")
                     reply = self.model.handleMessage(msg)
+                    if reply is None:
+                        raise ValueError("Reply is None for msg %r" % (msg.type))
                 elif msg.type == MsgType.Shutdown:
                     break
                 else:

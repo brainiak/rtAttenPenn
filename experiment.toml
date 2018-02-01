@@ -1,95 +1,94 @@
-[experiment]
-experimentId = "base_01"
-
 [session]
+experimentId = "base_02"
 sessionId = "20180115T000000"
+model = "base"
 
 [[runs]]
 runId = "01"
 
   [[runs.blockGroups]]
-  blockGroupId = "01"
+  blkGrpId = "01"
   type = "train"
   range = "01:04"
 
     [[runs.blockGroups.blocks]]
     blockId = "01"
-    trials = "00:05"
+    TRs = "00:05"
 
     [[runs.blockGroups.blocks]]
     blockId = "02"
-    trials = "05:10"
+    TRs = "05:10"
 
     [[runs.blockGroups.blocks]]
     blockId = "03"
-    trials = "10:15"
+    TRs = "10:15"
 
     [[runs.blockGroups.blocks]]
     blockId = "04"
-    trials = "15:20"
+    TRs = "15:20"
 
   [[runs.blockGroups]]
-  blockGroupId = "02"
+  blkGrpId = "02"
   type = "train"
   range = "05:08"
 
     [[runs.blockGroups.blocks]]
     blockId = "05"
-    trials = "20:25"
+    TRs = "20:25"
 
     [[runs.blockGroups.blocks]]
     blockId = "06"
-    trials = "25:30"
+    TRs = "25:30"
 
     [[runs.blockGroups.blocks]]
     blockId = "07"
-    trials = "30:35"
+    TRs = "30:35"
 
     [[runs.blockGroups.blocks]]
     blockId = "08"
-    trials = "35:40"
+    TRs = "35:40"
 
 [[runs]]
 runId = "02"
 
   [[runs.blockGroups]]
-  blockGroupId = "01"
+  blkGrpId = "01"
   type = "train"
   range = "01:04"
 
     [[runs.blockGroups.blocks]]
     blockId = "01"
-    trials = "00:05"
+    TRs = "00:05"
 
     [[runs.blockGroups.blocks]]
     blockId = "02"
-    trials = "05:10"
+    TRs = "05:10"
 
     [[runs.blockGroups.blocks]]
     blockId = "03"
-    trials = "10:15"
+    TRs = "10:15"
 
     [[runs.blockGroups.blocks]]
     blockId = "04"
-    trials = "15:20"
+    TRs = "15:20"
 
   [[runs.blockGroups]]
-  blockGroupId = "02"
+  blkGrpId = "02"
   type = "predict"
   range = "05:08"
 
     [[runs.blockGroups.blocks]]
     blockId = "05"
-    trials = "20:25"
+    TRs = "20:25"
 
     [[runs.blockGroups.blocks]]
     blockId = "06"
-    trials = "25:30"
+    TRs = "25:30"
 
     [[runs.blockGroups.blocks]]
     blockId = "07"
-    trials = "30:35"
+    TRs = "30:35"
 
     [[runs.blockGroups.blocks]]
     blockId = "08"
-    trials = "35:40"
+    TRs = "35:40"

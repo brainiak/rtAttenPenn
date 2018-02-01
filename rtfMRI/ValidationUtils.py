@@ -7,7 +7,7 @@ import numbers
 import numpy as np  # type: ignore
 import scipy.stats as sstats  # type: ignore
 from .StructDict import MatlabStructDict
-from .utils import loadMatFile
+from .utils import loadMatFile, flatten_1Ds
 
 # Globals
 numpyAllNumCodes = np.typecodes['AllFloat'] + \
@@ -27,12 +27,8 @@ def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
         .format(type(A), type(B))
     assert A.size == B.size, "compareArrays: assert equal size arrays failed"
     if A.shape != B.shape:
-        def flatten_1Ds(M):
-            if 1 in M.shape:
-                newShape = [x for x in M.shape if x > 1]
-                M = M.reshape(newShape)
-        flatten_1Ds(A)
-        flatten_1Ds(B)
+        A = flatten_1Ds(A)
+        B = flatten_1Ds(B)
         assert len(A.shape) == len(B.shape),\
             "compareArrays: expecting same num dimension but got {} {}"\
             .format(len(A.shape), len(B.shape))
@@ -49,6 +45,8 @@ def compareArrays(A: np.ndarray, B: np.ndarray) -> dict:
         # Not a numeric array
         return StatsEqual if np.array_equal(A, B) else StatsNotEqual
     # Numeric arrays
+    if np.array_equal(A, B):
+        return StatsEqual
     diff = abs((A / B) - 1)
     diff = np.nan_to_num(diff)
     histobins = [0, 0.005, .01, .02, .03, .04, .05, .06, .07, .09, .1, 1]
@@ -92,7 +90,7 @@ def compareMatStructs(A: MatlabStructDict, B: MatlabStructDict,
     BSet = set(B.fields())
     if not fieldSet <= ASet or not fieldSet <= BSet:
         raise StructureMismatchError(
-            "missing fields: {}, {}".format(ASet - fieldSet, BSet - fieldSet))
+            "missing fields: {}, {}".format(fieldSet - ASet, fieldSet - BSet))
 
     for key in field_list:
         valA = getattr(A, key)
