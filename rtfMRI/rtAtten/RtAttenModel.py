@@ -63,40 +63,25 @@ class RtAttenModel(BaseModel):
                 # remove any cache items older than the previous run
                 self.trimCache(run.runId - 1)
         run.fileCounter = 0
-        # ** Setup Output File ** #
-        self.dirs.runDataDir = os.path.join(self.dirs.outputDataDir, 'run' + str(run.runId))
-        if not os.path.exists(self.dirs.runDataDir):
-            os.makedirs(self.dirs.runDataDir)
-        now = datetime.datetime.now()
-        # open and set-up output file
-        run.dataFile = open(os.path.join(self.dirs.runDataDir, 'fileprocessing_py.txt'), 'w+')
-        run.dataFile.write('\n*********************************************\n')
-        run.dataFile.write('* rtAttenPenn v.1.0\n')
-        run.dataFile.write('* Date/Time: ' + now.isoformat() + '\n')
-        run.dataFile.write('* Seed: ' + str(self.session.seed) + '\n')
-        run.dataFile.write('* Subject Number: ' + str(self.session.subjectNum) + '\n')
-        run.dataFile.write('* Run Number: ' + str(run.runId) + '\n')
-        run.dataFile.write('*********************************************\n\n')
 
-        # print header to command window
-        print('*********************************************')
-        print('* rtAttenPenn v.1.0')
-        print('* Date/Time: ' + now.isoformat())
-        print('* Seed: ' + str(self.session.seed))
-        print('* Subject Number: ' + str(self.session.subjectNum))
-        print('* Run Number: ' + str(run.runId))
-        print('*********************************************\n')
+        # Output header
+        now = datetime.datetime.now()
+        reply.fields.outputlns.append('*********************************************')
+        reply.fields.outputlns.append('* rtAttenPenn v.1.0')
+        reply.fields.outputlns.append('* Date/Time: ' + now.isoformat())
+        reply.fields.outputlns.append('* Seed: ' + str(self.session.seed))
+        reply.fields.outputlns.append('* Subject Number: ' + str(self.session.subjectNum))
+        reply.fields.outputlns.append('* Run Number: ' + str(run.runId))
+        reply.fields.outputlns.append('*********************************************\n')
 
         # ** Start Run ** #
         # prepare for TR sequence
-        run.dataFile.write('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
-        print('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
+        reply.fields.outputlns.append('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg')
 
         self.run = run
         return reply
 
     def EndRun(self, msg):
-        self.run.dataFile.close()
         self.trimCache(self.id_fields.runId)
         reply = super().EndRun(msg)
         return reply
@@ -150,18 +135,16 @@ class RtAttenModel(BaseModel):
             if self.id_fields.runId > 1:
                 self.blkGrp.trainedModel = self.getTrainedModel(self.id_fields.sessionId, self.id_fields.runId-1)
 
-            self.run.dataFile.write('\n*********************************************\n')
-            self.run.dataFile.write('beginning model testing...\n')
-            print('\n*********************************************')
-            print('beginning model testing...')
+            reply.fields.outputlns.append('\n*********************************************')
+            reply.fields.outputlns.append('beginning model testing...')
             # prepare for TR sequence
-            self.run.dataFile.write('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\toutput\tavg\n')
-            print('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg')
+            reply.fields.outputlns.append('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg')
         return reply
 
     def EndBlockGroup(self, msg):
         patterns = self.blkGrp.patterns
         i1, i2 = 0, self.blkGrp.nTRs
+        outputlns = []  # type: ignore
         # set validation indices
         validation_i1 = self.blkGrp.firstVol
         validation_i2 = validation_i1 + self.blkGrp.nTRs
@@ -171,13 +154,11 @@ class RtAttenModel(BaseModel):
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
             if self.session.validate and self.session.replayMode:
-                self.validateTestBlkGrp(validation_i1, validation_i2)
+                self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
 
         elif self.blkGrp.type == 1:  # training
-            self.run.dataFile.write('\n*********************************************\n')
-            self.run.dataFile.write('beginning highpass filter/zscore...\n')
-            print('\n*********************************************')
-            print('beginning highpassfilter/zscore...')
+            outputlns.append('\n*********************************************')
+            outputlns.append('beginning highpassfilter/zscore...')
 
             patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :], self.run.TRTime, self.run.cutoff)
             # if self.blkGrp.blkGrpId == 1:
@@ -202,7 +183,7 @@ class RtAttenModel(BaseModel):
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
             if self.session.validate and self.session.replayMode:
-                self.validateTrainBlkGrp(validation_i1, validation_i2)
+                self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
             # cache the block group for predict phase and training the model
             bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
             self.blkGrpCache[bgKey] = self.blkGrp
@@ -218,27 +199,33 @@ class RtAttenModel(BaseModel):
         blkGrpFilename = os.path.join(self.dirs.outputDataDir, filename)
         sio.savemat(blkGrpFilename, self.blkGrp, appendmat=False)
         reply = super().EndBlockGroup(msg)
+        reply.fields.outputlns = outputlns
         return reply
 
     def TRData(self, msg):
         reply = super().TRData(msg)
+        outputlns = []  # type: ignore
         if reply.event_type != MsgEvent.Success:
             return reply
         TR = msg.fields.cfg
         if TR.type == 2 or (TR.type == 0 and self.blkGrp.type == 2) or\
                 self.blkGrp.legacyRun1Phase2Mode:
             # Testing
-            self.Predict(TR)
+            predict_result, outputlns = self.Predict(TR)
+            reply.fields.predict = predict_result
         elif TR.type == 1 or (TR.type == 0 and self.blkGrp.type == 1):
             # Training
-            self.AccumulateTrainingData(TR)
+            outputlns = self.AccumulateTrainingData(TR)
         else:
             reply = self.createReplyMessage(msg.id, MsgEvent.Error)
             reply.data = "Unknown TR type %d", TR.type
+        reply.fields.outputlns = outputlns
+
         return reply
 
     def AccumulateTrainingData(self, TR):
         assert TR.trId is not None, "missing TR.trId"
+        outputlns = []
         # increase the count of TR pulses
         self.run.fileCounter = self.run.fileCounter + 1  # so fileCounter begins at firstVolPhase1
 
@@ -255,12 +242,13 @@ class RtAttenModel(BaseModel):
         output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(
             self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type,
             TR.attCateg, TR.stim, TR.vol, 1, np.nan, np.nan)
-        self.run.dataFile.write(output_str + '\n')
-        print(output_str)
-        return
+        outputlns.append(output_str)
+        return outputlns
 
     def Predict(self, TR):
         assert TR.trId is not None, "missing TR.trId"
+        predict_result = StructDict()
+        outputlns = []
         patterns = self.blkGrp.patterns
         combined_raw_sm = self.blkGrp.combined_raw_sm
         combined_TRid = self.blkGrp.firstVol + TR.trId
@@ -292,11 +280,8 @@ class RtAttenModel(BaseModel):
                     patterns.activations[categ, TR.trId]-patterns.activations[otherCateg, TR.trId]
             else:
                 patterns.categoryseparation[0, TR.trId] = np.nan
-
-            classOutput = patterns.categoryseparation[0, TR.trId]
-            filename = os.path.join(self.dirs.runDataDir, 'vol_' + str(patterns.fileNum[0, TR.trId]) + '_py')
-            with open(filename, 'w+') as volFile:
-                volFile.write(str(classOutput))
+            predict_result.catsep = patterns.categoryseparation[0, TR.trId]
+            predict_result.vol = patterns.fileNum[0, TR.trId]
         else:
             patterns.categoryseparation[0, TR.trId] = np.nan
 
@@ -309,18 +294,15 @@ class RtAttenModel(BaseModel):
             self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type, TR.attCateg, TR.stim,
             patterns.fileNum[0, TR.trId], 1, patterns.predict[0, TR.trId],
             patterns.categoryseparation[0, TR.trId], categorysep_mean)
-        self.run.dataFile.write(output_str + '\n')
-        print(output_str)
-        # todo - reply with category separation
-        return
+        outputlns.append(output_str)
+        return predict_result, outputlns
 
     def TrainModel(self, msg):
+        reply = super().TrainModel(msg)
         trainStart = time.time()  # start timing
         # print training results
-        self.run.dataFile.write('\n*********************************************\n')
-        self.run.dataFile.write('beginning model training...\n')
-        print('\n*********************************************')
-        print('beginning model training...')
+        reply.fields.outputlns.append('\n*********************************************')
+        reply.fields.outputlns.append('beginning model training...')
 
         # load data to train model
         trainCfg = msg.fields.cfg
@@ -361,26 +343,24 @@ class RtAttenModel(BaseModel):
 
         # print training timing and results
         outStr = 'model training time: \t{:.3f}'.format(trainingOnlyTime)
-        self.run.dataFile.write(outStr + '\n')
-        print(outStr)
+        reply.fields.outputlns.append(outStr)
         if newTrainedModel.biases is not None:
             outStr = 'model biases: \t{:.3f}\t{:.3f}'.format(
                 newTrainedModel.biases[0, 0], newTrainedModel.biases[0, 1])
-            self.run.dataFile.write(outStr + '\n')
-            print(outStr)
+            reply.fields.outputlns.append(outStr)
 
         # cache the trained model
         self.modelCache[self.id_fields.runId] = newTrainedModel
 
         if self.session.validate:
-            self.validateModel(newTrainedModel)
+            self.validateModel(newTrainedModel, reply.fields.outputlns)
 
         # write trained model to a file
         filename = getModelFilename(self.id_fields.sessionId, self.id_fields.runId)
         trainedModel_fn = os.path.join(self.dirs.outputDataDir, filename)
         sio.savemat(trainedModel_fn, newTrainedModel, appendmat=False)
 
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return reply
 
     def getPrevBlkGrp(self, sessionId, runId, blkGrpId):
         bgKey = getBlkGrpKey(runId, blkGrpId)
@@ -422,7 +402,7 @@ class RtAttenModel(BaseModel):
         for key in rm_keys:
             del(self.modelCache[key])
 
-    def validateTrainBlkGrp(self, target_i1, target_i2):
+    def validateTrainBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
         target_patternsdata = utils.loadMatFile(self.run.replayFile)
@@ -432,15 +412,15 @@ class RtAttenModel(BaseModel):
                       'phase1Mean', 'phase1Y', 'phase1Std', 'phase1Var']
         res = vutils.compareMatStructs(patterns, target_patterns, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
-        print("Validation Means: ", res_means)
+        outputlns.append("Validation Means: {}".format(res_means))
         # calculate the pierson correlation for raw_sm_filt_z
         pearson_mean = vutils.pearsons_mean_corr(patterns.raw_sm_filt_z, target_patterns.raw_sm_filt_z)
-        print("Phase1 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
+        outputlns.append("Phase1 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
         if pearson_mean < .995:
             # assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
             logging.warn("Pearson mean for raw_sm_filt_z low, %f", pearson_mean)
 
-    def validateTestBlkGrp(self, target_i1, target_i2):
+    def validateTestBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
         target_patternsdata = utils.loadMatFile(self.run.replayFile)
@@ -451,7 +431,7 @@ class RtAttenModel(BaseModel):
                       'categoryseparation']
         res = vutils.compareMatStructs(patterns, target_patterns, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
-        print("Validation Means: ", res_means)
+        outputlns.append("Validation Means: {}".format(res_means))
         # Make sure the predict array values are identical
         # Predict values are (1, 2) in matlab, (0, 1) in python because it
         # Check if we need to convert from matlab to python values
@@ -461,36 +441,36 @@ class RtAttenModel(BaseModel):
             target_patterns.predict = target_patterns.predict-1
         predictions_match = np.allclose(target_patterns.predict, patterns.predict, rtol=0, atol=0, equal_nan=True)
         if predictions_match:
-            print("All predictions match: " + str(predictions_match))
+            outputlns.append("All predictions match: {}".format(predictions_match))
         else:
             mask = ~np.isnan(target_patterns.predict)
             miss_count = np.sum(patterns.predict[0, mask] != target_patterns.predict[mask])
-            print("WARNING: predictions differ in {} TRs".format(miss_count))
+            outputlns.append("WARNING: predictions differ in {} TRs".format(miss_count))
         # calculate the pierson correlation for raw_sm_filt_z
         pearson_mean = vutils.pearsons_mean_corr(patterns.raw_sm_filt_z, target_patterns.raw_sm_filt_z)
-        print("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
+        outputlns.append("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
         if pearson_mean < .995:
             # assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
-            logging.warn("Pearson mean for raw_sm_filt_z low, %f", pearson_mean)
+            outputlns.append("WARN: Pearson mean for raw_sm_filt_z low, {}".format(pearson_mean))
 
-    def validateModel(self, newTrainedModel):
+    def validateModel(self, newTrainedModel, outputlns):
         target_model = utils.loadMatFile(self.run.validationModel)
         cmp_fields = ['trainLabels', 'weights', 'biases', 'trainPats']
         res = vutils.compareMatStructs(newTrainedModel, target_model, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
-        print("TrainModel Validation Means: ", res_means)
+        outputlns.append("TrainModel Validation Means: {}".format(res_means))
         # calculate the pierson correlation for trainPats
         pearson_mean = vutils.pearsons_mean_corr(newTrainedModel.trainPats, target_model.trainPats)
-        print("trainPats mean pearsons correlation {}".format(pearson_mean))
+        outputlns.append("trainPats mean pearsons correlation {}".format(pearson_mean))
         if pearson_mean < .995:
             # assert pearson_mean > .995, "Pearsons mean {} too low".format(pearson_mean)
             logging.warn("Pearson mean for trainPats low, %f", pearson_mean)
         # calculate the pierson correlation for model weights
         pearson_mean = vutils.pearsons_mean_corr(newTrainedModel.weights, target_model.weights)
-        print("trainedWeights mean pearsons correlation {}".format(pearson_mean))
+        outputlns.append("trainedWeights mean pearsons correlation {}".format(pearson_mean))
         if pearson_mean < .995:
             # assert pearson_mean > .99, "Pearsons mean {} too low".format(pearson_mean)
-            logging.warn("Pearson mean for trainWeights low, %f", pearson_mean)
+            outputlns.append("WARN: Pearson mean for trainWeights low, {}".format(pearson_mean))
 
 
 def getBlkGrpFilename(sessionId, runId, blkGrpId):

@@ -84,9 +84,10 @@ class RtfMRIClient():
             raise RequestError("type:{} event:{} fields:{}: {}".format(
                 msg_type, msg_event, msg.fields, str(reply.data, 'utf-8')))
         assert reply.id == msg.id
+        return reply
 
     def sendCmdExpectSuccess(self, msg_event, msg_fields, data=None):
-        self.sendExpectSuccess(MsgType.Command, msg_event, msg_fields, data)
+        return self.sendExpectSuccess(MsgType.Command, msg_event, msg_fields, data)
 
     def close(self):
         self.messaging.close()

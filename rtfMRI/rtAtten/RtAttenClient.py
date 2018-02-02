@@ -25,27 +25,29 @@ class RtAttenClient(RtfMRIClient):
         validateSessionCfg(cfg)
         self.cfg = cfg
         self.id_fields = StructDict()
+
         # Send Start Session
         self.id_fields.experimentId = cfg.session.experimentId
         self.id_fields.sessionId = cfg.session.sessionId
         self.id_fields.subjectNum = cfg.session.subjectNum
         self.sendCmdExpectSuccess(MsgEvent.StartSession, cfg.session)
-        # Set Working Directories
+
+        # Set Directories
         if cfg.session.workingDir == 'cwd':
-            self.dirs.working = os.getcwd()
+            self.dirs.workingDir = os.getcwd()
         else:
-            self.dirs.working = cfg.session.workingDir
-        self.dirs.inputData = os.path.join(self.dirs.working, cfg.session.inputDataDir)
-        self.dirs.outputData = os.path.join(self.dirs.working, cfg.session.outputDataDir)
+            self.dirs.workingDir = cfg.session.workingDir
+        self.dirs.inputDataDir = os.path.join(self.dirs.workingDir, cfg.session.inputDataDir)
+        self.dirs.outputDataDir = os.path.join(self.dirs.workingDir, cfg.session.outputDataDir)
         dateStr = time.strftime("%Y%m%d", time.localtime())
-        self.dirs.imgData = cfg.session.imgDirHeader + dateStr + '.' +\
+        self.dirs.imgDataDir = cfg.session.imgDirHeader + dateStr + '.' +\
             cfg.session.subjectName + '.' + cfg.session.subjectName
 
         # Process each run
         for idx, run in enumerate(cfg.runs):
             if cfg.session.replayMode == 1:
-                run.replayFile = os.path.join(self.dirs.outputData, cfg.session.replayFiles[idx])
-                run.validationModel = os.path.join(self.dirs.outputData, cfg.session.validationModels[idx])
+                run.replayFile = os.path.join(self.dirs.outputDataDir, cfg.session.replayFiles[idx])
+                run.validationModel = os.path.join(self.dirs.outputDataDir, cfg.session.validationModels[idx])
             self.runRun(run)
         del self.id_fields.runId
         self.sendCmdExpectSuccess(MsgEvent.EndSession, cfg.session)
@@ -53,9 +55,11 @@ class RtAttenClient(RtfMRIClient):
     def runRun(self, run):
         self.id_fields.runId = run.runId
 
-        # self.dirs.runDataDir = os.path.join(self.dirs.outputData, 'run' + str(run.id))
-        # if not os.path.exists(self.runDataDir):
-        #     os.makedirs(self.runDataDir)
+        # Setup output directory and output file
+        runDataDir = os.path.join(self.dirs.outputDataDir, 'run' + str(run.runId))
+        if not os.path.exists(runDataDir):
+            os.makedirs(runDataDir)
+        outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
 
         # ** Experimental Parameters ** #
         run.seed = time.time()
@@ -65,7 +69,7 @@ class RtAttenClient(RtfMRIClient):
             run.rtfeedback = 0
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
-        temp = utils.loadMatFile(self.dirs.inputData+'/mask_'+str(self.id_fields.subjectNum)+'.mat')
+        temp = utils.loadMatFile(self.dirs.inputDataDir+'/mask_'+str(self.id_fields.subjectNum)+'.mat')
         roi = temp.mask
         assert type(roi) == np.ndarray
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
@@ -74,7 +78,8 @@ class RtAttenClient(RtfMRIClient):
         run.nVoxels = run.roiInds.size
 
         runCfg = copy_toplevel(run)
-        self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
+        reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
+        outputReplyLines(reply.fields.outputlns, outputFile)
 
         if run.replayFile is not None:
             # load previous patterns data for this run
@@ -85,11 +90,13 @@ class RtAttenClient(RtfMRIClient):
         for blockGroup in run.blockGroups:
             self.id_fields.blkGrpId = blockGroup.blkGrpId
             blockGroupCfg = copy_toplevel(blockGroup)
-            self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
+            reply = self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
+            outputReplyLines(reply.fields.outputlns, outputFile)
             for block in blockGroup.blocks:
                 self.id_fields.blockId = block.blockId
                 blockCfg = copy_toplevel(block)
-                self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
+                reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
+                outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
                     if run.replay_data is not None:
@@ -98,11 +105,15 @@ class RtAttenClient(RtfMRIClient):
                     else:
                         # Assuming the output file volumes are still 1's based
                         TR.data = self.getNextTRData(TR.vol)
-                    self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
+                    reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
+                    outputReplyLines(reply.fields.outputlns, outputFile)
+                    outputPredictionFile(reply.fields.predict, runDataDir)
                 del self.id_fields.trId
-                self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
+                reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
+                outputReplyLines(reply.fields.outputlns, outputFile)
             del self.id_fields.blockId
-            self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
+            reply = self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
+            outputReplyLines(reply.fields.outputlns, outputFile)
         del self.id_fields.blkGrpId
         # Train the model for this Run
         trainCfg = StructDict()
@@ -112,9 +123,26 @@ class RtAttenClient(RtfMRIClient):
             trainCfg.blkGrpRefs = [{'run': 1, 'phase': 2}, {'run': 2, 'phase': 1}]
         else:
             trainCfg.blkGrpRefs = [{'run': run.runId-1, 'phase': 1}, {'run': run.runId, 'phase': 1}]
-        self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
-        self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
+        reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
+        outputReplyLines(reply.fields.outputlns, outputFile)
+        reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
+        outputReplyLines(reply.fields.outputlns, outputFile)
 
     def getNextTRData(self, trial_id):
         if self.cfg.replayData == 1:
             return
+
+
+def outputReplyLines(lines, filehandle):
+    if lines is not None:
+        for line in lines:
+            print(line)
+            filehandle.write(line + '\n')
+
+
+def outputPredictionFile(predict, runDataDir):
+    if predict is None or predict.vol is None:
+        return
+    filename = os.path.join(runDataDir, 'vol_' + str(predict.vol) + '_py')
+    with open(filename, 'w+') as volFile:
+        volFile.write(str(predict.catsep))

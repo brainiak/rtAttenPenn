@@ -99,6 +99,7 @@ class BaseModel():
         for key in rm_keys:
             del(rmsg.fields.ids[key])
         rmsg.fields.blockType = self.blockType
+        rmsg.fields.outputlns = []
         return rmsg
 
     def StartSession(self, msg):
