@@ -6,6 +6,7 @@ and divided between Runs, BlockGroups, Blocks and Trials.
 import json
 import toml  # type: ignore
 import pathlib
+import logging
 from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
 from .MsgTypes import MsgType, MsgEvent
@@ -17,18 +18,20 @@ class RtfMRIClient():
     Class to handle parsing configuration and running the session logic
     """
 
-    def __init__(self, settings):
+    def __init__(self, addr, port):
+        self.modelName = ''
         self.msg_id = 0
         self.id_fields = StructDict()
-        self.model = settings.model
-        self.messaging = RtMessagingClient(settings.addr, settings.port)
+        self.messaging = RtMessagingClient(addr, port)
 
     def __del__(self):
         self.close()
 
-    def initModel(self):
+    def initModel(self, modelName):
+        self.modelName = modelName
         msgfields = StructDict()
-        msgfields.modelType = self.model
+        msgfields.modelType = modelName
+        logging.debug("Init Model {}".format(modelName))
         self.sendExpectSuccess(MsgType.Init, MsgEvent.NoneType, msgfields)
 
     def message(self, msg_type, msg_event):
@@ -37,8 +40,7 @@ class RtfMRIClient():
         msg.set(self.msg_id, msg_type, msg_event)
         return msg
 
-    def runSession(self, experiment_file):
-        cfg = loadConfigFile(experiment_file)
+    def runSession(self, cfg):
         validateSessionCfg(cfg)
         self.id_fields = StructDict()
         self.id_fields.experimentId = cfg.session.experimentId

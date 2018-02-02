@@ -1,5 +1,7 @@
-[session]
+[experiment]
 model = "rtAtten"
+
+[session]
 experimentName = "rtAttenPenn"
 experimentId = 1
 subjectName = "subject1"

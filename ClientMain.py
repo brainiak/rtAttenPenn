@@ -8,18 +8,18 @@ import getopt
 
 import logging
 
-from rtfMRI.RtfMRIClient import RtfMRIClient
+from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.StructDict import StructDict
-from rtfMRI.Errors import InvocationError
+from rtfMRI.Errors import InvocationError, RequestError
 
-defaultSettings = {
+defaultSettings = StructDict({
     'addr': 'localhost',
     'port': 5500,
-    'model': 'base',
+    'model': None,
     'experiment_file': 'experiment.toml',
     'run_local': False
-}
+})
 
 
 def printUsage(argv):
@@ -34,7 +34,7 @@ def printUsage(argv):
     print(usage_format.format(argv[0]))
 
 
-def parseArgs(argv, settings):
+def parseCommandArgs(argv, settings):
     try:
         shortOpts = "a:p:m:e:l"
         longOpts = ["addr=", "port=", "model=", "experiment=", "run_local"]
@@ -60,21 +60,29 @@ def parseArgs(argv, settings):
 
 def client_main(argv):
     logging.basicConfig(level=logging.INFO)
-    # TODO get model type from config file
-    settings = StructDict(defaultSettings)
     try:
-        settings = parseArgs(argv, settings)
+        settings = parseCommandArgs(argv, defaultSettings)
+        cfg = loadConfigFile(settings.experiment_file)
+        if 'session' not in cfg.keys():
+            raise InvocationError("Experiment file must have session section")
+        # Start local server if requested
         if settings.run_local is True:
             startLocalServer(settings)
-
-        if settings.model == 'base':
-            client = RtfMRIClient(settings)
-        elif settings.model == 'rtAtten':
-            client = RtAttenClient(settings)
+        # Determine the desired model
+        model = settings.model
+        if model is None:
+            if cfg.experiment is None or cfg.experiment.model is None:
+                raise InvocationError("No model specified in experiment file or command line")
+            model = cfg.experiment.model
+        # Start up client logic for the specified model
+        if model == 'base':
+            client = RtfMRIClient(settings.addr, settings.port)
+        elif model == 'rtAtten':
+            client = RtAttenClient(settings.addr, settings.port)
         else:
             raise InvocationError("Unsupported model %s" % (settings.model))
-        client.initModel()
-        client.runSession(settings.experiment_file)
+        client.initModel(model)
+        client.runSession(cfg)
         if settings.run_local is True:
             client.sendShutdownServer()
         client.close()
@@ -83,8 +91,10 @@ def client_main(argv):
         printUsage(argv)
         return False
     except FileNotFoundError as err:
-        print("file {} not found: {}".format(settings.experiment_file, err))
+        print("File {} not found: {}".format(settings.experiment_file, err))
         return False
+    except RequestError as err:
+        print("Request Error: {}".format(err))
     return True
 
 

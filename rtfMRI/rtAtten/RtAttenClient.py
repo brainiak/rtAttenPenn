@@ -1,26 +1,24 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
 import time
+import logging
 import numpy as np  # type: ignore
 import rtfMRI.utils as utils
-from ..RtfMRIClient import RtfMRIClient, validateSessionCfg, loadConfigFile
+from ..RtfMRIClient import RtfMRIClient, validateSessionCfg
 from ..MsgTypes import MsgEvent
 from ..StructDict import StructDict, copy_toplevel
-from ..Errors import InvocationError
 from .PatternsDesign2Config import createPatternsDesignConfig
 
 
 class RtAttenClient(RtfMRIClient):
-    def __init__(self, settings):
-        super().__init__(settings)
+    def __init__(self, addr, port):
+        super().__init__(addr, port)
         self.dirs = StructDict()
         self.cfg = None
         self.prevData = None
 
-    def runSession(self, experiment_file):
-        experiment_cfg = loadConfigFile(experiment_file)
-        if 'session' not in experiment_cfg.keys():
-            raise InvocationError("Experiment file must have session section")
+    def runSession(self, experiment_cfg):
+        assert self.modelName == 'rtAtten'
         cfg = createPatternsDesignConfig(experiment_cfg.session)
         validateSessionCfg(cfg)
         self.cfg = cfg
@@ -30,6 +28,7 @@ class RtAttenClient(RtfMRIClient):
         self.id_fields.experimentId = cfg.session.experimentId
         self.id_fields.sessionId = cfg.session.sessionId
         self.id_fields.subjectNum = cfg.session.subjectNum
+        logging.debug("Start session {}".format(cfg.session.sessionId))
         self.sendCmdExpectSuccess(MsgEvent.StartSession, cfg.session)
 
         # Set Directories
