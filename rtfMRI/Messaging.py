@@ -2,6 +2,8 @@
 Messaging - Module to handle messaging between the client and server
 """
 import socket
+import ssl
+import os
 import struct
 import logging
 import pickle
@@ -24,6 +26,7 @@ HDR_SIZE = hdrStruct.size
 HDR_MAGIC = 0xFEEDFEED
 MAX_DATA_SIZE = 1024 * 1024
 MAX_META_SIZE = 64 * 1024
+useSSL = True
 
 
 class Message():
@@ -52,28 +55,31 @@ class RtMessagingClient:
         self.addr = serverAddr
         self.port = serverPort
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.conn = socket.create_connection((self.addr, self.port))
+        if useSSL:
+            paths = ssl.get_default_verify_paths()
+            certfile = os.path.join(paths.capath, 'rtAtten.crt')
+            self.sslContext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=certfile)
+            self.socket = self.sslContext.wrap_socket(self.socket, server_hostname='rtAtten')
+        self.socket.connect((self.addr, self.port))
 
     def __del__(self):
-        if self.conn is not None:
-            self.conn.close()
-        self.socket.close()
+        if self.socket is not None:
+            self.socket.close()
 
     def sendRequest(self, msg):
-        if self.conn is None:
+        if self.socket is None:
             raise ConnectionError("RtMessagingClient: Connection is none")
-        sendMsg(self.conn, msg)
+        sendMsg(self.socket, msg)
 
     def getReply(self):
-        if self.conn is None:
+        if self.socket is None:
             raise ConnectionError("RtMessagingClient: Connection is none")
-        msg = recvMsg(self.conn)
+        msg = recvMsg(self.socket)
         return msg
 
     def close(self):
-        if self.conn is not None:
-            self.conn.close()
-        self.socket.close()
+        if self.socket is not None:
+            self.socket.close()
 
 
 class RtMessagingServer:
@@ -86,6 +92,12 @@ class RtMessagingServer:
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(('', port))
         self.socket.listen(0)
+        if useSSL:
+            paths = ssl.get_default_verify_paths()
+            cafile = os.path.join(paths.capath, 'rtAtten.crt')
+            key = os.path.join(os.path.dirname(paths.capath), 'private/', 'rtAtten_private.key')
+            self.sslContext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            self.sslContext.load_cert_chain(certfile=cafile, keyfile=key)
         self.conn = None
 
     def __del__(self):
@@ -98,6 +110,8 @@ class RtMessagingServer:
                     # accept a new connection
                     logging.info("RtMessagingServer: waiting for connection ...")
                     self.conn, _ = self.socket.accept()
+                    if useSSL:
+                        self.conn = self.sslContext.wrap_socket(self.conn, server_side=True)
                     logging.info("RtMessagingServer: connected to {}".format(self.conn.getpeername()))
                 # read from the connection
                 msg = recvMsg(self.conn)
