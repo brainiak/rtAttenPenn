@@ -58,6 +58,7 @@ class RtMessagingClient:
         if useSSL:
             paths = ssl.get_default_verify_paths()
             certfile = os.path.join(paths.capath, 'rtAtten.crt')
+            assert os.path.exists(certfile), "cert file not found: %s" % (certfile)
             self.sslContext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=certfile)
             self.socket = self.sslContext.wrap_socket(self.socket, server_hostname='rtAtten')
         self.socket.connect((self.addr, self.port))
@@ -94,10 +95,12 @@ class RtMessagingServer:
         self.socket.listen(0)
         if useSSL:
             paths = ssl.get_default_verify_paths()
-            cafile = os.path.join(paths.capath, 'rtAtten.crt')
-            key = os.path.join(os.path.dirname(paths.capath), 'private/', 'rtAtten_private.key')
+            certfile = os.path.join(paths.capath, 'rtAtten.crt')
+            key = os.path.join(os.path.dirname(paths.capath), 'private/', 'rtAtten_rsa.private')
+            assert os.path.exists(certfile), "cert file not found: %s" % (certfile)
+            assert os.path.exists(key), "key file not found: %s" % (key)
             self.sslContext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            self.sslContext.load_cert_chain(certfile=cafile, keyfile=key)
+            self.sslContext.load_cert_chain(certfile=certfile, keyfile=key)
         self.conn = None
 
     def __del__(self):

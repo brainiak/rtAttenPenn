@@ -15,9 +15,12 @@ setup(
     name='rtfMRI',
     version='0.0.1',
     setup_requires=[
-        'numpy'
+        'cython',
+        'numpy',
+        'pytest'
     ],
     install_requires=[
+        'cython',
         'click',
         'pathos',
         'tqdm',
@@ -31,7 +34,6 @@ setup(
         'scipy',
         'scikit-learn',
         'pybind11',
-        'cython',
         'ipython',
         'pika',
         'ipywidgets',

@@ -151,6 +151,13 @@ def compareMatFiles(filename1: str, filename2: str) -> dict:
 
 def pearsons_mean_corr(A: np.ndarray, B: np.ndarray):
     pearsonsList = []
+    if A.shape != B.shape:
+        A = flatten_1Ds(A)
+        B = flatten_1Ds(B)
+    if len(A.shape) == 1:
+        A = A.reshape(A.shape[0], 1)
+    if len(B.shape) == 1:
+        B = B.reshape(B.shape[0], 1)
     assert(A.shape == B.shape)
     num_cols = A.shape[1]
     for col in range(num_cols):

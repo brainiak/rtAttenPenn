@@ -40,6 +40,8 @@ class RtAttenModel(BaseModel):
         else:
             self.dirs.workingDir = self.session.workingDir
         self.dirs.outputDataDir = os.path.join(self.dirs.workingDir, self.session.outputDataDir)
+        if not os.path.exists(self.dirs.outputDataDir):
+            os.makedirs(self.dirs.outputDataDir)
         # clear cached items
         self.blkGrpCache = {}
         self.modelCache = {}
@@ -446,7 +448,12 @@ class RtAttenModel(BaseModel):
             mask = ~np.isnan(target_patterns.predict)
             miss_count = np.sum(patterns.predict[0, mask] != target_patterns.predict[mask])
             outputlns.append("WARNING: predictions differ in {} TRs".format(miss_count))
-        # calculate the pierson correlation for raw_sm_filt_z
+        # calculate the pearson correlation for categoryseparation
+        pearson_mean = vutils.pearsons_mean_corr(patterns.categoryseparation, target_patterns.categoryseparation)
+        outputlns.append("Phase2 categoryseparation mean pearsons correlation {}".format(pearson_mean))
+        if pearson_mean < .995:
+            outputlns.append("WARN: Pearson mean for categoryseparation low, {}".format(pearson_mean))
+        # calculate the pearson correlation for raw_sm_filt_z
         pearson_mean = vutils.pearsons_mean_corr(patterns.raw_sm_filt_z, target_patterns.raw_sm_filt_z)
         outputlns.append("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
         if pearson_mean < .995:
