@@ -18,14 +18,23 @@ class RtfMRIClient():
     Class to handle parsing configuration and running the session logic
     """
 
-    def __init__(self, addr, port):
+    def __init__(self):
         self.modelName = ''
+        self.cfg = None
         self.msg_id = 0
+        self.messaging = None
         self.id_fields = StructDict()
-        self.messaging = RtMessagingClient(addr, port)
 
     def __del__(self):
         self.close()
+
+    def connect(self, addr, port):
+        self.messaging = RtMessagingClient(addr, port)
+
+    def disconnect(self):
+        if self.messaging is not None:
+            self.messaging.close()
+            self.messaging = None
 
     def initModel(self, modelName):
         self.modelName = modelName
@@ -40,35 +49,30 @@ class RtfMRIClient():
         msg.set(self.msg_id, msg_type, msg_event)
         return msg
 
-    def runSession(self, cfg):
+    def initSession(self, cfg):
+        self.cfg = cfg
         validateSessionCfg(cfg)
+        self.modelName = cfg.experiment.model
+        self.initModel(self.modelName)
+
         self.id_fields = StructDict()
-        self.id_fields.experimentId = cfg.session.experimentId
+        self.id_fields.experimentId = cfg.experiment.experimentId
         self.id_fields.sessionId = cfg.session.sessionId
+        self.id_fields.subjectNum = cfg.session.subjectNum
+        self.id_fields.subjectDay = cfg.session.subjectDay
+        logging.debug("Start session {}".format(cfg.session.sessionId))
         self.sendCmdExpectSuccess(MsgEvent.StartSession, cfg.session)
-        for run in cfg.runs:
-            self.id_fields.runId = run.runId
-            self.sendCmdExpectSuccess(MsgEvent.StartRun, run)
-            for blockGroup in run.blockGroups:
-                self.id_fields.blkGrpId = blockGroup.blkGrpId
-                self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroup)
-                for block in blockGroup.blocks:
-                    self.id_fields.blockId = block.blockId
-                    self.sendCmdExpectSuccess(MsgEvent.StartBlock, block)
-                    trialRange = [int(x) for x in block.TRs.split(':')]
-                    assert len(trialRange) == 2
-                    for trial_idx in range(trialRange[0], trialRange[1]):
-                        self.id_fields.trId = trial_idx
-                        trial = StructDict({'trId': trial_idx})
-                        self.sendCmdExpectSuccess(MsgEvent.TRData, trial)
-                    del self.id_fields.trId
-                    self.sendCmdExpectSuccess(MsgEvent.EndBlock, block)
-                del self.id_fields.blockId
-                self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroup)
-            del self.id_fields.blkGrpId
-            self.sendCmdExpectSuccess(MsgEvent.EndRun, run)
-        del self.id_fields.runId
-        self.sendCmdExpectSuccess(MsgEvent.EndSession, cfg.session)
+
+    def endSession(self):
+        self.sendCmdExpectSuccess(MsgEvent.EndSession, self.cfg.session)
+
+    def doRuns(self):
+        # Process each run
+        for idx, _ in enumerate(self.cfg.runs):
+            self.runRun(idx+1)
+
+    def runRun(self, runId):
+        pass
 
     def sendShutdownServer(self):
         msg = self.message(MsgType.Shutdown, MsgEvent.NoneType)
@@ -92,7 +96,7 @@ class RtfMRIClient():
         return self.sendExpectSuccess(MsgType.Command, msg_event, msg_fields, data)
 
     def close(self):
-        self.messaging.close()
+        self.disconnect()
 
 
 def loadConfigFile(filename):

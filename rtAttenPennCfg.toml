@@ -1,9 +1,9 @@
 [experiment]
+experimentName = "rtAttenPenn"
+experimentId = 2
 model = "rtAtten"
 
 [session]
-experimentName = "rtAttenPenn"
-experimentId = 1
 subjectName = "subject1"
 subjectNum = 1
 subjectDay = 1

@@ -38,6 +38,9 @@ class StructDict(dict):
         '''Needed for pickling, set the underlying dictionary'''
         self.update(dict_entries)
 
+    def copy(self):
+        return StructDict(super().copy())
+
 
 def copy_toplevel(data):
     cptl = StructDict()

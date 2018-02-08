@@ -1,7 +1,11 @@
-[session]
-experimentId = "base_02"
-sessionId = "20180115T000000"
+[experiment]
+experimentName = "Base"
+experimentId = 1
 model = "base"
+
+[session]
+sessionId = "20180115T000000"
+
 
 [[runs]]
 runId = "01"

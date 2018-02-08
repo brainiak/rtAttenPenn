@@ -135,6 +135,7 @@ class RtMessagingServer:
     def close(self):
         if self.conn is not None:
             self.conn.close()
+            self.conn = None
         self.socket.close()
 
 

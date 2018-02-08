@@ -1,36 +1,24 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
 import time
-import logging
 import numpy as np  # type: ignore
 import rtfMRI.utils as utils
-from ..RtfMRIClient import RtfMRIClient, validateSessionCfg
+from ..RtfMRIClient import RtfMRIClient
 from ..MsgTypes import MsgEvent
 from ..StructDict import StructDict, copy_toplevel
 from .PatternsDesign2Config import createPatternsDesignConfig
 
 
 class RtAttenClient(RtfMRIClient):
-    def __init__(self, addr, port):
-        super().__init__(addr, port)
+    def __init__(self):
+        super().__init__()
         self.dirs = StructDict()
-        self.cfg = None
         self.prevData = None
 
-    def runSession(self, experiment_cfg):
-        assert self.modelName == 'rtAtten'
+    def initSession(self, experiment_cfg):
         cfg = createPatternsDesignConfig(experiment_cfg.session)
-        validateSessionCfg(cfg)
-        self.cfg = cfg
-        self.id_fields = StructDict()
-
-        # Send Start Session
-        self.id_fields.experimentId = cfg.session.experimentId
-        self.id_fields.sessionId = cfg.session.sessionId
-        self.id_fields.subjectNum = cfg.session.subjectNum
-        logging.debug("Start session {}".format(cfg.session.sessionId))
-        self.sendCmdExpectSuccess(MsgEvent.StartSession, cfg.session)
-
+        cfg.experiment = experiment_cfg.experiment
+        super().initSession(cfg)
         # Set Directories
         if cfg.session.workingDir == 'cwd':
             self.dirs.workingDir = os.getcwd()
@@ -42,17 +30,14 @@ class RtAttenClient(RtfMRIClient):
         self.dirs.imgDataDir = cfg.session.imgDirHeader + dateStr + '.' +\
             cfg.session.subjectName + '.' + cfg.session.subjectName
 
-        # Process each run
-        for idx, run in enumerate(cfg.runs):
-            if cfg.session.replayMode == 1:
-                run.replayFile = os.path.join(self.dirs.outputDataDir, cfg.session.replayFiles[idx])
-                run.validationModel = os.path.join(self.dirs.outputDataDir, cfg.session.validationModels[idx])
-            self.runRun(run)
-        del self.id_fields.runId
-        self.sendCmdExpectSuccess(MsgEvent.EndSession, cfg.session)
-
-    def runRun(self, run):
+    def runRun(self, runId):
+        idx = runId - 1
+        run = self.cfg.runs[idx].copy()
         self.id_fields.runId = run.runId
+
+        if self.cfg.session.replayMode == 1:
+            run.replayFile = os.path.join(self.dirs.outputDataDir, self.cfg.session.replayFiles[idx])
+            run.validationModel = os.path.join(self.dirs.outputDataDir, self.cfg.session.validationModels[idx])
 
         # Setup output directory and output file
         runDataDir = os.path.join(self.dirs.outputDataDir, 'run' + str(run.runId))
@@ -67,6 +52,7 @@ class RtAttenClient(RtfMRIClient):
         else:
             run.rtfeedback = 0
 
+        # TODO - move loading of mask into initSession()
         # Load ROI mask - an array with 1s indicating the voxels of interest
         temp = utils.loadMatFile(self.dirs.inputDataDir+'/mask_'+str(self.id_fields.subjectNum)+'.mat')
         roi = temp.mask
@@ -80,7 +66,7 @@ class RtAttenClient(RtfMRIClient):
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
 
-        if run.replayFile is not None:
+        if self.cfg.session.replayMode == 1:
             # load previous patterns data for this run
             p = utils.loadMatFile(run.replayFile)
             run.replay_data = p.patterns.raw
@@ -126,6 +112,7 @@ class RtAttenClient(RtfMRIClient):
         outputReplyLines(reply.fields.outputlns, outputFile)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
+        del self.id_fields.runId
 
     def getNextTRData(self, trial_id):
         if self.cfg.replayData == 1:
