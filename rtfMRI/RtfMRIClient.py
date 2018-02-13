@@ -29,6 +29,8 @@ class RtfMRIClient():
         self.close()
 
     def connect(self, addr, port):
+        if self.messaging is not None:
+            self.messaging.close()
         self.messaging = RtMessagingClient(addr, port)
 
     def disconnect(self):

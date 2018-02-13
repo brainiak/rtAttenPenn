@@ -1,17 +1,26 @@
 """Convert a Matlab patternsDesign file to a config file for rtfMRI"""
 import os
+import time
 import numpy as np  # type: ignore
 from ..StructDict import StructDict
-from ..utils import loadMatFile
+from ..utils import loadMatFile, findNewestFile, dateStr30
 
 
 def createPatternsDesignConfig(session):
     cfg = StructDict()
     runs = []
+    session.sessionId = dateStr30(time.localtime())
+    if session.findNewestPatterns != 0:
+        # load the newest file patterns
+        session.patternsDesignFiles = []
+        for runNum in range(1, session.numRuns+1):
+            pdesignFile = findPatternsDesignFile(session.inputDataDir, runNum)
+            session.patternsDesignFiles.append(pdesignFile)
     runId = 0
     for patfile in session.patternsDesignFiles:
+        # parse the patternsDesign files
         runId += 1
-        fullfilename = os.path.join(session.inputDataDir, patfile)
+        fullfilename = os.path.join(session.inputDataDir, os.path.basename(patfile))
         # TODO - if file doesn't exist find the newest patterns design file
         run = createRunConfig(fullfilename)
         run.runId = runId
@@ -33,8 +42,6 @@ def createRunConfig(patternsFilename):
     run.TRTime = int(patterns.TR)
     run.nTRs = int(patterns.nTRs)
     run.nTRsFix = int(patterns.nTRsFix)
-    run.FWHM = 5
-    run.cutoff = 112
 
     run.firstVolPhase1 = int(np.min(np.where(patterns.block.squeeze() == 1)))
     run.lastVolPhase1 = int(np.max(np.where(patterns.block.squeeze() == patterns.nBlocksPerPhase)))
@@ -100,3 +107,14 @@ def createBlockGroupConfig(tr_range, patterns):
     if len(block.TRs) > 0:
         blkGrp.blocks.append(block)
     return blkGrp
+
+
+def findPatternsDesignFile(inputDir, runNum):
+    filePattern = 'patternsdesign_' + str(runNum) + '*.mat'
+    pdesignFile = findNewestFile(inputDir, filePattern)
+    if pdesignFile is not None and pdesignFile != '':
+        return pdesignFile
+    inputDir = os.path.join(inputDir, 'run'+str(runNum))
+    pdesignFile = findNewestFile(inputDir, filePattern)
+    if pdesignFile is None or pdesignFile == '':
+        raise FileNotFoundError("No files found matching {}".format(filePattern))

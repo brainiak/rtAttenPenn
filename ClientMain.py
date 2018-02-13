@@ -87,7 +87,6 @@ def client_main(argv):
         client.initSession(cfg)
         client.doRuns()
         client.endSession()
-        client.close()
         if settings.run_local is True:
             client.sendShutdownServer()
         client.close()
@@ -96,7 +95,7 @@ def client_main(argv):
         printUsage(argv)
         return False
     except FileNotFoundError as err:
-        print("File {} not found: {}".format(settings.experiment_file, err))
+        print("Error: {}: {}".format(settings.experiment_file, err))
         return False
     except RequestError as err:
         print("Request Error: {}".format(err))

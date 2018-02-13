@@ -3,6 +3,7 @@ Utils - various utilites for rtfMRI
 """
 
 import os
+import time
 import glob
 import numpy as np  # type: ignore
 import scipy.io as sio  # type: ignore
@@ -76,6 +77,10 @@ def flatten_1Ds(M):
         newShape = [x for x in M.shape if x > 1]
         M = M.reshape(newShape)
     return M
+
+
+def dateStr30(timeval):
+    return time.strftime("%Y%m%dT%H%M%S", timeval)
 
 
 '''

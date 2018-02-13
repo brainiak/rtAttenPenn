@@ -40,8 +40,11 @@ setup(
         'jupyter_contrib_nbextensions',
         'jupyter',
         'sklearn',
+        'toml'
         'pytest',
-        'pytest-logging'
+        'pytest-logging',
+        'watchdog',
+        'pydicom'
     ],
     extras_require={},
     author='Princeton Neuroscience Institute and Intel Corporation',

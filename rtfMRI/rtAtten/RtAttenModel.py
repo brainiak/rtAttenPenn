@@ -95,22 +95,22 @@ class RtAttenModel(BaseModel):
         blkGrp = msg.fields.cfg
         run = self.run
         assert blkGrp.nTRs is not None, "missing nTRs in blockGroup"
-        assert run.nVoxels is not None, "missing nVoxels in blockGroup"
-        assert run.roiInds is not None, "missing roiInds in blockGroup"
+        assert self.session.nVoxels is not None, "missing nVoxels in blockGroup"
+        assert self.session.roiInds is not None, "missing roiInds in blockGroup"
         assert blkGrp.blkGrpId in (1, 2), "BlkGrpId {} not valid" % (blkGrp.blkGrpId)
         blkGrp.legacyRun1Phase2Mode = False
         if run.runId == 1 and blkGrp.blkGrpId == 2 and self.session.legacyRun1Phase2Mode:
             # Handle as legacy matlab where run1, phase2 is treated as testing
             blkGrp.legacyRun1Phase2Mode = True
         blkGrp.patterns = StructDict()
-        blkGrp.patterns.raw = np.full((blkGrp.nTRs, run.nVoxels), np.nan)
-        blkGrp.patterns.raw_sm = np.full((blkGrp.nTRs, run.nVoxels), np.nan)
-        blkGrp.patterns.raw_sm_filt = np.full((blkGrp.nTRs, run.nVoxels), np.nan)
-        blkGrp.patterns.raw_sm_filt_z = np.full((blkGrp.nTRs, run.nVoxels), np.nan)
-        blkGrp.patterns.phase1Mean = np.full((1, run.nVoxels), np.nan)
-        blkGrp.patterns.phase1Y = np.full((1, run.nVoxels), np.nan)
-        blkGrp.patterns.phase1Std = np.full((1, run.nVoxels), np.nan)
-        blkGrp.patterns.phase1Var = np.full((1, run.nVoxels), np.nan)
+        blkGrp.patterns.raw = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
+        blkGrp.patterns.raw_sm = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
+        blkGrp.patterns.raw_sm_filt = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
+        blkGrp.patterns.raw_sm_filt_z = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
+        blkGrp.patterns.phase1Mean = np.full((1, self.session.nVoxels), np.nan)
+        blkGrp.patterns.phase1Y = np.full((1, self.session.nVoxels), np.nan)
+        blkGrp.patterns.phase1Std = np.full((1, self.session.nVoxels), np.nan)
+        blkGrp.patterns.phase1Var = np.full((1, self.session.nVoxels), np.nan)
         blkGrp.patterns.categoryseparation = np.full((1, blkGrp.nTRs), np.nan)  # (matlab: NaN(1,nTRs))
         blkGrp.patterns.predict = np.full((1, blkGrp.nTRs), np.nan)
         blkGrp.patterns.activations = np.full((2, blkGrp.nTRs), np.nan)
@@ -119,6 +119,7 @@ class RtAttenModel(BaseModel):
         blkGrp.patterns.type = np.full((1, blkGrp.nTRs), np.nan)
         blkGrp.patterns.regressor = np.full((2, blkGrp.nTRs), np.nan)
         # blkGrp.patterns.fileAvail = np.zeros((1, blkGrp.nTRs), dtype=np.uint8)
+        blkGrp.patterns.fileload = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint8)
         blkGrp.patterns.fileNum = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint16)
         self.blkGrp = blkGrp
         if self.blkGrp.type == 2 or blkGrp.legacyRun1Phase2Mode:
@@ -155,14 +156,15 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.validate and self.session.replayMode:
+            if self.session.replayMode == 1 and self.session.validate:
                 self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
 
         elif self.blkGrp.type == 1:  # training
             outputlns.append('\n*********************************************')
             outputlns.append('beginning highpassfilter/zscore...')
 
-            patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :], self.run.TRTime, self.run.cutoff)
+            patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :],
+                                                                 self.run.TRTime, self.session.cutoff)
             # if self.blkGrp.blkGrpId == 1:
             # Calculate mean and stddev values for phase1 data (i.e. 1st blkGrp)
             patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :], axis=0)
@@ -184,7 +186,7 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.validate and self.session.replayMode:
+            if self.session.replayMode == 1 and self.session.validate:
                 self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
             # cache the block group for predict phase and training the model
             bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
@@ -205,11 +207,32 @@ class RtAttenModel(BaseModel):
         return reply
 
     def TRData(self, msg):
+        TR = msg.fields.cfg
         reply = super().TRData(msg)
-        outputlns = []  # type: ignore
         if reply.event_type != MsgEvent.Success:
             return reply
-        TR = msg.fields.cfg
+        if TR.type not in (0, 1, 2) or self.blkGrp.type not in (1, 2):
+            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply.data = "Unknown TR type %d", TR.type
+            return reply
+        if TR.trId is None:
+            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply.data = "missing TR.trId"
+            return reply
+        outputlns = []  # type: ignore
+        self.run.fileCounter = self.run.fileCounter + 1
+
+        patterns = self.blkGrp.patterns
+        setTrData(patterns, TR.trId, TR.data)
+        patterns.attCateg[0, TR.trId] = TR.attCateg
+        patterns.stim[0, TR.trId] = TR.stim
+        patterns.type[0, TR.trId] = TR.type
+        patterns.regressor[:, TR.trId] = TR.regressor[:]
+        patterns.fileNum[0, TR.trId] = TR.vol + self.run.disdaqs // self.run.TRTime
+
+        patterns.raw_sm[TR.trId, :] =\
+            smooth(patterns.raw[TR.trId, :], self.session.roiDims, self.session.roiInds, self.session.FWHM)
+
         if TR.type == 2 or (TR.type == 0 and self.blkGrp.type == 2) or\
                 self.blkGrp.legacyRun1Phase2Mode:
             # Testing
@@ -217,54 +240,25 @@ class RtAttenModel(BaseModel):
             reply.fields.predict = predict_result
         elif TR.type == 1 or (TR.type == 0 and self.blkGrp.type == 1):
             # Training
-            outputlns = self.AccumulateTrainingData(TR)
+            output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(
+                self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type, TR.attCateg, TR.stim,
+                patterns.fileNum[0, TR.trId], patterns.fileload[0, TR.trId], np.nan, np.nan)
+            outputlns.append(output_str)
         else:
-            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
-            reply.data = "Unknown TR type %d", TR.type
+            assert False, "Should never get here"
         reply.fields.outputlns = outputlns
-
         return reply
 
-    def AccumulateTrainingData(self, TR):
-        assert TR.trId is not None, "missing TR.trId"
-        outputlns = []
-        # increase the count of TR pulses
-        self.run.fileCounter = self.run.fileCounter + 1  # so fileCounter begins at firstVolPhase1
-
-        patterns = self.blkGrp.patterns
-        patterns.attCateg[0, TR.trId] = TR.attCateg
-        patterns.stim[0, TR.trId] = TR.stim
-        patterns.type[0, TR.trId] = TR.type
-        patterns.regressor[:, TR.trId] = TR.regressor[:]
-        patterns.raw[TR.trId, :] = TR.data
-        patterns.raw_sm[TR.trId, :] =\
-            smooth(patterns.raw[TR.trId, :], self.run.roiDims, self.run.roiInds, self.run.FWHM)
-
-        # print TR results
-        output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(
-            self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type,
-            TR.attCateg, TR.stim, TR.vol, 1, np.nan, np.nan)
-        outputlns.append(output_str)
-        return outputlns
-
     def Predict(self, TR):
-        assert TR.trId is not None, "missing TR.trId"
         predict_result = StructDict()
         outputlns = []
         patterns = self.blkGrp.patterns
         combined_raw_sm = self.blkGrp.combined_raw_sm
         combined_TRid = self.blkGrp.firstVol + TR.trId
-        patterns.attCateg[0, TR.trId] = TR.attCateg
-        patterns.stim[0, TR.trId] = TR.stim
-        patterns.type[0, TR.trId] = TR.type
-        patterns.regressor[:, TR.trId] = TR.regressor[:]
-        patterns.fileNum[0, TR.trId] = TR.vol + self.run.disdaqs // self.run.TRTime
-        patterns.raw[TR.trId, :] = TR.data
-        patterns.raw_sm[TR.trId, :] = \
-            smooth(patterns.raw[TR.trId, :], self.run.roiDims, self.run.roiInds, self.run.FWHM)
+
         combined_raw_sm[combined_TRid] = patterns.raw_sm[TR.trId]
         patterns.raw_sm_filt[TR.trId, :] = \
-            highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.run.cutoff)
+            highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.session.cutoff)
         patterns.raw_sm_filt_z[TR.trId, :] = \
             (patterns.raw_sm_filt[TR.trId, :] - patterns.phase1Mean[0, :]) / patterns.phase1Std[0, :]
 
@@ -294,7 +288,7 @@ class RtAttenModel(BaseModel):
             categorysep_mean = np.nanmean(patterns.categoryseparation[0, 0:TR.trId+1])
         output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.1f}\t{:.3f}\t{:.3f}'.format(
             self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type, TR.attCateg, TR.stim,
-            patterns.fileNum[0, TR.trId], 1, patterns.predict[0, TR.trId],
+            patterns.fileNum[0, TR.trId], patterns.fileload[0, TR.trId], patterns.predict[0, TR.trId],
             patterns.categoryseparation[0, TR.trId], categorysep_mean)
         outputlns.append(output_str)
         return predict_result, outputlns
@@ -478,6 +472,18 @@ class RtAttenModel(BaseModel):
         if pearson_mean < .995:
             # assert pearson_mean > .99, "Pearsons mean {} too low".format(pearson_mean)
             outputlns.append("WARN: Pearson mean for trainWeights low, {}".format(pearson_mean))
+
+
+def setTrData(patterns, trId, data):
+    TRsLoaded = np.where(patterns.fileload.squeeze() == 1)
+    if np.any(np.isnan(data)) and len(TRsLoaded[0]) > 0:
+        # data has NaN in it so load the last good data
+        patterns.fileload[0, trId] = 0
+        indLastValidPattern = np.max(TRsLoaded)
+        patterns.raw[trId, :] = patterns.raw[indLastValidPattern, :]
+    else:
+        patterns.fileload[0, trId] = 1
+        patterns.raw[trId, :] = data
 
 
 def getBlkGrpFilename(sessionId, runId, blkGrpId):
