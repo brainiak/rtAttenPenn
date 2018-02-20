@@ -1,14 +1,17 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
 import time
+import logging
 import numpy as np  # type: ignore
 import rtfMRI.utils as utils
-from ..RtfMRIClient import RtfMRIClient
+from ..RtfMRIClient import RtfMRIClient, validateRunCfg
 from ..MsgTypes import MsgEvent
 from ..StructDict import StructDict, copy_toplevel
 from ..ReadDicom import readDicom, applyMask
-from ..Errors import InvocationError
-from .PatternsDesign2Config import createPatternsDesignConfig
+from ..utils import dateStr30
+from ..Errors import InvocationError, ValidationError
+from .PatternsDesign2Config import createRunConfig
+from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
 from watchdog.observers import Observer  # type: ignore
 from queue import Queue
@@ -28,54 +31,62 @@ class RtAttenClient(RtfMRIClient):
             self.observer.stop()
         super().__del__()
 
-    def initSession(self, experiment_cfg):
-        cfg = createPatternsDesignConfig(experiment_cfg.session)
-        cfg.experiment = experiment_cfg.experiment
+    def initSession(self, cfg):
+        if cfg.session.sessionId is None or cfg.session.sessionId == '':
+            cfg.session.sessionId = dateStr30(time.localtime())
 
         # Set Directories
-        if cfg.session.workingDir == 'cwd':
-            self.dirs.workingDir = os.getcwd()
-        else:
-            self.dirs.workingDir = cfg.session.workingDir
-        self.dirs.inputDataDir = os.path.join(self.dirs.workingDir, cfg.session.inputDataDir)
-        self.dirs.outputDataDir = os.path.join(self.dirs.workingDir, cfg.session.outputDataDir)
-        dateStr = time.strftime("%Y%m%d", time.localtime())
-        self.dirs.imgDataDir = cfg.session.imgDirHeader + dateStr + '.' +\
-            cfg.session.subjectName + '.' + cfg.session.subjectName
-        if not os.path.exists(self.dirs.imgDataDir):
-            os.makedirs(self.dirs.imgDataDir)
-        print("fMRI files being read from: {}".format(self.dirs.imgDataDir))
-        self.initFileNotifier(self.dirs.imgDataDir, cfg.session.watchFilePattern)
+        subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
+        self.dirs.dataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
+        self.dirs.imgDir = cfg.session.imgDir
+        if not os.path.exists(self.dirs.imgDir):
+            os.makedirs(self.dirs.imgDir)
+        print("fMRI files being read from: {}".format(self.dirs.imgDir))
+        self.initFileNotifier(self.dirs.imgDir, cfg.session.watchFilePattern)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
-        temp = utils.loadMatFile(self.dirs.inputDataDir+'/mask_'+str(cfg.session.subjectNum)+'.mat')
+        maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
+        maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
+        temp = utils.loadMatFile(maskFileName)
         roi = temp.mask
         assert type(roi) == np.ndarray
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
         cfg.session.roiInds = utils.find(roi)
         cfg.session.roiDims = roi.shape
         cfg.session.nVoxels = cfg.session.roiInds.size
+        print("Using mask {}".format(maskFileName))
 
         super().initSession(cfg)
 
-    def runRun(self, runId, scanNum=0):
-        idx = runId - 1
-        run = self.cfg.runs[idx].copy()
-        self.id_fields.runId = run.runId
+    def doRuns(self):
+        # Process each run
+        for runId in self.cfg.session.Runs:
+            self.runRun(runId)
+            self.retrieveRunFiles(runId)
 
-        if self.cfg.session.replayMode == 1:
-            run.replayFile = os.path.join(self.dirs.outputDataDir, self.cfg.session.replayFiles[idx])
-            run.validationModel = os.path.join(self.dirs.outputDataDir, self.cfg.session.validationModels[idx])
-        else:
+    def runRun(self, runId, scanNum=-1):
+        run = createRunConfig(self.cfg.session, runId)
+        validateRunCfg(run)
+        self.id_fields.runId = run.runId
+        if scanNum >= 0:
+            run.scanNum = scanNum
+
+        if self.cfg.session.rtData == 1:
             # Check if images already exist and warn and ask to continue
-            firstFileName = self.getDicomFileName(scanNum, 1)
+            firstFileName = self.getDicomFileName(run.scanNum, 1)
             if os.path.exists(firstFileName):
                 resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
                 if resp.upper() != 'Y':
                     return
+        else:
+            idx = runId - 1
+            if self.cfg.session.validate:
+                run.validationModel = os.path.join(self.dirs.dataDir, self.cfg.session.validationModels[idx])
+            if self.cfg.session.replayMatFileMode == 1:
+                run.replayFile = os.path.join(self.dirs.dataDir, self.cfg.session.replayMatFiles[idx])
 
         # Setup output directory and output file
-        runDataDir = os.path.join(self.dirs.outputDataDir, 'run' + str(run.runId))
+        runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(run.runId))
         if not os.path.exists(runDataDir):
             os.makedirs(runDataDir)
         outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
@@ -91,7 +102,7 @@ class RtAttenClient(RtfMRIClient):
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
 
-        if self.cfg.session.replayMode == 1:
+        if self.cfg.session.replayMatFileMode == 1:
             # load previous patterns data for this run
             p = utils.loadMatFile(run.replayFile)
             run.replay_data = p.patterns.raw
@@ -109,14 +120,14 @@ class RtAttenClient(RtfMRIClient):
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
-                    if run.replay_data is not None:
-                        # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
-                        TR.data = run.replay_data[TR.vol-1]
-                    else:
+                    if self.cfg.session.rtData == 1:
                         # Assuming the output file volumes are still 1's based
                         fileNum = TR.vol + run.disdaqs // run.TRTime
-                        trVolumeData = self.getNextTRData(run, scanNum, fileNum)
+                        trVolumeData = self.getNextTRData(run, fileNum)
                         TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
+                    else:
+                        # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
+                        TR.data = run.replay_data[TR.vol-1]
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                     outputPredictionFile(reply.fields.predict, runDataDir)
@@ -126,6 +137,7 @@ class RtAttenClient(RtfMRIClient):
             del self.id_fields.blockId
             reply = self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
             outputReplyLines(reply.fields.outputlns, outputFile)
+            # self.retrieveBlkGrp(self.id_fields.sessionId, self.id_fields.runId, self.id_fields.blkGrpId)
         del self.id_fields.blkGrpId
         # Train the model for this Run
         trainCfg = StructDict()
@@ -141,17 +153,27 @@ class RtAttenClient(RtfMRIClient):
         outputReplyLines(reply.fields.outputlns, outputFile)
         del self.id_fields.runId
 
-    def getDicomFileName(self, scanNum, fileNum):
-        scanNumStr = str(scanNum).zfill(2)
-        fileNumStr = str(fileNum).zfill(3)
-        if self.cfg.session.dicomNamePattern is None:
-            raise InvocationError("Missing config settings dicomNamePattern")
-        fileName = self.cfg.session.dicomNamePattern.format(scanNumStr, fileNumStr)
-        fullFileName = os.path.join(self.dirs.imgDataDir, fileName)
-        return fullFileName
+    def retrieveRunFiles(self, runId):
+        blkGrp1_filename = getBlkGrpFilename(self.id_fields.sessionId, runId, 1)
+        self.retrieveFile(blkGrp1_filename)
+        blkGrp2_filename = getBlkGrpFilename(self.id_fields.sessionId, runId, 2)
+        self.retrieveFile(blkGrp2_filename)
+        model_filename = getModelFilename(self.id_fields.sessionId, runId)
+        self.retrieveFile(model_filename)
 
-    def getNextTRData(self, run, scanNum, fileNum):
-        specificFileName = self.getDicomFileName(scanNum, fileNum)
+    def retrieveFile(self, filename):
+        print("Retrieving data for {}... ".format(filename), end='')
+        fileInfo = StructDict()
+        fileInfo.subjectNum = self.id_fields.subjectNum
+        fileInfo.subjectDay = self.id_fields.subjectDay
+        fileInfo.filename = filename
+        stime = time.time()
+        reply = self.sendCmdExpectSuccess(MsgEvent.RetrieveData, fileInfo)
+        print("took {} secs".format(time.time() - stime))
+        writeFile(os.path.join(self.dirs.dataDir, filename), reply.data)
+
+    def getNextTRData(self, run, fileNum):
+        specificFileName = self.getDicomFileName(run.scanNum, fileNum)
         fileExists = os.path.exists(specificFileName)
         if not fileExists and self.observer is None:
             raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
@@ -169,8 +191,18 @@ class RtAttenClient(RtfMRIClient):
             time.sleep(waitIncrement)
             totalWait += waitIncrement
         trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
+        return trVol
 
-        return specificFileName
+    def getDicomFileName(self, scanNum, fileNum):
+        if scanNum < 0:
+            raise ValidationError("ScanNumber not supplied of invalid {}".format(scanNum))
+        scanNumStr = str(scanNum).zfill(2)
+        fileNumStr = str(fileNum).zfill(3)
+        if self.cfg.session.dicomNamePattern is None:
+            raise InvocationError("Missing config settings dicomNamePattern")
+        fileName = self.cfg.session.dicomNamePattern.format(scanNumStr, fileNumStr)
+        fullFileName = os.path.join(self.dirs.imgDir, fileName)
+        return fullFileName
 
     def initFileNotifier(self, imgDir, filePattern):
         if self.observer is not None:
@@ -205,3 +237,10 @@ def outputPredictionFile(predict, runDataDir):
     filename = os.path.join(runDataDir, 'vol_' + str(predict.vol) + '_py')
     with open(filename, 'w+') as volFile:
         volFile.write(str(predict.catsep))
+
+
+def writeFile(filename, data):
+    with open(filename, 'wb') as fh:
+        bytesWritten = fh.write(data)
+        if bytesWritten != len(data):
+            raise InterruptedError("Write file %s wrote %d of %d bytes" % (filename, bytesWritten, len(data)))

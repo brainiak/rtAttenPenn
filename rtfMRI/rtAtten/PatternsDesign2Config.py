@@ -1,40 +1,28 @@
 """Convert a Matlab patternsDesign file to a config file for rtfMRI"""
 import os
-import time
 import numpy as np  # type: ignore
 from ..StructDict import StructDict
-from ..utils import loadMatFile, findNewestFile, dateStr30
+from ..utils import loadMatFile, findNewestFile
 
 
-def createPatternsDesignConfig(session):
-    cfg = StructDict()
-    runs = []
-    session.sessionId = dateStr30(time.localtime())
-    if session.findNewestPatterns != 0:
-        # load the newest file patterns
-        session.patternsDesignFiles = []
-        for runNum in range(1, session.numRuns+1):
-            pdesignFile = findPatternsDesignFile(session.inputDataDir, runNum)
-            session.patternsDesignFiles.append(pdesignFile)
-    runId = 0
-    for patfile in session.patternsDesignFiles:
-        # parse the patternsDesign files
-        runId += 1
-        fullfilename = os.path.join(session.inputDataDir, os.path.basename(patfile))
-        # TODO - if file doesn't exist find the newest patterns design file
-        run = createRunConfig(fullfilename)
-        run.runId = runId
-        runs.append(run)
-
-    cfg.session = session
-    cfg.runs = runs
-    return cfg
-
-
-def createRunConfig(patternsFilename):
-    # load pattensDesign
-    patterns = loadMatFile(patternsFilename)
+def createRunConfig(session, runId):
     run = StructDict()
+    run.runId = runId
+    idx = runId - 1
+    if session.ScanNums is not None and len(session.ScanNums) > idx:
+        run.scanNum = session.ScanNums[idx]
+    else:
+        run.scanNum = -1
+    dataDir = getSubjectDayDir(session, session.dataDir)
+    if session.findNewestPatterns:
+        # load the newest file patterns
+        patternsFilename = findPatternsDesignFile(dataDir, runId)
+    else:
+        patternsFilename = session.patternsDesignFiles[idx]
+        patternsFilename = os.path.join(session.dataDir, os.path.basename(patternsFilename))
+    # load and parse the pattensDesign file
+    patterns = loadMatFile(patternsFilename)
+
     run.disdaqs = int(patterns.disdaqs)
     run.instructLen = int(patterns.instructLen)
     run.labelsShift = int(patterns.labelsShift)
@@ -118,3 +106,9 @@ def findPatternsDesignFile(inputDir, runNum):
     pdesignFile = findNewestFile(inputDir, filePattern)
     if pdesignFile is None or pdesignFile == '':
         raise FileNotFoundError("No files found matching {}".format(filePattern))
+    return pdesignFile
+
+
+def getSubjectDayDir(session, dataDir):
+    subjectDayDir = "subject{}/day{}".format(session.subjectNum, session.subjectDay)
+    return os.path.join(dataDir, subjectDayDir)

@@ -17,7 +17,7 @@ class Test_Messaging(unittest.TestCase):
                 reply = Message()
                 reply.id = req.id
                 reply.type = MsgType.Reply
-                reply.event_type = MsgEvent.Success
+                reply.result = MsgResult.Success
                 self.server.sendReply(reply)
             self.server.close()
         self.server_thread = threading.Thread(
@@ -40,14 +40,16 @@ class Test_Messaging(unittest.TestCase):
         client.sendRequest(msg)
         reply = client.getReply()
         self.assertTrue(reply.type == MsgType.Reply)
-        self.assertTrue(reply.event_type == MsgEvent.Success)
+        self.assertTrue(reply.event_type == msg.event_type)
+        self.assertTrue(reply.result == MsgResult.Success)
         client.close()
         # Reconnect to client
         client = RtMessagingClient('localhost', 5501)
         client.sendRequest(msg)
         reply = client.getReply()
         self.assertTrue(reply.type == MsgType.Reply)
-        self.assertTrue(reply.event_type == MsgEvent.Success)
+        self.assertTrue(reply.event_type == msg.event_type)
+        self.assertTrue(reply.result == MsgResult.Success)
         msg.type = MsgType.Shutdown
         client.sendRequest(msg)
         self.server_thread.join()

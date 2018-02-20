@@ -9,7 +9,7 @@ import pathlib
 import logging
 from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
-from .MsgTypes import MsgType, MsgEvent
+from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .Errors import ValidationError, RequestError, InvocationError
 
 
@@ -66,7 +66,9 @@ class RtfMRIClient():
         self.sendCmdExpectSuccess(MsgEvent.StartSession, cfg.session)
 
     def endSession(self):
-        self.sendCmdExpectSuccess(MsgEvent.EndSession, self.cfg.session)
+        session = StructDict()
+        session.ids = self.cfg.session.ids
+        self.sendCmdExpectSuccess(MsgEvent.EndSession, session)
 
     def doRuns(self):
         # Process each run
@@ -87,10 +89,17 @@ class RtfMRIClient():
         msg.data = data
         self.messaging.sendRequest(msg)
         reply = self.messaging.getReply()
+        # TODO change from assert to error
         assert reply.type == MsgType.Reply
-        if reply.event_type != MsgEvent.Success:
+        assert reply.event_type == msg.event_type
+        if reply.result != MsgResult.Success:
+            reasonStr = ''
+            if isinstance(reply.data, str):
+                reasonStr = reply.data
+            elif len(reply.data) < 1024:
+                reasonStr = str(reply.data, 'utf-8')
             raise RequestError("type:{} event:{} fields:{}: {}".format(
-                msg_type, msg_event, msg.fields, str(reply.data, 'utf-8')))
+                msg_type, msg_event, msg.fields, reasonStr))
         assert reply.id == msg.id
         return reply
 
@@ -123,32 +132,41 @@ def loadConfigFile(filename):
 
 
 def validateSessionCfg(cfg):
-    if cfg.session is None or cfg.session.sessionId is None:
+    if cfg.experiment is None:
+        raise ValidationError("config.experiment is not defined")
+    if cfg.session is None:
+        raise ValidationError("config.session is not defined")
+    if cfg.session.sessionId is None:
         raise ValidationError("sessionId not defined")
-    if cfg.runs is None:
-        raise ValidationError("runs not defined")
-    for ridx, run in enumerate(cfg.runs):
-        if run.runId is None:
-            raise ValidationError("runId not defined in runs[{}]".format(ridx))
-        if run.blockGroups is None:
+    if cfg.session.rtData == 0 and cfg.session.replayMatFileMode == 0:
+        raise ValidationError("Must set either rtData or replayMatFileMode")
+    return True
+
+
+def validateRunCfg(run):
+    if run.runId is None:
+        raise ValidationError("runId not defined")
+    if run.scanNum is None or run.scanNum < 0:
+        raise ValidationError("scanNum not defined")
+    if run.blockGroups is None:
+        raise ValidationError(
+            "blockGroups not defined in run {}".format(run.runId))
+    for bgidx, blockGroup in enumerate(run.blockGroups):
+        if blockGroup.blkGrpId is None:
             raise ValidationError(
-                "blockGroups not defined in runs[{}]".format(ridx))
-        for bgidx, blockGroup in enumerate(run.blockGroups):
-            if blockGroup.blkGrpId is None:
+                "blkGrpId not defined in BG[{}]".format(bgidx))
+        if blockGroup.blocks is None:
+            raise ValidationError(
+                "blocks not defined in BG[{}]".format(bgidx))
+        for blkidx, block in enumerate(blockGroup.blocks):
+            if block.blockId is None:
                 raise ValidationError(
-                    "blkGrpId not defined in BG[{}]".format(bgidx))
-            if blockGroup.blocks is None:
+                    "blockId not defined in Block[{}]".format(blkidx))
+            if block.TRs is None:
                 raise ValidationError(
-                    "blocks not defined in BG[{}]".format(bgidx))
-            for blkidx, block in enumerate(blockGroup.blocks):
-                if block.blockId is None:
-                    raise ValidationError(
-                        "blockId not defined in Block[{}]".format(blkidx))
-                if block.TRs is None:
-                    raise ValidationError(
-                        "TRs not defined in Block[{}]".format(blkidx))
-                # trialRange = [int(x) for x in block.TRs.split(':')]
-                # if len(trialRange) != 2 or trialRange[0] > trialRange[1]:
-                #     raise ValidationError(
-                #         "trial range invalid Block[{}]".format(blkidx))
+                    "TRs not defined in Block[{}]".format(blkidx))
+            # trialRange = [int(x) for x in block.TRs.split(':')]
+            # if len(trialRange) != 2 or trialRange[0] > trialRange[1]:
+            #     raise ValidationError(
+            #         "trial range invalid Block[{}]".format(blkidx))
     return True

@@ -8,11 +8,14 @@ An experiment is comprised as follows:
             - Blocks (1 or more blocks per run)
               - Trial (1 or more data scans recieved per block)
 """
+import os
 import logging
 from .Messaging import Message
-from .MsgTypes import MsgType, MsgEvent
-from .Errors import ValidationError
+from .MsgTypes import MsgType, MsgEvent, MsgResult
+from .Errors import ValidationError, RequestError
 from .StructDict import StructDict
+
+maxFileTransferSize = 1024**3  # 1 GB
 
 
 class BaseModel():
@@ -58,8 +61,10 @@ class BaseModel():
             reply = self.TRData(msg)
         elif msg.event_type == MsgEvent.TrainModel:
             reply = self.TrainModel(msg)
+        elif msg.event_type == MsgEvent.RetrieveData:
+            reply = self.RetrieveData(msg)
         else:
-            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply = self.createReplyMessage(msg, MsgResult.Error)
         return reply
 
     def validateMsg(self, msg):
@@ -88,17 +93,17 @@ class BaseModel():
                                               msg.fields.ids.blockId))
         return
 
-    def createReplyMessage(self, msg_id, event_type):
+    def createReplyMessage(self, msg, result_type):
         rmsg = Message()
-        rmsg.id = msg_id
+        rmsg.id = msg.id
         rmsg.type = MsgType.Reply
-        rmsg.event_type = event_type
+        rmsg.event_type = msg.event_type
         rmsg.fields.ids = self.id_fields.copy()
         # remove ids with -1
         rm_keys = [k for k, val in rmsg.fields.ids.items() if val == -1]
         for key in rm_keys:
             del(rmsg.fields.ids[key])
-        rmsg.fields.blockType = self.blockType
+        rmsg.result = result_type
         rmsg.fields.outputlns = []
         return rmsg
 
@@ -107,41 +112,41 @@ class BaseModel():
         self.id_fields.experimentId = msg.fields.ids.experimentId
         self.id_fields.sessionId = msg.fields.ids.sessionId
         logging.info("Start Session: %s", self.id_fields.sessionId)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndSession(self, msg):
         self.resetState()
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def StartRun(self, msg):
         self.id_fields.runId = msg.fields.ids.runId
         self.id_fields.blkGrpId = -1
         logging.info("Start Run: %s", self.id_fields.runId)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndRun(self, msg):
         self.id_fields.runId = -1
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def StartBlockGroup(self, msg):
         self.id_fields.blkGrpId = msg.fields.ids.blkGrpId
         self.id_fields.blockId = -1
         logging.info("Start BlockGroup: %s", self.id_fields.blkGrpId)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndBlockGroup(self, msg):
         self.id_fields.blkGrpId = -1
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def StartBlock(self, msg):
         self.id_fields.blockId = msg.fields.ids.blockId
         self.id_fields.trId = -1
         logging.info("Start Block: %s", self.id_fields.blockId)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndBlock(self, msg):
         self.id_fields.blockId = -1
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def TRData(self, msg):
         self.id_fields.trId = msg.fields.ids.trId
@@ -150,8 +155,25 @@ class BaseModel():
         #     reply = self.model.TrainingData(msg)
         # elif msg.event_type == BlockType.Predict:
         #     reply = self.model.Predict(msg)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
 
     def TrainModel(self, msg):
         logging.info("TrainModel run %d", msg.fields.ids.runId)
-        return self.createReplyMessage(msg.id, MsgEvent.Success)
+        return self.createReplyMessage(msg, MsgResult.Success)
+
+    def RetrieveData(self, msg):
+        filename = msg.fields.cfg
+        data = None
+        try:
+            filesize = os.path.getsize(filename)
+            if filesize > maxFileTransferSize:
+                raise RequestError("file %s, size %d exceeds max size %d" % (filename, filesize, maxFileTransferSize))
+            logging.info("Reading file %s, size %d" % (filename, filesize))
+            with open(filename, 'rb') as fh:
+                data = fh.read()
+            reply = self.createReplyMessage(msg, MsgResult.Success)
+            reply.data = data
+        except Exception as err:
+            reply = self.createReplyMessage(msg, MsgResult.Error)
+            reply.data = "Error reading file: %s: %s" % (filename, str(err))
+        return reply

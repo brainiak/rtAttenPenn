@@ -8,7 +8,7 @@ RtfMRIServer Module - Server handler for loading and running a model
 import logging
 from .BaseModel import BaseModel
 from .rtAtten.RtAttenModel import RtAttenModel
-from .MsgTypes import MsgType, MsgEvent
+from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .Messaging import RtMessagingServer, Message
 from .Errors import RequestError, StateError, RTError
 
@@ -26,7 +26,7 @@ class RtfMRIServer():
             reply = None
             try:
                 msg = self.messaging.getRequest()
-                reply = successReply(msg.id)
+                reply = successReply(msg)
                 if msg.type == MsgType.Init:
                     modelType = msg.fields.cfg.modelType
                     if modelType == 'base':
@@ -52,30 +52,34 @@ class RtfMRIServer():
                         "unknown request type '{}'".format(msg.type))
             except RTError as err:
                 logging.warn("RtfMRIServer:RunEventLoop: %r", err)
-                msg_id = 0 if msg is None else msg.id
-                reply = errorReply(msg_id, err)
+                reply = errorReply(msg, err)
             except KeyError as err:
                 logging.warn("RtfMRIServer:RunEventLoop: %r", err)
-                msg_id = 0 if msg is None else msg.id
-                reply = errorReply(msg_id, RTError(
+                reply = errorReply(msg, RTError(
                     "Field not found: {}".format(err)))
             self.messaging.sendReply(reply)
         return True
 
 
-def errorReply(msgId, error):
-    msg = Message()
-    msg.id = msgId
-    msg.type = MsgType.Reply
-    msg.event_type = MsgEvent.Error
-    msg.data = repr(error).encode()
-    return msg
+def errorReply(msg, error):
+    rmsg = Message()
+    rmsg.type = MsgType.Reply
+    rmsg.result = MsgResult.Error
+    if msg is not None:
+        rmsg.id = msg.id
+        rmsg.event_type = msg.event_type
+        rmsg.data = repr(error).encode()
+    else:
+        rmsg.id = 0
+        rmsg.event_type = MsgEvent.NoneType
+    return rmsg
 
 
-def successReply(msgId):
-    msg = Message()
-    msg.id = msgId
-    msg.type = MsgType.Reply
-    msg.event_type = MsgEvent.Success
-    msg.data = b''
-    return msg
+def successReply(msg):
+    rmsg = Message()
+    rmsg.id = msg.id
+    rmsg.type = MsgType.Reply
+    rmsg.event_type = msg.event_type
+    rmsg.result = MsgResult.Success
+    rmsg.data = b''
+    return rmsg

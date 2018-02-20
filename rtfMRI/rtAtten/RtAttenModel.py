@@ -11,7 +11,7 @@ import scipy.io as sio  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
 import rtfMRI.utils as utils
 import rtfMRI.ValidationUtils as vutils
-from ..MsgTypes import MsgEvent
+from ..MsgTypes import MsgResult
 from ..BaseModel import BaseModel
 from ..StructDict import StructDict, MatlabStructDict
 from .smooth import smooth
@@ -31,17 +31,13 @@ class RtAttenModel(BaseModel):
 
     def StartSession(self, msg):
         reply = super().StartSession(msg)
-        if reply.event_type != MsgEvent.Success:
+        if reply.result != MsgResult.Success:
             return reply
         self.session = msg.fields.cfg
-        # Set Working Directories
-        if self.session.workingDir == 'cwd':
-            self.dirs.workingDir = os.getcwd()
-        else:
-            self.dirs.workingDir = self.session.workingDir
-        self.dirs.outputDataDir = os.path.join(self.dirs.workingDir, self.session.outputDataDir)
-        if not os.path.exists(self.dirs.outputDataDir):
-            os.makedirs(self.dirs.outputDataDir)
+        subjectDayDir = getSubjectDayDir(self.session.subjectNum, self.session.subjectDay)
+        self.dirs.dataDir = os.path.join(self.session.serverDataDir, subjectDayDir)
+        if not os.path.exists(self.dirs.dataDir):
+            os.makedirs(self.dirs.dataDir)
         # clear cached items
         self.blkGrpCache = {}
         self.modelCache = {}
@@ -56,7 +52,7 @@ class RtAttenModel(BaseModel):
 
     def StartRun(self, msg):
         reply = super().StartRun(msg)
-        if reply.event_type != MsgEvent.Success:
+        if reply.result != MsgResult.Success:
             return reply
         run = msg.fields.cfg
         assert run.runId == self.id_fields.runId
@@ -90,10 +86,11 @@ class RtAttenModel(BaseModel):
 
     def StartBlockGroup(self, msg):
         reply = super().StartBlockGroup(msg)
-        if reply.event_type != MsgEvent.Success:
+        if reply.result != MsgResult.Success:
             return reply
         blkGrp = msg.fields.cfg
         run = self.run
+        # TODO change to error instead of assert
         assert blkGrp.nTRs is not None, "missing nTRs in blockGroup"
         assert self.session.nVoxels is not None, "missing nVoxels in blockGroup"
         assert self.session.roiInds is not None, "missing roiInds in blockGroup"
@@ -145,6 +142,7 @@ class RtAttenModel(BaseModel):
         return reply
 
     def EndBlockGroup(self, msg):
+        # TODO validate msg is referring to the current block group
         patterns = self.blkGrp.patterns
         i1, i2 = 0, self.blkGrp.nTRs
         outputlns = []  # type: ignore
@@ -156,7 +154,7 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.replayMode == 1 and self.session.validate:
+            if self.session.replayMatFileMode == 1 and self.session.validate:
                 self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
 
         elif self.blkGrp.type == 1:  # training
@@ -186,21 +184,21 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.replayMode == 1 and self.session.validate:
+            if self.session.replayMatFileMode == 1 and self.session.validate:
                 self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
             # cache the block group for predict phase and training the model
             bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
             self.blkGrpCache[bgKey] = self.blkGrp
 
         else:
-            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply = self.createReplyMessage(msg, MsgResult.Error)
             reply.data = "Unknown blkGrp type {}".format(self.blkGrp.type)
 
         # save BlockGroup Data
         filename = getBlkGrpFilename(self.id_fields.sessionId,
                                      self.id_fields.runId,
                                      self.id_fields.blkGrpId)
-        blkGrpFilename = os.path.join(self.dirs.outputDataDir, filename)
+        blkGrpFilename = os.path.join(self.dirs.dataDir, filename)
         sio.savemat(blkGrpFilename, self.blkGrp, appendmat=False)
         reply = super().EndBlockGroup(msg)
         reply.fields.outputlns = outputlns
@@ -209,14 +207,14 @@ class RtAttenModel(BaseModel):
     def TRData(self, msg):
         TR = msg.fields.cfg
         reply = super().TRData(msg)
-        if reply.event_type != MsgEvent.Success:
+        if reply.result != MsgResult.Success:
             return reply
         if TR.type not in (0, 1, 2) or self.blkGrp.type not in (1, 2):
-            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply = self.createReplyMessage(msg, MsgResult.Error)
             reply.data = "Unknown TR type %d", TR.type
             return reply
         if TR.trId is None:
-            reply = self.createReplyMessage(msg.id, MsgEvent.Error)
+            reply = self.createReplyMessage(msg.id, MsgResult.Error)
             reply.data = "missing TR.trId"
             return reply
         outputlns = []  # type: ignore
@@ -353,9 +351,17 @@ class RtAttenModel(BaseModel):
 
         # write trained model to a file
         filename = getModelFilename(self.id_fields.sessionId, self.id_fields.runId)
-        trainedModel_fn = os.path.join(self.dirs.outputDataDir, filename)
+        trainedModel_fn = os.path.join(self.dirs.dataDir, filename)
         sio.savemat(trainedModel_fn, newTrainedModel, appendmat=False)
 
+        return reply
+
+    def RetrieveData(self, msg):
+        fileInfo = msg.fields.cfg
+        subjectDayDir = getSubjectDayDir(fileInfo.subjectNum, fileInfo.subjectDay)
+        fullFileName = os.path.join(self.session.serverDataDir, subjectDayDir, fileInfo.filename)
+        msg.fields.cfg = fullFileName
+        reply = super().RetrieveData(msg)
         return reply
 
     def getPrevBlkGrp(self, sessionId, runId, blkGrpId):
@@ -364,7 +370,7 @@ class RtAttenModel(BaseModel):
         if prev_bg is None:
             # load it from file
             logging.info("blkGrpCache miss on key %s", bgKey)
-            fname = os.path.join(self.dirs.outputDataDir, getBlkGrpFilename(sessionId, runId, blkGrpId))
+            fname = os.path.join(self.dirs.dataDir, getBlkGrpFilename(sessionId, runId, blkGrpId))
             prev_bg = utils.loadMatFile(fname)
             assert prev_bg is not None, "unable to load blkGrp %s" % (fname)
             if sessionId == self.id_fields.sessionId:
@@ -376,7 +382,7 @@ class RtAttenModel(BaseModel):
         if model is None:
             # load it from file
             logging.info("modelCache miss on key %d", runId)
-            fname = os.path.join(self.dirs.outputDataDir, getModelFilename(sessionId, runId))
+            fname = os.path.join(self.dirs.dataDir, getModelFilename(sessionId, runId))
             model = utils.loadMatFile(fname)
             assert model is not None, "unable to load model %s" % (fname)
         if sessionId == self.id_fields.sessionId:
@@ -486,13 +492,18 @@ def setTrData(patterns, trId, data):
         patterns.raw[trId, :] = data
 
 
+def getSubjectDayDir(subjectNum, subjectDay):
+    subjectDayDir = "subject{}/day{}".format(subjectNum, subjectDay)
+    return subjectDayDir
+
+
 def getBlkGrpFilename(sessionId, runId, blkGrpId):
-    filename = "blkGroup_{}_r{}_p{}_py.mat".format(sessionId, runId, blkGrpId)
+    filename = "blkGroup_r{}_p{}_{}_py.mat".format(runId, blkGrpId, sessionId)
     return filename
 
 
 def getModelFilename(sessionId, runId):
-    filename = "trainedModel_{}_r{}_py.mat".format(sessionId, runId)
+    filename = "trainedModel_r{}_{}_py.mat".format(runId, sessionId)
     return filename
 
 

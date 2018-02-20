@@ -40,7 +40,7 @@ setup(
         'jupyter_contrib_nbextensions',
         'jupyter',
         'sklearn',
-        'toml'
+        'toml',
         'pytest',
         'pytest-logging',
         'watchdog',
