@@ -126,7 +126,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
     ## Output Files Setup ##
     now = datetime.datetime.now()
     # open and set-up output file
-    dataFile = open(os.path.join(runDataDir,'fileprocessing_py.txt'),'w+')
+    dataFile = open(os.path.join(runDataDir,'fileprocessing_py0.txt'),'w+')
     dataFile.write('\n*********************************************\n')
     dataFile.write('* rtAttenPenn v.1.0\n')
     dataFile.write('* Date/Time: ' + now.isoformat() + '\n')
@@ -232,13 +232,13 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
                 patterns.categoryseparation[0,iTrialPhase2] = patterns.activations[categ,iTrialPhase2]-patterns.activations[otherCateg,iTrialPhase2]
 
                 classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py'), 'w+') as volFile:
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py0'), 'w+') as volFile:
                     volFile.write(str(classOutput))
             else:
                 patterns.categoryseparation[0,iTrialPhase2] = np.nan
 
                 classOutput = patterns.categoryseparation[0,iTrialPhase2] #ok<NASGU>
-                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py'), 'w+') as volFile:
+                with open(os.path.join(runDataDir, 'vol_' + str(patterns.fileNum[0, iTrialPhase2]) + '_py0'), 'w+') as volFile:
                     volFile.write(str(classOutput))
         else:
             patterns.categoryseparation[0,iTrialPhase2] = np.nan
@@ -273,7 +273,7 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
         else:
             mask = ~np.isnan(target_predictions)
             miss_count = np.sum(patterns.predict[mask] != target_predictions[mask])
-            print("WARNING: predictions differ in {} trials".format(miss_count))
+            print("WARNING: predictions differ in {} TRs".format(miss_count))
         # calculate the pierson correlation for raw_sm_filt_z
         pearson_mean = utils.pearsons_mean_corr(patterns.raw_sm_filt_z[firstVolPhase2:nVols, :], target_patterns.raw_sm_filt_z[firstVolPhase2:nVols, :])
         print("Phase2 sm_filt_z mean pearsons correlation {}".format(pearson_mean))
@@ -369,8 +369,8 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
     ##
 
     datestr = time.strftime("%Y%m%dT%H%M%S", time.localtime())
-    output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py.mat')
-    output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py.mat')
+    output_patterns_fn = os.path.join(outputDataDir, 'patternsdata_'+ str(runNum) + '_' + datestr + '_py0.mat')
+    output_trainedModel_fn = os.path.join(outputDataDir, 'trainedModel_' + str(runNum) + '_' + datestr + '_py0.mat')
     sio.savemat(output_patterns_fn, patterns, appendmat=False)
     sio.savemat(output_trainedModel_fn, newTrainedModel, appendmat=False)
 

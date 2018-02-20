@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import rtAttenPy_v0
 
-trace_file_date_pattern = '20180111T1'
+trace_file_date_pattern = '20180208T'
 subjectNum = 3
 
 # for runNum in (1,):
