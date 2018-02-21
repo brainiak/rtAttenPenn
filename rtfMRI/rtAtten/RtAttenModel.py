@@ -154,7 +154,7 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.replayMatFileMode == 1 and self.session.validate:
+            if self.session.validate:
                 self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
 
         elif self.blkGrp.type == 1:  # training
@@ -184,7 +184,7 @@ class RtAttenModel(BaseModel):
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
-            if self.session.replayMatFileMode == 1 and self.session.validate:
+            if self.session.validate:
                 self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
             # cache the block group for predict phase and training the model
             bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
@@ -369,7 +369,7 @@ class RtAttenModel(BaseModel):
         prev_bg = self.blkGrpCache.get(bgKey, None)
         if prev_bg is None:
             # load it from file
-            logging.info("blkGrpCache miss on key %s", bgKey)
+            logging.info("blkGrpCache miss on <runId, blkGrpId> %s", bgKey)
             fname = os.path.join(self.dirs.dataDir, getBlkGrpFilename(sessionId, runId, blkGrpId))
             prev_bg = utils.loadMatFile(fname)
             assert prev_bg is not None, "unable to load blkGrp %s" % (fname)
@@ -381,7 +381,7 @@ class RtAttenModel(BaseModel):
         model = self.modelCache.get(runId, None)
         if model is None:
             # load it from file
-            logging.info("modelCache miss on key %d", runId)
+            logging.info("modelCache miss on runId %d", runId)
             fname = os.path.join(self.dirs.dataDir, getModelFilename(sessionId, runId))
             model = utils.loadMatFile(fname)
             assert model is not None, "unable to load model %s" % (fname)
@@ -407,11 +407,11 @@ class RtAttenModel(BaseModel):
     def validateTrainBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        target_patternsdata = utils.loadMatFile(self.run.replayFile)
+        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
-                      'phase1Mean', 'phase1Y', 'phase1Std', 'phase1Var']
+                      'phase1Mean', 'phase1Y', 'phase1Std', 'phase1Var', 'regressor']
         res = vutils.compareMatStructs(patterns, target_patterns, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
         outputlns.append("Validation Means: {}".format(res_means))
@@ -425,12 +425,12 @@ class RtAttenModel(BaseModel):
     def validateTestBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        target_patternsdata = utils.loadMatFile(self.run.replayFile)
+        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
                       'phase1Mean', 'phase1Y', 'phase1Std', 'phase1Var',
-                      'categoryseparation']
+                      'categoryseparation', 'regressor']
         res = vutils.compareMatStructs(patterns, target_patterns, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
         outputlns.append("Validation Means: {}".format(res_means))
@@ -446,7 +446,7 @@ class RtAttenModel(BaseModel):
             outputlns.append("All predictions match: {}".format(predictions_match))
         else:
             mask = ~np.isnan(target_patterns.predict)
-            miss_count = np.sum(patterns.predict[0, mask] != target_patterns.predict[mask])
+            miss_count = np.sum(patterns.predict[mask] != target_patterns.predict[mask])
             outputlns.append("WARNING: predictions differ in {} TRs".format(miss_count))
         # calculate the pearson correlation for categoryseparation
         pearson_mean = vutils.pearsons_mean_corr(patterns.categoryseparation, target_patterns.categoryseparation)
@@ -517,7 +517,18 @@ def strip_patterns(patterns, prange):
     patterns.raw_sm_filt = patterns.raw_sm_filt[prange, :]
     patterns.raw_sm_filt_z = patterns.raw_sm_filt_z[prange, :]
     patterns.categoryseparation = patterns.categoryseparation[0, prange]
-    patterns.predict = patterns.predict[0, prange]
+    patterns.regressor = patterns.regressor[:, prange]
+    tmp_predict = np.full((1, len(prange)), np.nan)
+    if patterns.predict is not None:
+        # sometime predict array will be a few short because no prediction on final trials
+        if patterns.predict.shape[1] < prange[-1]:
+            newrange = range(prange[0], patterns.predict.shape[1])
+            tmp_predict[:, 0:len(newrange)] = patterns.predict[:, newrange]
+        else:
+            tmp_predict[:, 0:len(prange)] = patterns.predict[:, prange]
+        mask = np.where(tmp_predict == 0)
+        tmp_predict[mask] = np.nan
+    patterns.predict = tmp_predict
 
 
 @unique

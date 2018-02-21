@@ -24,8 +24,6 @@ def createRunConfig(session, runId):
     patterns = loadMatFile(patternsFilename)
 
     run.disdaqs = int(patterns.disdaqs)
-    run.instructLen = int(patterns.instructLen)
-    run.labelsShift = int(patterns.labelsShift)
     run.nBlocksPerPhase = int(patterns.nBlocksPerPhase)
     run.TRTime = int(patterns.TR)
     run.nTRs = int(patterns.nTRs)

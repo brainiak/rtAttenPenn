@@ -1,7 +1,6 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
 import time
-import logging
 import numpy as np  # type: ignore
 import rtfMRI.utils as utils
 from ..RtfMRIClient import RtfMRIClient, validateRunCfg
@@ -62,7 +61,8 @@ class RtAttenClient(RtfMRIClient):
         # Process each run
         for runId in self.cfg.session.Runs:
             self.runRun(runId)
-            self.retrieveRunFiles(runId)
+            if self.cfg.session.retrieveServerFiles:
+                self.retrieveRunFiles(runId)
 
     def runRun(self, runId, scanNum=-1):
         run = createRunConfig(self.cfg.session, runId)
@@ -78,12 +78,11 @@ class RtAttenClient(RtfMRIClient):
                 resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
                 if resp.upper() != 'Y':
                     return
-        else:
+
+        if self.cfg.session.validate or self.cfg.session.replayMatFileMode:
             idx = runId - 1
-            if self.cfg.session.validate:
-                run.validationModel = os.path.join(self.dirs.dataDir, self.cfg.session.validationModels[idx])
-            if self.cfg.session.replayMatFileMode == 1:
-                run.replayFile = os.path.join(self.dirs.dataDir, self.cfg.session.replayMatFiles[idx])
+            run.validationModel = os.path.join(self.dirs.dataDir, self.cfg.session.validationModels[idx])
+            run.validationDataFile = os.path.join(self.dirs.dataDir, self.cfg.session.validationData[idx])
 
         # Setup output directory and output file
         runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(run.runId))
@@ -102,9 +101,9 @@ class RtAttenClient(RtfMRIClient):
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
 
-        if self.cfg.session.replayMatFileMode == 1:
+        if self.cfg.session.replayMatFileMode == 1 and self.cfg.session.rtData != 1:
             # load previous patterns data for this run
-            p = utils.loadMatFile(run.replayFile)
+            p = utils.loadMatFile(run.validationDataFile)
             run.replay_data = p.patterns.raw
 
         # Begin BlockGroups (phases)
@@ -234,7 +233,7 @@ def outputReplyLines(lines, filehandle):
 def outputPredictionFile(predict, runDataDir):
     if predict is None or predict.vol is None:
         return
-    filename = os.path.join(runDataDir, 'vol_' + str(predict.vol) + '_py')
+    filename = os.path.join(runDataDir, 'vol_' + str(predict.vol) + '_py.txt')
     with open(filename, 'w+') as volFile:
         volFile.write(str(predict.catsep))
 
