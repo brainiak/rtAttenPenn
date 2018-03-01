@@ -1,0 +1,98 @@
+[experiment]
+experimentName = "Base"
+experimentId = 1
+model = "base"
+
+[session]
+sessionId = "20180115T000000"
+
+
+[[runs]]
+runId = "01"
+
+  [[runs.blockGroups]]
+  blkGrpId = "01"
+  type = "train"
+  range = "01:04"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "01"
+    TRs = "00:05"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "02"
+    TRs = "05:10"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "03"
+    TRs = "10:15"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "04"
+    TRs = "15:20"
+
+  [[runs.blockGroups]]
+  blkGrpId = "02"
+  type = "train"
+  range = "05:08"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "05"
+    TRs = "20:25"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "06"
+    TRs = "25:30"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "07"
+    TRs = "30:35"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "08"
+    TRs = "35:40"
+
+[[runs]]
+runId = "02"
+
+  [[runs.blockGroups]]
+  blkGrpId = "01"
+  type = "train"
+  range = "01:04"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "01"
+    TRs = "00:05"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "02"
+    TRs = "05:10"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "03"
+    TRs = "10:15"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "04"
+    TRs = "15:20"
+
+  [[runs.blockGroups]]
+  blkGrpId = "02"
+  type = "predict"
+  range = "05:08"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "05"
+    TRs = "20:25"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "06"
+    TRs = "25:30"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "07"
+    TRs = "30:35"
+
+    [[runs.blockGroups.blocks]]
+    blockId = "08"
+    TRs = "35:40"

@@ -1,6 +1,6 @@
 import unittest
 import threading
-from rtfMRI.MsgTypes import MsgType, MsgEvent  # type: ignore
+from rtfMRI.MsgTypes import MsgType, MsgEvent, MsgResult  # type: ignore
 from rtfMRI.Messaging import RtMessagingServer, Message   # type: ignore
 from rtfMRI.Messaging import RtMessagingClient
 
@@ -17,6 +17,7 @@ class Test_Messaging(unittest.TestCase):
                 reply = Message()
                 reply.id = req.id
                 reply.type = MsgType.Reply
+                reply.event_type = req.event_type
                 reply.result = MsgResult.Success
                 self.server.sendReply(reply)
             self.server.close()
