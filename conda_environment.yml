@@ -1,0 +1,17 @@
+name: rtAtten
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - cython
+  - pybind11
+  - numpy
+  - scipy
+  - scikit-learn
+  - pydicom
+  - toml
+  - watchdog
+  - ipython
+  - jupyter
+  - pytest
+
