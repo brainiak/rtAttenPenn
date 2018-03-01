@@ -176,6 +176,7 @@ class RtAttenClient(RtfMRIClient):
 
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
+        print("Reading {}".format(specificFileName))
         fileExists = os.path.exists(specificFileName)
         if not fileExists and self.observer is None:
             raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
@@ -192,7 +193,12 @@ class RtAttenClient(RtfMRIClient):
             fileSize = os.path.getsize(specificFileName)
             time.sleep(waitIncrement)
             totalWait += waitIncrement
-        trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
+        _, file_extension = os.path.splitext(specificFileName)
+        if file_extension == '.mat':
+            data = utils.loadMatFile(specificFileName)
+            trVol = data.vol
+        else:
+            trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
         return trVol
 
     def getDicomFileName(self, scanNum, fileNum):
