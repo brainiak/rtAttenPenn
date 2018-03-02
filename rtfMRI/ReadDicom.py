@@ -1,5 +1,8 @@
-import dicom
-import numpy as np
+import numpy as np  # type: ignore
+try:
+    import pydicom as dicom
+except ModuleNotFoundError:
+    import dicom
 
 
 def readDicom(filename, sliceDim):

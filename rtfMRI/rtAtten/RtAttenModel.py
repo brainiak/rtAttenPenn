@@ -52,6 +52,7 @@ class RtAttenModel(BaseModel):
 
     def StartRun(self, msg):
         reply = super().StartRun(msg)
+        # TODO logging.info("Using ScanNum: %d", self.id_fields.scanNum)
         if reply.result != MsgResult.Success:
             return reply
         run = msg.fields.cfg

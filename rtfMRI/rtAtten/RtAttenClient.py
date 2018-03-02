@@ -68,6 +68,7 @@ class RtAttenClient(RtfMRIClient):
         run = createRunConfig(self.cfg.session, runId)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
+        self.id_fields.scanNum = scanNum
         if scanNum >= 0:
             run.scanNum = scanNum
 
@@ -233,7 +234,7 @@ def outputReplyLines(lines, filehandle):
 def outputPredictionFile(predict, runDataDir):
     if predict is None or predict.vol is None:
         return
-    filename = os.path.join(runDataDir, 'vol_' + str(predict.vol) + '_py.txt')
+    filename = os.path.join(runDataDir, 'classoutput', 'vol_' + str(predict.vol) + '_py.txt')
     with open(filename, 'w+') as volFile:
         volFile.write(str(predict.catsep))
 
