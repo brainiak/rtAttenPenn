@@ -56,7 +56,8 @@ def parseCommandArgs(argv, settings):
 
 
 def client_main(argv):
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
     try:
         # Get params and load config file
         settings = parseCommandArgs(argv, defaultSettings)

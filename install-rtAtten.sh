@@ -9,22 +9,41 @@ if [ ! -e  ~/Downloads ]; then
     mkdir ~/Downloads
 fi
 pushd ~/Downloads
-wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh -b
+if [[ $OSTYPE == linux* ]]; then
+    echo "Install Miniconda on Linux"
+    wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b
+    echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bashrc
+    echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
+    source ~/.bashrc
+elif [[ $OSTYPE == darwin* ]]; then
+    echo "Install Miniconda on MacOSX"
+    brew install wget
+    wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+    bash Miniconda3-latest-MacOSX-x86_64.sh -b
+    echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bash_profile
+    echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bash_profile
+    source ~/.bash_profile
+else
+    echo "Unrecognized OS Type $OSTYPE"
+    exit -1
+fi
 popd
-echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bashrc
-echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
-source ~/.bashrc
 conda update -y conda
 
 echo "INSTALL RTATTEN_PENN SOFTWARE"
-if [ ! -e  ./rtAttenPenn ]; then
+if [[ $PWD =~ rtAttenPenn$ ]]; then
+    echo "Pull latest updates for rtAttenPenn"
+    git pull
+elif [ -e ./rtAttenPenn ]; then
+    echo "Pull latest updates for rtAttenPenn"
+    cd rtAttenPenn/
+    git pull
+else
     echo "Git clone rtAttenPenn"
     git clone https://github.com/brainiak/rtAttenPenn.git
-else
-    echo "Directory rtAttenPenn already exists, skipping git clone"
+    cd rtAttenPenn/
 fi
-cd rtAttenPenn/
 if [ ! -e "conda_environment.yml" ]; then
     echo "Missing conda_environment.yml file"
     exit -1;

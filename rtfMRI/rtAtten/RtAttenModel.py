@@ -52,11 +52,11 @@ class RtAttenModel(BaseModel):
 
     def StartRun(self, msg):
         reply = super().StartRun(msg)
-        # TODO logging.info("Using ScanNum: %d", self.id_fields.scanNum)
         if reply.result != MsgResult.Success:
             return reply
         run = msg.fields.cfg
         assert run.runId == self.id_fields.runId
+        logging.info("Using ScanNum: %d", run.scanNum)
         if run.runId > 1:
             if len(self.blkGrpCache) > 1:
                 # remove any cache items older than the previous run
@@ -70,7 +70,9 @@ class RtAttenModel(BaseModel):
         reply.fields.outputlns.append('* Date/Time: ' + now.isoformat())
         reply.fields.outputlns.append('* Seed: ' + str(self.session.seed))
         reply.fields.outputlns.append('* Subject Number: ' + str(self.session.subjectNum))
+        reply.fields.outputlns.append('* Subject Name: ' + str(self.session.subjectName))
         reply.fields.outputlns.append('* Run Number: ' + str(run.runId))
+        reply.fields.outputlns.append('* Real-Time Data: ' + str(self.session.rtData))
         reply.fields.outputlns.append('*********************************************\n')
 
         # ** Start Run ** #

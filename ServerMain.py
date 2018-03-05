@@ -37,7 +37,8 @@ def parseArgs(argv, settings):
 
 
 def server_main(argv):
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
     settings = StructDict(defaultSettings)
     try:
         settings = parseArgs(argv, settings)

@@ -68,7 +68,6 @@ class RtAttenClient(RtfMRIClient):
         run = createRunConfig(self.cfg.session, runId)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
-        self.id_fields.scanNum = scanNum
         if scanNum >= 0:
             run.scanNum = scanNum
 
@@ -89,6 +88,9 @@ class RtAttenClient(RtfMRIClient):
         runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(run.runId))
         if not os.path.exists(runDataDir):
             os.makedirs(runDataDir)
+        classOutputDir = os.path.join(runDataDir, 'classoutput')
+        if not os.path.exists(classOutputDir):
+            os.makedirs(classOutputDir)
         outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
 
         # ** Experimental Parameters ** #
@@ -130,7 +132,7 @@ class RtAttenClient(RtfMRIClient):
                         TR.data = run.replay_data[TR.vol-1]
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     outputReplyLines(reply.fields.outputlns, outputFile)
-                    outputPredictionFile(reply.fields.predict, runDataDir)
+                    outputPredictionFile(reply.fields.predict, classOutputDir)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
@@ -231,10 +233,10 @@ def outputReplyLines(lines, filehandle):
             filehandle.write(line + '\n')
 
 
-def outputPredictionFile(predict, runDataDir):
+def outputPredictionFile(predict, classOutputDir):
     if predict is None or predict.vol is None:
         return
-    filename = os.path.join(runDataDir, 'classoutput', 'vol_' + str(predict.vol) + '_py.txt')
+    filename = os.path.join(classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
     with open(filename, 'w+') as volFile:
         volFile.write(str(predict.catsep))
 
