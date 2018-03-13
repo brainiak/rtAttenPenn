@@ -2,6 +2,9 @@
 import os
 import time
 import numpy as np  # type: ignore
+import datetime
+import logging
+from dateutil import parser
 import rtfMRI.utils as utils
 from ..RtfMRIClient import RtfMRIClient, validateRunCfg
 from ..MsgTypes import MsgEvent
@@ -24,6 +27,7 @@ class RtAttenClient(RtfMRIClient):
         self.observer = None
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
+        self.printFirstFilename = True
 
     def __del__(self):
         if self.observer is not None:
@@ -37,7 +41,26 @@ class RtAttenClient(RtfMRIClient):
         # Set Directories
         subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
         self.dirs.dataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
-        self.dirs.imgDir = cfg.session.imgDir
+        print("Mask and patterns files being read from: {}".format(self.dirs.dataDir))
+        self.dirs.serverDataDir = os.path.join(cfg.session.serverDataDir, subjectDayDir)
+        if not os.path.exists(self.dirs.serverDataDir):
+            os.makedirs(self.dirs.serverDataDir)
+        if cfg.session.buildImgPath:
+            imgDirDate = datetime.datetime.now()
+            dateStr = cfg.session.date.lower()
+            if dateStr != 'now' and dateStr != 'today':
+                try:
+                    imgDirDate = parser.parse(cfg.session.date)
+                except ValueError as err:
+                    imgDirDate = datetime.datetime.now()
+                    resp = input("Unable to parse date string, use today's date for image dir? Y/N [N]: ")
+                    if resp.upper() != 'Y':
+                        return
+            datestr = imgDirDate.strftime("%Y%m%d")
+            imgDirName = "{}.{}.{}".format(datestr, cfg.session.subjectName, cfg.session.subjectName)
+            self.dirs.imgDir = os.path.join(cfg.session.imgDir, imgDirName)
+        else:
+            self.dirs.imgDir = cfg.session.imgDir
         if not os.path.exists(self.dirs.imgDir):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
@@ -61,8 +84,6 @@ class RtAttenClient(RtfMRIClient):
         # Process each run
         for runId in self.cfg.session.Runs:
             self.runRun(runId)
-            if self.cfg.session.retrieveServerFiles:
-                self.retrieveRunFiles(runId)
 
     def runRun(self, runId, scanNum=-1):
         run = createRunConfig(self.cfg.session, runId)
@@ -71,7 +92,7 @@ class RtAttenClient(RtfMRIClient):
         if scanNum >= 0:
             run.scanNum = scanNum
 
-        if self.cfg.session.rtData == 1:
+        if self.cfg.session.rtData:
             # Check if images already exist and warn and ask to continue
             firstFileName = self.getDicomFileName(run.scanNum, 1)
             if os.path.exists(firstFileName):
@@ -104,7 +125,7 @@ class RtAttenClient(RtfMRIClient):
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
 
-        if self.cfg.session.replayMatFileMode == 1 and self.cfg.session.rtData != 1:
+        if self.cfg.session.replayMatFileMode and not self.cfg.session.rtData:
             # load previous patterns data for this run
             p = utils.loadMatFile(run.validationDataFile)
             run.replay_data = p.patterns.raw
@@ -122,7 +143,7 @@ class RtAttenClient(RtfMRIClient):
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
-                    if self.cfg.session.rtData == 1:
+                    if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
                         fileNum = TR.vol + run.disdaqs // run.TRTime
                         trVolumeData = self.getNextTRData(run, fileNum)
@@ -153,9 +174,14 @@ class RtAttenClient(RtfMRIClient):
         outputReplyLines(reply.fields.outputlns, outputFile)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
+        if self.cfg.session.retrieveServerFiles:
+            self.retrieveRunFiles(runId)
         del self.id_fields.runId
 
     def retrieveRunFiles(self, runId):
+        if self.messaging.addr == 'localhost':
+            print("Skipping file retrieval from localhost")
+            return
         blkGrp1_filename = getBlkGrpFilename(self.id_fields.sessionId, runId, 1)
         self.retrieveFile(blkGrp1_filename)
         blkGrp2_filename = getBlkGrpFilename(self.id_fields.sessionId, runId, 2)
@@ -171,12 +197,21 @@ class RtAttenClient(RtfMRIClient):
         fileInfo.filename = filename
         stime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.RetrieveData, fileInfo)
-        print("took {} secs".format(time.time() - stime))
-        writeFile(os.path.join(self.dirs.dataDir, filename), reply.data)
+        print("took {:.2f} secs".format(time.time() - stime))
+        clientFile = os.path.join(self.dirs.dataDir, filename)
+        writeFile(clientFile, reply.data)
+        serverFile = os.path.join(self.dirs.serverDataDir, filename)
+        if not os.path.exists(serverFile):
+            try:
+                os.symlink(clientFile, serverFile)
+            except OSError:
+                logging.error("Unable to link file %s", serverFile)
 
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
-        print("Reading {}".format(specificFileName))
+        if self.printFirstFilename:
+            print("Loading first file: {}".format(specificFileName))
+            self.printFirstFilename = False
         fileExists = os.path.exists(specificFileName)
         if not fileExists and self.observer is None:
             raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))

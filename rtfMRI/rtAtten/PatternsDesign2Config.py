@@ -8,7 +8,14 @@ from ..utils import loadMatFile, findNewestFile
 def createRunConfig(session, runId):
     run = StructDict()
     run.runId = runId
-    idx = runId - 1
+    ids = [idx for (idx, run) in enumerate(session.Runs) if run == runId]
+    if len(ids) == 0:
+        print("Run {} not in Runs List".format(runId))
+        return None
+    elif len(ids) > 1:
+        print("Run {} declared multiple times in Runs List".format(runId))
+        return None
+    idx = ids[0]
     if session.ScanNums is not None and len(session.ScanNums) > idx:
         run.scanNum = session.ScanNums[idx]
     else:

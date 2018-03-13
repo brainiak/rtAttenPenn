@@ -138,7 +138,7 @@ def validateSessionCfg(cfg):
         raise ValidationError("config.session is not defined")
     if cfg.session.sessionId is None:
         raise ValidationError("sessionId not defined")
-    if cfg.session.rtData == 0 and cfg.session.replayMatFileMode == 0:
+    if not cfg.session.rtData and not cfg.session.replayMatFileMode:
         raise ValidationError("Must set either rtData or replayMatFileMode")
     return True
 

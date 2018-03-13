@@ -3,32 +3,37 @@ clientAddr="128.112.0.0"
 serverAddr="128.112.102.11"
 servicePort="5200"
 
-echo "INSTALL MINICONDA"
-if [ ! -e  ~/Downloads ]; then
-    echo "Make direcorty ~/Downloads"
-    mkdir ~/Downloads
-fi
-pushd ~/Downloads
-if [[ $OSTYPE == linux* ]]; then
-    echo "Install Miniconda on Linux"
-    wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    bash Miniconda3-latest-Linux-x86_64.sh -b
-    echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bashrc
-    echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
-    source ~/.bashrc
-elif [[ $OSTYPE == darwin* ]]; then
-    echo "Install Miniconda on MacOSX"
-    brew install wget
-    wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-    bash Miniconda3-latest-MacOSX-x86_64.sh -b
-    echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bash_profile
-    echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bash_profile
-    source ~/.bash_profile
+which_conda=`which conda`
+if [[ $which_conda == "" ]]; then
+    echo "INSTALL MINICONDA"
+    if [ ! -e  ~/Downloads ]; then
+        echo "Make direcorty ~/Downloads"
+        mkdir ~/Downloads
+    fi
+    pushd ~/Downloads
+    if [[ $OSTYPE == linux* ]]; then
+        echo "Install Miniconda on Linux"
+        wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        bash Miniconda3-latest-Linux-x86_64.sh -b
+        echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bashrc
+        echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
+        source ~/.bashrc
+    elif [[ $OSTYPE == darwin* ]]; then
+        echo "Install Miniconda on MacOSX"
+        brew install wget
+        wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+        bash Miniconda3-latest-MacOSX-x86_64.sh -b
+        echo export PATH="$HOME/miniconda3/bin:\$PATH" >> ~/.bash_profile
+        echo ". $HOME/miniconda3/etc/profile.d/conda.sh" >> ~/.bash_profile
+        source ~/.bash_profile
+    else
+        echo "Unrecognized OS Type $OSTYPE"
+        exit -1
+    fi
+    popd
 else
-    echo "Unrecognized OS Type $OSTYPE"
-    exit -1
+    echo "Miniconda already installed"
 fi
-popd
 conda update -y conda
 
 echo "INSTALL RTATTEN_PENN SOFTWARE"

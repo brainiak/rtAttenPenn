@@ -410,7 +410,10 @@ class RtAttenModel(BaseModel):
     def validateTrainBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
+        try:
+            target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
+        except FileNotFoundError as err:
+            logging.error("ValidateTrainBlkGrp: %s", str(err))
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
@@ -428,7 +431,10 @@ class RtAttenModel(BaseModel):
     def validateTestBlkGrp(self, target_i1, target_i2, outputlns):
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
+        try:
+            target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
+        except FileNotFoundError as err:
+            logging.error("ValidateTestBlkGrp: %s", str(err))
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
@@ -464,7 +470,10 @@ class RtAttenModel(BaseModel):
             outputlns.append("WARN: Pearson mean for raw_sm_filt_z low, {}".format(pearson_mean))
 
     def validateModel(self, newTrainedModel, outputlns):
-        target_model = utils.loadMatFile(self.run.validationModel)
+        try:
+            target_model = utils.loadMatFile(self.run.validationModel)
+        except FileNotFoundError as err:
+            logging.error("validateModel: %s", str(err))
         cmp_fields = ['trainLabels', 'weights', 'biases', 'trainPats']
         res = vutils.compareMatStructs(newTrainedModel, target_model, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
