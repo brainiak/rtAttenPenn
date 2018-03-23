@@ -1,5 +1,10 @@
 """
-Server-side logic for the real-time attention fMRI experiment
+RTAttenModel: Server-side logic for the real-time attention fMRI experiment
+
+This module extends the generic BaseModel server-side logic for fMRI experiments,
+and implements specific functionality for the real-time attention study.
+This module primarily overrides the Start/End Session, Start/End Block Group,
+and TRData funtions to handle data specific to the experiment
 """
 import os
 import time
@@ -30,6 +35,9 @@ class RtAttenModel(BaseModel):
         self.blkGrp = None
 
     def StartSession(self, msg):
+        """Initializes a session comprising multiple runs.
+        Sets up data directories and clears caches
+        """
         reply = super().StartSession(msg)
         if reply.result != MsgResult.Success:
             return reply
@@ -51,11 +59,17 @@ class RtAttenModel(BaseModel):
         return reply
 
     def StartRun(self, msg):
+        """Initializes a run
+        Updates caches, inits filecounter, returns header output.
+        """
         reply = super().StartRun(msg)
         if reply.result != MsgResult.Success:
             return reply
         run = msg.fields.cfg
-        assert run.runId == self.id_fields.runId
+        if run.runId != self.id_fields.runId:
+            errorReply = self.createReplyMessage(msg, MsgResult.Error)
+            errorReply.data = "RunId mismatch: msg runId %r != session RunId %r" % (run.runId, self.id_fields.runId)
+            return errorReply
         logging.info("Using ScanNum: %d", run.scanNum)
         if run.runId > 1:
             if len(self.blkGrpCache) > 1:
@@ -88,16 +102,30 @@ class RtAttenModel(BaseModel):
         return reply
 
     def StartBlockGroup(self, msg):
+        """Initialize a block group. A run is comprised of 2 block groups (called phases in Matlab version).
+        Block groups can be of type 1=(Training) or 2=(RealTime Predictions)
+        Initialize the patterns data structure for the block group.
+        If it is a prediction group (type 2) then load the trained model from the
+        previous run and load the patterns data from the previous block group.
+        """
         reply = super().StartBlockGroup(msg)
         if reply.result != MsgResult.Success:
             return reply
+        errorReply = self.createReplyMessage(msg, MsgResult.Error)
         blkGrp = msg.fields.cfg
         run = self.run
-        # TODO change to error instead of assert
-        assert blkGrp.nTRs is not None, "missing nTRs in blockGroup"
-        assert self.session.nVoxels is not None, "missing nVoxels in blockGroup"
-        assert self.session.roiInds is not None, "missing roiInds in blockGroup"
-        assert blkGrp.blkGrpId in (1, 2), "BlkGrpId {} not valid" % (blkGrp.blkGrpId)
+        if blkGrp.nTRs is None:
+            errorReply.data = "StartBlkGrp msg missing nTRs in blockGroup"
+            return errorReply
+        if self.session.nVoxels is None:
+            errorReply.data = "StartBlkGrp msg missing nVoxels in blockGroup"
+            return errorReply
+        if self.session.roiInds is None:
+            errorReply.data = "StartBlkGrp msg missing roiInds in blockGroup"
+            return errorReply
+        if blkGrp.blkGrpId not in (1, 2):
+            errorReply.data = "StartBlkGrp: BlkGrpId {} not valid" % (blkGrp.blkGrpId)
+            return errorReply
         blkGrp.legacyRun1Phase2Mode = False
         if run.runId == 1 and blkGrp.blkGrpId == 2 and self.session.legacyRun1Phase2Mode:
             # Handle as legacy matlab where run1, phase2 is treated as testing
@@ -123,9 +151,14 @@ class RtAttenModel(BaseModel):
         blkGrp.patterns.fileNum = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint16)
         self.blkGrp = blkGrp
         if self.blkGrp.type == 2 or blkGrp.legacyRun1Phase2Mode:
-            # ** testing ** #
-            # get blkGrp from phase 1
-            prev_bg = self.getPrevBlkGrp(self.id_fields.sessionId, self.id_fields.runId, 1)
+            # ** Realtime Feedback Phase ** #
+            try:
+                # get blkGrp from phase 1
+                prev_bg = self.getPrevBlkGrp(self.id_fields.sessionId, self.id_fields.runId, 1)
+            except Exception as err:
+                errorReply.data = "Error: getPrevBlkGrp(%r, %r, 1): %r" %\
+                    (self.id_fields.sessionId, self.id_fields.runId, err)
+                return errorReply
             self.blkGrp.patterns.phase1Mean[0, :] = prev_bg.patterns.phase1Mean[0, :]
             self.blkGrp.patterns.phase1Y[0, :] = prev_bg.patterns.phase1Y[0, :]
             self.blkGrp.patterns.phase1Std[0, :] = prev_bg.patterns.phase1Std[0, :]
@@ -134,10 +167,14 @@ class RtAttenModel(BaseModel):
             self.blkGrp.combined_catsep = np.concatenate((prev_bg.patterns.categoryseparation,
                                                           blkGrp.patterns.categoryseparation))
 
-            # get trained model
             if self.id_fields.runId > 1:
-                self.blkGrp.trainedModel = self.getTrainedModel(self.id_fields.sessionId, self.id_fields.runId-1)
-
+                try:
+                    # get trained model
+                    self.blkGrp.trainedModel = self.getTrainedModel(self.id_fields.sessionId, self.id_fields.runId-1)
+                except Exception as err:
+                    errorReply.data = "Error: getTrainedModel(%r, %r): %r" %\
+                        (self.id_fields.sessionId, self.id_fields.runId-1, err)
+                    return errorReply
             reply.fields.outputlns.append('\n*********************************************')
             reply.fields.outputlns.append('beginning model testing...')
             # prepare for TR sequence
@@ -145,7 +182,11 @@ class RtAttenModel(BaseModel):
         return reply
 
     def EndBlockGroup(self, msg):
-        # TODO validate msg is referring to the current block group
+        """Finalize block group
+        Complete calculations for the patterns data, do validation or results
+        compared to a previous known run if requested, save the block group
+        patterns data to a file.
+        """
         patterns = self.blkGrp.patterns
         i1, i2 = 0, self.blkGrp.nTRs
         outputlns = []  # type: ignore
@@ -153,12 +194,17 @@ class RtAttenModel(BaseModel):
         validation_i1 = self.blkGrp.firstVol
         validation_i2 = validation_i1 + self.blkGrp.nTRs
 
-        if self.blkGrp.type == 2 or self.blkGrp.legacyRun1Phase2Mode:  # predict
+        if self.blkGrp.type == 2 or self.blkGrp.legacyRun1Phase2Mode:  # RT predict
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
             if self.session.validate:
-                self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
+                try:
+                    self.validateTestBlkGrp(validation_i1, validation_i2, outputlns)
+                except Exception as err:
+                    # Just log that an error happened during validation
+                    logging.error("validateTestBlkGrp: %r", err)
+                    pass
 
         elif self.blkGrp.type == 1:  # training
             outputlns.append('\n*********************************************')
@@ -188,38 +234,54 @@ class RtAttenModel(BaseModel):
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
             if self.session.validate:
-                self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
+                try:
+                    self.validateTrainBlkGrp(validation_i1, validation_i2, outputlns)
+                except Exception as err:
+                    # Just log that an error happened during validation
+                    logging.error("validateTrainBlkGrp: %r", err)
+                    pass
+
             # cache the block group for predict phase and training the model
             bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
             self.blkGrpCache[bgKey] = self.blkGrp
 
         else:
-            reply = self.createReplyMessage(msg, MsgResult.Error)
-            reply.data = "Unknown blkGrp type {}".format(self.blkGrp.type)
+            errorReply = self.createReplyMessage(msg, MsgResult.Error)
+            errorReply.data = "Unknown blkGrp type {}".format(self.blkGrp.type)
+            return errorReply
 
         # save BlockGroup Data
         filename = getBlkGrpFilename(self.id_fields.sessionId,
                                      self.id_fields.runId,
                                      self.id_fields.blkGrpId)
         blkGrpFilename = os.path.join(self.dirs.dataDir, filename)
-        sio.savemat(blkGrpFilename, self.blkGrp, appendmat=False)
         reply = super().EndBlockGroup(msg)
+        try:
+            sio.savemat(blkGrpFilename, self.blkGrp, appendmat=False)
+        except Exception as err:
+            errorReply = self.createReplyMessage(msg, MsgResult.Error)
+            errorReply.data = "Error: Unable to save blkGrpFile %s: %r" % (blkGrpFilename, err)
+            return errorReply
         reply.fields.outputlns = outputlns
         return reply
 
     def TRData(self, msg):
+        """Process the data from an fMRI scan.
+        In training case smooth and add the data to the accumulated block in
+        order to later create a ML model
+        In realtime prediction case, do classification based on the loaded model
+        """
         TR = msg.fields.cfg
         reply = super().TRData(msg)
+        errorReply = self.createReplyMessage(msg, MsgResult.Error)
         if reply.result != MsgResult.Success:
             return reply
         if TR.type not in (0, 1, 2) or self.blkGrp.type not in (1, 2):
-            reply = self.createReplyMessage(msg, MsgResult.Error)
-            reply.data = "Unknown TR type %d", TR.type
-            return reply
+            errorReply.data = "Unknown TR type %r" % (TR.type)
+            return errorReply
         if TR.trId is None:
-            reply = self.createReplyMessage(msg.id, MsgResult.Error)
-            reply.data = "missing TR.trId"
-            return reply
+            errorReply.data = "missing TR.trId"
+            return errorReply
         outputlns = []  # type: ignore
         self.run.fileCounter = self.run.fileCounter + 1
 
@@ -246,11 +308,14 @@ class RtAttenModel(BaseModel):
                 patterns.fileNum[0, TR.trId], patterns.fileload[0, TR.trId], np.nan, np.nan)
             outputlns.append(output_str)
         else:
-            assert False, "Should never get here"
+            errorReply.data = "Process TR, TR.type %r or blkGrp.type %r unexpected" % (TR.type, self.blkGrp.type)
+            return errorReply
         reply.fields.outputlns = outputlns
         return reply
 
     def Predict(self, TR):
+        """Given a scan image (TR) predict the classification of the data (face/scene)
+        """
         predict_result = StructDict()
         outputlns = []
         patterns = self.blkGrp.patterns
@@ -295,6 +360,9 @@ class RtAttenModel(BaseModel):
         return predict_result, outputlns
 
     def TrainModel(self, msg):
+        """Load block group patterns data from this and the previous run and
+        create the ML model for the next run. Save the model to a file.
+        """
         reply = super().TrainModel(msg)
         trainStart = time.time()  # start timing
         # print training results
@@ -305,8 +373,18 @@ class RtAttenModel(BaseModel):
         trainCfg = msg.fields.cfg
         bgRef1 = StructDict(trainCfg.blkGrpRefs[0])
         bgRef2 = StructDict(trainCfg.blkGrpRefs[1])
-        bg1 = self.getPrevBlkGrp(self.id_fields.sessionId, bgRef1.run, bgRef1.phase)
-        bg2 = self.getPrevBlkGrp(self.id_fields.sessionId, bgRef2.run, bgRef2.phase)
+        try:
+            bg1 = self.getPrevBlkGrp(self.id_fields.sessionId, bgRef1.run, bgRef1.phase)
+            bg2 = self.getPrevBlkGrp(self.id_fields.sessionId, bgRef2.run, bgRef2.phase)
+        except Exception as err:
+            errorReply = self.createReplyMessage(msg, MsgResult.Error)
+            if bg1 is None:
+                errorReply.data = "Error: getPrevBlkGrp(%r, %r, %r): %r" %\
+                    (self.id_fields.sessionId, bgRef1.run, bgRef1.phase, err)
+            else:
+                errorReply.data = "Error: getPrevBlkGrp(%r, %r, %r): %r" %\
+                    (self.id_fields.sessionId, bgRef2.run, bgRef2.phase, err)
+            return errorReply
 
         trainIdx1 = utils.find(np.any(bg1.patterns.regressor, axis=0))
         trainLabels1 = np.transpose(bg1.patterns.regressor[:, trainIdx1])  # find the labels of those indices
@@ -350,16 +428,28 @@ class RtAttenModel(BaseModel):
         self.modelCache[self.id_fields.runId] = newTrainedModel
 
         if self.session.validate:
-            self.validateModel(newTrainedModel, reply.fields.outputlns)
-
+            try:
+                self.validateModel(newTrainedModel, reply.fields.outputlns)
+            except Exception as err:
+                # Just log that an error happened during validation
+                logging.error("validateModel: %r", err)
+                pass
         # write trained model to a file
         filename = getModelFilename(self.id_fields.sessionId, self.id_fields.runId)
         trainedModel_fn = os.path.join(self.dirs.dataDir, filename)
-        sio.savemat(trainedModel_fn, newTrainedModel, appendmat=False)
-
+        try:
+            sio.savemat(trainedModel_fn, newTrainedModel, appendmat=False)
+        except Exception as err:
+            errorReply = self.createReplyMessage(msg, MsgResult.Error)
+            errorReply.data = "Error: Unable to save trainedModel %s: %s" % (filename, str(err))
+            return errorReply
         return reply
 
     def RetrieveData(self, msg):
+        """Retrieve a specfic data file.
+        Sets the file path based on the session directory settings and then
+        calls the BaseModel retrieve function.
+        """
         fileInfo = msg.fields.cfg
         subjectDayDir = getSubjectDayDir(fileInfo.subjectNum, fileInfo.subjectDay)
         fullFileName = os.path.join(self.session.serverDataDir, subjectDayDir, fileInfo.filename)
@@ -368,6 +458,9 @@ class RtAttenModel(BaseModel):
         return reply
 
     def getPrevBlkGrp(self, sessionId, runId, blkGrpId):
+        """Retrieve a block group patterns data, first see if it is cached
+        in memory, if not load it from file and add it to the cache.
+        """
         bgKey = getBlkGrpKey(runId, blkGrpId)
         prev_bg = self.blkGrpCache.get(bgKey, None)
         if prev_bg is None:
@@ -375,25 +468,31 @@ class RtAttenModel(BaseModel):
             logging.info("blkGrpCache miss on <runId, blkGrpId> %s", bgKey)
             fname = os.path.join(self.dirs.dataDir, getBlkGrpFilename(sessionId, runId, blkGrpId))
             prev_bg = utils.loadMatFile(fname)
-            assert prev_bg is not None, "unable to load blkGrp %s" % (fname)
+            # loadMatFile should either raise an exception or return a value
+            assert prev_bg is not None, "Load blkGrp returned None: %s" % (fname)
             if sessionId == self.id_fields.sessionId:
                 self.blkGrpCache[bgKey] = prev_bg
         return prev_bg
 
     def getTrainedModel(self, sessionId, runId):
+        """Retrieve a ML model trained in a previous run (runId). First see if it
+        is cached in memory, if not load it from file and add it to the cache.
+        """
         model = self.modelCache.get(runId, None)
         if model is None:
             # load it from file
             logging.info("modelCache miss on runId %d", runId)
             fname = os.path.join(self.dirs.dataDir, getModelFilename(sessionId, runId))
             model = utils.loadMatFile(fname)
-            assert model is not None, "unable to load model %s" % (fname)
+            # loadMatFile should either raise an exception or return a value
+            assert model is not None, "Load model returned None: %s" % (fname)
         if sessionId == self.id_fields.sessionId:
             self.modelCache[runId] = model
         return model
 
     def trimCache(self, oldestRunId):
-        '''Remove any cached elements older than oldestRunId'''
+        """Remove any cached elements older than oldestRunId
+        """
         # trim blkGrpCache
         rm_keys = []
         for bgKey in self.blkGrpCache.keys():
@@ -408,12 +507,12 @@ class RtAttenModel(BaseModel):
             del(self.modelCache[key])
 
     def validateTrainBlkGrp(self, target_i1, target_i2, outputlns):
+        """Compare the block group patterns file created in this run with that of
+         a previous run (i.e. using the Matlab software) but having the same raw input
+        """
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        try:
-            target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
-        except FileNotFoundError as err:
-            logging.error("ValidateTrainBlkGrp: %s", str(err))
+        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
@@ -429,12 +528,12 @@ class RtAttenModel(BaseModel):
             logging.warn("Pearson mean for raw_sm_filt_z low, %f", pearson_mean)
 
     def validateTestBlkGrp(self, target_i1, target_i2, outputlns):
+        """Compare the block group patterns file created in this run with that of
+         a previous run (i.e. using the Matlab software) but having the same raw input
+        """
         patterns = MatlabStructDict(self.blkGrp.patterns)
         # load the replay file for target outcomes
-        try:
-            target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
-        except FileNotFoundError as err:
-            logging.error("ValidateTestBlkGrp: %s", str(err))
+        target_patternsdata = utils.loadMatFile(self.run.validationDataFile)
         target_patterns = target_patternsdata.patterns
         strip_patterns(target_patterns, range(target_i1, target_i2))
         cmp_fields = ['raw', 'raw_sm', 'raw_sm_filt', 'raw_sm_filt_z',
@@ -470,10 +569,10 @@ class RtAttenModel(BaseModel):
             outputlns.append("WARN: Pearson mean for raw_sm_filt_z low, {}".format(pearson_mean))
 
     def validateModel(self, newTrainedModel, outputlns):
-        try:
-            target_model = utils.loadMatFile(self.run.validationModel)
-        except FileNotFoundError as err:
-            logging.error("validateModel: %s", str(err))
+        """Compare the trained model for this block group to a trained model
+        created from a previous run using the same data (i.e. from the Matlab version)
+        """
+        target_model = utils.loadMatFile(self.run.validationModel)
         cmp_fields = ['trainLabels', 'weights', 'biases', 'trainPats']
         res = vutils.compareMatStructs(newTrainedModel, target_model, field_list=cmp_fields)
         res_means = {key: value['mean'] for key, value in res.items()}
@@ -493,6 +592,12 @@ class RtAttenModel(BaseModel):
 
 
 def setTrData(patterns, trId, data):
+    """Given a new TR data vector, only use the data if there are no NaN values.
+    If there are NaN values, find the last known good TR (with no NaNs) and use
+    that again for this TR. Otherwise if there are no NaNs then set the patterns.raw
+    to this new data. Update the fileload array to indicate if this data was
+    used (file was loaded) or not.
+    """
     TRsLoaded = np.where(patterns.fileload.squeeze() == 1)
     if np.any(np.isnan(data)) and len(TRsLoaded[0]) > 0:
         # data has NaN in it so load the last good data
@@ -505,25 +610,39 @@ def setTrData(patterns, trId, data):
 
 
 def getSubjectDayDir(subjectNum, subjectDay):
+    """The data directory is structured by subjectNum/subjectDay.
+    Return that sub-directory.
+    """
     subjectDayDir = "subject{}/day{}".format(subjectNum, subjectDay)
     return subjectDayDir
 
 
 def getBlkGrpFilename(sessionId, runId, blkGrpId):
+    """Return block group filename given session, run and blkgrp IDs.
+    """
     filename = "blkGroup_r{}_p{}_{}_py.mat".format(runId, blkGrpId, sessionId)
     return filename
 
 
 def getModelFilename(sessionId, runId):
+    """Return trained model filename given session, run IDs.
+    """
     filename = "trainedModel_r{}_{}_py.mat".format(runId, sessionId)
     return filename
 
 
 def getBlkGrpKey(runId, blkGrpId):
+    """This generates the key for accessing the block group data cache.
+    The key is a combination of the run and block group IDs.
+    """
     return'{}.{}'.format(runId, blkGrpId)
 
 
 def strip_patterns(patterns, prange):
+    """Modify the patterns data to restrict it to values in the range (prange)
+    This is needed for example in validation where we might have patterns data for
+    an entire run, but want to compare the data only for a specific block group.
+    """
     patterns.raw = patterns.raw[prange, :]
     patterns.raw_sm = patterns.raw_sm[prange, :]
     patterns.raw_sm_filt = patterns.raw_sm_filt[prange, :]

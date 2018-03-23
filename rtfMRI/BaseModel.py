@@ -39,6 +39,11 @@ class BaseModel():
         self.blockType = -1
 
     def handleMessage(self, msg):
+        """Handle client request and create reply
+        Return: reply message
+        Exceptions (BaseModel) ValidationError, RequestError
+        Exceptions (RtAttenModel) ...
+        """
         self.validateMsg(msg)
         reply = None
         if msg.event_type == MsgEvent.StartSession:

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Top level routine for server side rtfMRI processing
+Usage: ServerMain.py -p 5200
+Will start a server listening for new connections on port 5200.
+Only one connection (therefore) only one client can be supported at a time.
+The server will receive commands from the client, execute them and reply.
 """
 import sys
 import getopt
@@ -39,15 +43,17 @@ def parseArgs(argv, settings):
 def server_main(argv):
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
+    # Load default settings as a data structure
     settings = StructDict(defaultSettings)
     try:
+        # Parse and add any additional settings from the command line
         settings = parseArgs(argv, settings)
         should_exit = False
         while not should_exit:
             logging.info("RtfMRI: Server Starting")
             rtfmri = RtfMRIServer(settings.port)
             should_exit = rtfmri.RunEventLoop()
-        print("Server shutting down")
+        logging.info("Server shutting down")
     except InvocationError as err:
         print(repr(err))
         printUsage(argv)

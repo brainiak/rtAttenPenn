@@ -2,6 +2,7 @@ name: rtAtten
 channels:
   - defaults
   - conda-forge
+  - brainiak
 dependencies:
   - cython
   - pybind11
@@ -14,4 +15,7 @@ dependencies:
   - ipython
   - jupyter
   - pytest
+  - flake8
+  - mypy
+  - brainiak
 
