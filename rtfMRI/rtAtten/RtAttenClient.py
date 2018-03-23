@@ -96,9 +96,11 @@ class RtAttenClient(RtfMRIClient):
             # Check if images already exist and warn and ask to continue
             firstFileName = self.getDicomFileName(run.scanNum, 1)
             if os.path.exists(firstFileName):
-                resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
-                if resp.upper() != 'Y':
-                    return
+                skipCheck = self.cfg.session.skipConfirmForReprocess
+                if skipCheck is None or skipCheck is False:
+                    resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
+                    if resp.upper() != 'Y':
+                        return
 
         if self.cfg.session.validate or self.cfg.session.replayMatFileMode:
             idx = runId - 1

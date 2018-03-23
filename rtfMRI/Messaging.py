@@ -110,17 +110,21 @@ class RtMessagingServer:
         self.socket.close()
 
     def getRequest(self):
+        """Get the next client request sent over the socket connection.
+        Returns: The message as a StructDict data structure
+        Exceptions: MessageError, PickleError
+        """
         while True:
             try:
                 if self.conn is None:
                     # accept a new connection
                     logging.info("RtMessagingServer: waiting for connection ...")
-                    self.conn, _ = self.socket.accept()
+                    self.conn, _ = self.socket.accept()  # Can raise OSError
                     if useSSL:
                         self.conn = self.sslContext.wrap_socket(self.conn, server_side=True)
                     logging.info("RtMessagingServer: connected to {}".format(self.conn.getpeername()))
                 # read from the connection
-                msg = recvMsg(self.conn)
+                msg = recvMsg(self.conn)  # Can raise MessageError, PickleError
                 return msg
             except ConnectionAbortedError:
                 break
@@ -152,13 +156,19 @@ def sendMsg(conn, msg):
 
 
 def recvMsg(conn):
+    """Recieve a formatted message from a socket connection.
+    Returns: The message as a StructDict data structure
+    Exceptions: MessageError, PickleError
+    """
     packed_hdr = recvall(conn, HDR_SIZE)
     (magic, msg_type, msg_event_type, msg_size) = hdrStruct.unpack(packed_hdr)
-    assert magic == HDR_MAGIC  # TODO scan forward if we get out of sync
-    data = recvall(conn, msg_size)
-    # Do some basic validation before unpickling
+    if magic != HDR_MAGIC:
+        # TODO scan forward if we get out of sync
+        raise MessageError("Invalid magic number {}".format(magic))
+    # Do some basic validation before reading and unpickling, can throw MessageError
     validateHeader(msg_type, msg_event_type, msg_size)
-    msg = pickle.loads(data)
+    data = recvall(conn, msg_size)
+    msg = pickle.loads(data)   # can throw PickleError
     return msg
 
 
@@ -182,8 +192,14 @@ def validateHeader(msg_type, msg_event_type, msg_size):
 
 
 def recvall(conn, count):
+    """Read 'count' bytes from a socket connection. Will loop and continue
+    reading until all count bytes are read.
+    Returns: byte buffer
+    Exceptions: None
+    """
     packetByteList = []
     while count:
+        # socket.recv no longer can throw InterruptedError as of python 3.5
         packet = conn.recv(count)
         if not packet:
             raise socket.error("connection disconnected")

@@ -25,7 +25,7 @@ class RtfMRIServer():
             msg = None
             reply = None
             try:
-                msg = self.messaging.getRequest()
+                msg = self.messaging.getRequest()  # can raise MessageError, PickleError
                 reply = successReply(msg)
                 if msg.type == MsgType.Init:
                     modelType = msg.fields.cfg.modelType
@@ -44,19 +44,19 @@ class RtfMRIServer():
                         raise StateError("No model object exists")
                     reply = self.model.handleMessage(msg)
                     if reply is None:
-                        raise ValueError("Reply is None for msg %r" % (msg.type))
+                        raise RequestError("Reply is None for msg %r" % (msg.type))
                 elif msg.type == MsgType.Shutdown:
                     break
                 else:
                     raise RequestError(
                         "unknown request type '{}'".format(msg.type))
             except RTError as err:
-                logging.warn("RtfMRIServer:RunEventLoop: %r", err)
+                logging.error("RtfMRIServer:RunEventLoop: %r", err)
                 reply = errorReply(msg, err)
             except KeyError as err:
-                logging.warn("RtfMRIServer:RunEventLoop: %r", err)
+                logging.error("RtfMRIServer:RunEventLoop: %r", err)
                 reply = errorReply(msg, RTError(
-                    "Field not found: {}".format(err)))
+                    "Msg field missing: {}".format(err)))
             self.messaging.sendReply(reply)
         return True
 

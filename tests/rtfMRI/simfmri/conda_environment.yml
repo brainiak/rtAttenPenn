@@ -1,0 +1,9 @@
+name: rtAtten
+channels:
+  - defaults
+  - conda-forge
+  - brainiak
+dependencies:
+  - brainiak
+  - flake8
+  - mypy
