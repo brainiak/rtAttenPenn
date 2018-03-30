@@ -1,0 +1,15 @@
+# copy to /usr/lib/systemd/system
+# systemctl enable rtatten-server
+[Unit]
+Description=rtAttenPenn Server
+After=network.target
+
+[Service]
+User=amennen
+Group=amennen
+WorkingDirectory=/home/amennen/rtAttenPenn
+ExecStart=/home/amennen/rtAttenPenn/run-server.sh
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

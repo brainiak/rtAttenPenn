@@ -123,3 +123,6 @@ venv.bak/
 
 # certs
 *.private
+
+# logs
+logs/*
