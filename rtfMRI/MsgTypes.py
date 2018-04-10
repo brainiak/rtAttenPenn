@@ -13,18 +13,20 @@ class MsgType:
 class MsgEvent:
     NoneType        = 31
     FeedSync        = 34
-    RetrieveData    = 35
-    StartSession    = 36
-    EndSession      = 37
-    StartRun        = 38
-    EndRun          = 39
-    TrainModel      = 40
-    StartBlockGroup = 41
-    EndBlockGroup   = 42
-    StartBlock      = 43
-    EndBlock        = 44
-    TRData          = 45
-    MaxType         = 46
+    Ping            = 35
+    RetrieveData    = 36
+    DeleteData      = 37
+    StartSession    = 38
+    EndSession      = 39
+    StartRun        = 40
+    EndRun          = 41
+    TrainModel      = 42
+    StartBlockGroup = 43
+    EndBlockGroup   = 44
+    StartBlock      = 45
+    EndBlock        = 46
+    TRData          = 47
+    MaxType         = 48
 
 class MsgResult:
     NoneType = 0

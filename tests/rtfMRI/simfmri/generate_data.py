@@ -16,7 +16,7 @@ from rtfMRI.RtfMRIClient import loadConfigFile
 def generate_data(cfgFile):
     cfg = loadConfigFile(cfgFile)
     frame = inspect.currentframe()
-    moduleFile = typing.cast(str, frame.f_code.co_filename)
+    moduleFile = typing.cast(str, frame.f_code.co_filename)  # type: ignore
     moduleDir = os.path.dirname(moduleFile)
     cfgDate = parser.parse(cfg.session.date).strftime("%Y%m%d")
     dataDir = os.path.join(cfg.session.dataDir, "subject{}/day{}".

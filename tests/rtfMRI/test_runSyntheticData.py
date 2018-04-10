@@ -12,16 +12,16 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 @pytest.fixture(scope="module")
-def setupTest():
+def setupTest():  # type: ignore
     """Generate synthetic image data for the test runs"""
     gd.generate_data(getCfgFileFullPath())
 
 
 @pytest.fixture(scope="module")
-def getCfgFileFullPath():
+def getCfgFileFullPath():  # type: ignore
     """Get the directory of this test file"""
     frame = inspect.currentframe()
-    moduleFile = typing.cast(str, frame.f_code.co_filename)
+    moduleFile = typing.cast(str, frame.f_code.co_filename)  # type: ignore
     moduleDir = os.path.dirname(moduleFile)
     cfgFullPath = os.path.join(moduleDir, cfgFile)
     return cfgFullPath

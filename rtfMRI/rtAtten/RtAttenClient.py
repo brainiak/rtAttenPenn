@@ -28,10 +28,14 @@ class RtAttenClient(RtfMRIClient):
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
         self.printFirstFilename = True
+        self.logtimeFile = None
 
     def __del__(self):
         if self.observer is not None:
             self.observer.stop()
+        if self.logtimeFile is not None:
+            self.logtimeFile.write("## End Log ##")
+            self.logtimeFile.close()
         super().__del__()
 
     def initSession(self, cfg):
@@ -65,6 +69,15 @@ class RtAttenClient(RtfMRIClient):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
         self.initFileNotifier(self.dirs.imgDir, cfg.session.watchFilePattern)
+
+        # Open file for logging processing time measurements
+        logtimeFilename = os.path.join(self.dirs.dataDir, "logtime.txt")
+        self.logtimeFile = open(logtimeFilename, "a", 1)  # linebuffered=1
+        initLogStr = "## Start Session: date:{} subNum:{} subDay:{} ##\n".format(
+                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                     cfg.session.subjectNum,
+                     cfg.session.subjectDay)
+        self.logtimeFile.write(initLogStr)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
@@ -144,6 +157,7 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
+                    startTime = time.time()
                     self.id_fields.trId = TR.trId
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
@@ -154,6 +168,10 @@ class RtAttenClient(RtfMRIClient):
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
+                    endTime = time.time()
+                    # log the TR processing time
+                    logStr = "TR:{}:{}:{:3} {:.3f}s\n".format(runId, block.blockId, TR.trId, endTime - startTime)
+                    self.logtimeFile.write(logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                     outputPredictionFile(reply.fields.predict, classOutputDir)
                 del self.id_fields.trId
@@ -172,7 +190,13 @@ class RtAttenClient(RtfMRIClient):
             trainCfg.blkGrpRefs = [{'run': 1, 'phase': 2}, {'run': 2, 'phase': 1}]
         else:
             trainCfg.blkGrpRefs = [{'run': run.runId-1, 'phase': 1}, {'run': run.runId, 'phase': 1}]
+        startTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
+        endTime = time.time()
+        # log the model generation time
+        logStr = "Model:{} {:.3f}s\n".format(runId, endTime - startTime)
+        self.logtimeFile.write(logStr)
+        self.logtimeFile.flush()
         outputReplyLines(reply.fields.outputlns, outputFile)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
@@ -226,10 +250,12 @@ class RtAttenClient(RtfMRIClient):
         fileSize = 0
         totalWait = 0.0
         waitIncrement = 0.01
-        while fileSize < self.cfg.session.minExpectedDicomSize and totalWait < 0.2:
-            fileSize = os.path.getsize(specificFileName)
+        while fileSize < self.cfg.session.minExpectedDicomSize and totalWait <= 0.3:
             time.sleep(waitIncrement)
             totalWait += waitIncrement
+            fileSize = os.path.getsize(specificFileName)
+        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".format(fileNum, fileSize, totalWait)
+        self.logtimeFile.write(logStr)
         _, file_extension = os.path.splitext(specificFileName)
         if file_extension == '.mat':
             data = utils.loadMatFile(specificFileName)
@@ -259,6 +285,20 @@ class RtAttenClient(RtfMRIClient):
         self.observer.schedule(self.fileNotifyHandler, imgDir, recursive=False)
         self.observer.start()
 
+    def deleteSessionData(self):
+        filePattern = os.path.join(self.dirs.serverDataDir,
+                                   "*" + self.id_fields.sessionId + "*.mat")
+        fileInfo = StructDict()
+        fileInfo.filePattern = filePattern
+        reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)
+        outputReplyLines(reply.fields.outputlns, None)
+
+    def ping(self):
+        startTime = time.time()
+        self.sendCmdExpectSuccess(MsgEvent.Ping, None)
+        endTime = time.time()
+        print("RTT: {:.2f}ms".format(endTime-startTime))
+
 
 class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
     def __init__(self, q, patterns):
@@ -273,7 +313,8 @@ def outputReplyLines(lines, filehandle):
     if lines is not None:
         for line in lines:
             print(line)
-            filehandle.write(line + '\n')
+            if filehandle is not None:
+                filehandle.write(line + '\n')
 
 
 def outputPredictionFile(predict, classOutputDir):

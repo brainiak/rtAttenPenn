@@ -37,7 +37,7 @@ class Test_Messaging(unittest.TestCase):
         msg.type = MsgType.Command
         msg.event_type = MsgEvent.TRData
         msg.fields.a = 10
-        msg.data = [1, 2, 3, 4, 5]
+        msg.data = b"1, 2, 3, 4, 5"
         client.sendRequest(msg)
         reply = client.getReply()
         self.assertTrue(reply.type == MsgType.Reply)
