@@ -68,6 +68,8 @@ class BaseModel():
             reply = self.TrainModel(msg)
         elif msg.event_type == MsgEvent.RetrieveData:
             reply = self.RetrieveData(msg)
+        elif msg.event_type == MsgEvent.DeleteData:
+            reply = self.DeleteData(msg)
         else:
             reply = self.createReplyMessage(msg, MsgResult.Error)
         return reply
@@ -182,3 +184,6 @@ class BaseModel():
             reply = self.createReplyMessage(msg, MsgResult.Error)
             reply.data = "Error reading file: %s: %s" % (filename, str(err))
         return reply
+
+    def DeleteData(self, msg):
+        return self.createReplyMessage(msg, MsgResult.Error)

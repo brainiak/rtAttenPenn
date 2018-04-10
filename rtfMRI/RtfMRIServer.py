@@ -40,9 +40,12 @@ class RtfMRIServer():
                             "unknown model type '{}'".
                             format(modelType))
                 elif msg.type == MsgType.Command:
-                    if self.model is None:
+                    if msg.event_type == MsgEvent.Ping:
+                        reply = successReply(msg)
+                    elif self.model is not None:
+                        reply = self.model.handleMessage(msg)
+                    else:
                         raise StateError("No model object exists")
-                    reply = self.model.handleMessage(msg)
                     if reply is None:
                         raise RequestError("Reply is None for msg %r" % (msg.type))
                 elif msg.type == MsgType.Shutdown:

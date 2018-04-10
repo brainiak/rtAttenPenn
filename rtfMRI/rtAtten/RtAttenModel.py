@@ -8,6 +8,7 @@ and TRData funtions to handle data specific to the experiment
 """
 import os
 import time
+import glob
 import datetime
 import logging
 import numpy as np  # type: ignore
@@ -455,6 +456,25 @@ class RtAttenModel(BaseModel):
         fullFileName = os.path.join(self.session.serverDataDir, subjectDayDir, fileInfo.filename)
         msg.fields.cfg = fullFileName
         reply = super().RetrieveData(msg)
+        return reply
+
+    def DeleteData(self, msg):
+        """Delete data files matching the supplied pattern"""
+        reply = self.createReplyMessage(msg, MsgResult.Success)
+        fileInfo = msg.fields.cfg
+        filePattern = fileInfo.filePattern
+        # check that pattern is in the server directory
+        if filePattern.startswith(self.dirs.dataDir):
+            reply.fields.outputlns.append("Deleted:")
+            for filename in glob.glob(filePattern):
+                if os.path.isfile(filename):
+                    reply.fields.outputlns.append(filename)
+                    os.remove(filename)
+        else:
+            # invalid filepattern
+            reply = self.createReplyMessage(msg, MsgResult.Error)
+            reply.data = "Invalid filepattern: Must start with session directory %s"\
+                         % (self.dirs.dataDir)
         return reply
 
     def getPrevBlkGrp(self, sessionId, runId, blkGrpId):

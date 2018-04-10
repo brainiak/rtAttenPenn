@@ -15,7 +15,7 @@ from rtfMRI.StructDict import StructDict, MatlabStructDict  # type: ignore
 
 
 @pytest.fixture(scope="module")
-def matTestFilename():
+def matTestFilename():  # type: ignore
     return os.path.join(os.path.dirname(__file__), 'test_input/teststruct.mat')
 
 
@@ -71,7 +71,7 @@ class TestFindNewestFile:
 
 class TestMatlabStructDict:
     @pytest.fixture(scope="class")
-    def testStruct(cls, matTestFilename):
+    def testStruct(cls, matTestFilename):  # type: ignore
         print("## INIT TESTSTRUCT ##")
         teststruct0 = sio.loadmat(matTestFilename)
         testStruct = MatlabStructDict(teststruct0, 'test')
