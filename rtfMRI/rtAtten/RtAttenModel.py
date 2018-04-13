@@ -214,9 +214,18 @@ class RtAttenModel(BaseModel):
             patterns.phase1Std[0, :] = np.std(patterns.raw_sm_filt[i1:i2, :], axis=0)
             patterns.phase1Var[0, :] = patterns.phase1Std[0, :] ** 2
             tileSize = [patterns.raw_sm_filt[i1:i2, :].shape[0], 1]
-            patterns.raw_sm_filt_z[i1:i2, :] = np.divide(
-                (patterns.raw_sm_filt[i1:i2, :] - np.tile(patterns.phase1Mean, tileSize)),
-                np.tile(patterns.phase1Std, tileSize))
+            if self.blkGrp.blkGrpId == 1:
+                patterns.raw_sm_filt_z[i1:i2, :] = np.divide(
+                        (patterns.raw_sm_filt[i1:i2, :] - np.tile(patterns.phase1Mean, tileSize)),
+                        np.tile(patterns.phase1Std, tileSize))
+            else:
+                # this is if we're training in the second phase of run 1
+                # we already calculated the zscored data so we don't want to do it again
+                if self.run.runId != 1:
+                    errorReply = self.createReplyMessage(msg, MsgResult.Error)
+                    errorReply.data = "Wrong block group ID for run 1 phase 2 case!!"
+                    return errorReply
+            
             # std dev across all volumes per voxel
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
@@ -271,7 +280,7 @@ class RtAttenModel(BaseModel):
         if TR.trId is None:
             errorReply.data = "missing TR.trId"
             return errorReply
-        if TR.type != self.blkGrp.type:
+        if TR.type != 0 and TR.type != self.blkGrp.type:
             errorReply.data = "TR.type and blkGrp.type do not agree!!"
             return errorReply
         outputlns = []  # type: ignore
@@ -291,27 +300,26 @@ class RtAttenModel(BaseModel):
         
         if self.blkGrp.blkGrpId == 1:
             # we only have current data
-            if TR.trID == patterns.firstTestTR - 1:
+            if TR.trId == self.run.firstTestTR - 1:
                 # then filter between runs here
                 patterns.raw_sm_filt[0:TR.trId+1, :] = \
                     highPassBetweenRuns(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
-            elif TR.trID >= patterns.firstTestTR:
+            elif TR.trId >= self.run.firstTestTR:
                 # then do highpass in real-time
                 patterns.raw_sm_filt[TR.trId, :] = \
-                    highPassRealTime(patterns.raw_sm[0:TR.trID+1, :], self.run.TRTime, self.session.cutoff)
+                    highPassRealTime(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
         elif self.blkGrp.blkGrpId == 2:
             # we want to get combined data
             combined_raw_sm = self.blkGrp.combined_raw_sm
             combined_TRid = self.blkGrp.firstVol + TR.trId
 
+            combined_raw_sm[combined_TRid] = patterns.raw_sm[TR.trId]
             patterns.raw_sm_filt[TR.trId, :] = \
-                highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.session.cutoff)
-            if self.blkGrp.type == 1:
-                # this happens with run 1 phase 2 when we're still training the data
-                pass
-            else:  # z score before predicting testing data
-                patterns.raw_sm_filt_z[TR.trId, :] = \
-                    (patterns.raw_sm_filt[TR.trId, :] - patterns.phase1Mean[0, :]) / patterns.phase1Std[0, :]        
+                highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.session.cutoff) 
+            patterns.raw_sm_filt_z[TR.trId, :] = \
+                    (patterns.raw_sm_filt[TR.trId, :] - patterns.phase1Mean[0, :]) / patterns.phase1Std[0, :]  
+            
+                 
         if TR.type == 2 or (TR.type == 0 and self.blkGrp.type == 2):
             # Testing
             predict_result, outputlns = self.Predict(TR)
