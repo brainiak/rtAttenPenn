@@ -127,10 +127,6 @@ class RtAttenModel(BaseModel):
         if blkGrp.blkGrpId not in (1, 2):
             errorReply.data = "StartBlkGrp: BlkGrpId {} not valid" % (blkGrp.blkGrpId)
             return errorReply
-        blkGrp.legacyRun1Phase2Mode = False
-        if run.runId == 1 and blkGrp.blkGrpId == 2 and self.session.legacyRun1Phase2Mode:
-            # Handle as legacy matlab where run1, phase2 is treated as testing
-            blkGrp.legacyRun1Phase2Mode = True
         blkGrp.patterns = StructDict()
         blkGrp.patterns.raw = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
         blkGrp.patterns.raw_sm = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
@@ -151,7 +147,7 @@ class RtAttenModel(BaseModel):
         blkGrp.patterns.fileload = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint8)
         blkGrp.patterns.fileNum = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint16)
         self.blkGrp = blkGrp
-        if self.blkGrp.type == 2 or blkGrp.legacyRun1Phase2Mode:
+        if self.blkGrp.type == 2 or (run.runId == 1 and blkGrp.blkGrpId==2):
             # ** Realtime Feedback Phase ** #
             try:
                 # get blkGrp from phase 1
@@ -195,7 +191,7 @@ class RtAttenModel(BaseModel):
         validation_i1 = self.blkGrp.firstVol
         validation_i2 = validation_i1 + self.blkGrp.nTRs
 
-        if self.blkGrp.type == 2 or self.blkGrp.legacyRun1Phase2Mode:  # RT predict
+        if self.blkGrp.type == 2:  # RT predict
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
             # Do Validation
@@ -211,21 +207,12 @@ class RtAttenModel(BaseModel):
             outputlns.append('\n*********************************************')
             outputlns.append('beginning highpassfilter/zscore...')
 
-            patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :],
-                                                                 self.run.TRTime, self.session.cutoff)
-            # if self.blkGrp.blkGrpId == 1:
+            
             # Calculate mean and stddev values for phase1 data (i.e. 1st blkGrp)
             patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :], axis=0)
             patterns.phase1Y[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :]**2, axis=0)
             patterns.phase1Std[0, :] = np.std(patterns.raw_sm_filt[i1:i2, :], axis=0)
             patterns.phase1Var[0, :] = patterns.phase1Std[0, :] ** 2
-            # else:
-            #     # get blkGrp from phase 1
-            #     prev_bg = self.getPrevBlkGrp(self.id_fields.sessionId, self.id_fields.runId, 1)
-            #     patterns.phase1Mean[0, :] = prev_bg.patterns.phase1Mean[0, :]
-            #     patterns.phase1Y[0, :] = prev_bg.patterns.phase1Y[0, :]
-            #     patterns.phase1Std[0, :] = prev_bg.patterns.phase1Std[0, :]
-            #     patterns.phase1Var[0, :] = prev_bg.patterns.phase1Var[0, :]
             tileSize = [patterns.raw_sm_filt[i1:i2, :].shape[0], 1]
             patterns.raw_sm_filt_z[i1:i2, :] = np.divide(
                 (patterns.raw_sm_filt[i1:i2, :] - np.tile(patterns.phase1Mean, tileSize)),
@@ -272,6 +259,7 @@ class RtAttenModel(BaseModel):
         order to later create a ML model
         In realtime prediction case, do classification based on the loaded model
         """
+        
         TR = msg.fields.cfg
         reply = super().TRData(msg)
         errorReply = self.createReplyMessage(msg, MsgResult.Error)
@@ -282,6 +270,9 @@ class RtAttenModel(BaseModel):
             return errorReply
         if TR.trId is None:
             errorReply.data = "missing TR.trId"
+            return errorReply
+        if TR.type != self.blkGrp.type:
+            errorReply.data = "TR.type and blkGrp.type do not agree!!"
             return errorReply
         outputlns = []  # type: ignore
         self.run.fileCounter = self.run.fileCounter + 1
@@ -296,14 +287,38 @@ class RtAttenModel(BaseModel):
 
         patterns.raw_sm[TR.trId, :] =\
             smooth(patterns.raw[TR.trId, :], self.session.roiDims, self.session.roiInds, self.session.FWHM)
+        # add the making into the filter version
+        
+        if self.blkGrp.blkGrpId == 1:
+            # we only have current data
+            if TR.trID == patterns.firstTestTR - 1:
+                # then filter between runs here
+                patterns.raw_sm_filt[0:TR.trId+1, :] = \
+                    highPassBetweenRuns(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
+            elif TR.trID >= patterns.firstTestTR:
+                # then do highpass in real-time
+                patterns.raw_sm_filt[TR.trId, :] = \
+                    highPassRealTime(patterns.raw_sm[0:TR.trID+1, :], self.run.TRTime, self.session.cutoff)
+        elif self.blkGrp.blkGrpId == 2:
+            # we want to get combined data
+            combined_raw_sm = self.blkGrp.combined_raw_sm
+            combined_TRid = self.blkGrp.firstVol + TR.trId
 
-        if TR.type == 2 or (TR.type == 0 and self.blkGrp.type == 2) or\
-                self.blkGrp.legacyRun1Phase2Mode:
+            patterns.raw_sm_filt[TR.trId, :] = \
+                highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.session.cutoff)
+            if self.blkGrp.type == 1:
+                # this happens with run 1 phase 2 when we're still training the data
+                pass
+            else:  # z score before predicting testing data
+                patterns.raw_sm_filt_z[TR.trId, :] = \
+                    (patterns.raw_sm_filt[TR.trId, :] - patterns.phase1Mean[0, :]) / patterns.phase1Std[0, :]        
+        if TR.type == 2 or (TR.type == 0 and self.blkGrp.type == 2):
             # Testing
             predict_result, outputlns = self.Predict(TR)
             reply.fields.predict = predict_result
         elif TR.type == 1 or (TR.type == 0 and self.blkGrp.type == 1):
             # Training
+            
             output_str = '{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{:d}\t{}\t{:d}\t{:.3f}\t{:.3f}'.format(
                 self.id_fields.runId, self.id_fields.blockId, TR.trId, TR.type, TR.attCateg, TR.stim,
                 patterns.fileNum[0, TR.trId], patterns.fileload[0, TR.trId], np.nan, np.nan)
@@ -320,15 +335,6 @@ class RtAttenModel(BaseModel):
         predict_result = StructDict()
         outputlns = []
         patterns = self.blkGrp.patterns
-        combined_raw_sm = self.blkGrp.combined_raw_sm
-        combined_TRid = self.blkGrp.firstVol + TR.trId
-
-        combined_raw_sm[combined_TRid] = patterns.raw_sm[TR.trId]
-        patterns.raw_sm_filt[TR.trId, :] = \
-            highPassRealTime(combined_raw_sm[0:combined_TRid+1, :], self.run.TRTime, self.session.cutoff)
-        patterns.raw_sm_filt_z[TR.trId, :] = \
-            (patterns.raw_sm_filt[TR.trId, :] - patterns.phase1Mean[0, :]) / patterns.phase1Std[0, :]
-
         if self.run.rtfeedback:
             TR_regressor = np.array(TR.regressor)
             if np.any(TR_regressor):
