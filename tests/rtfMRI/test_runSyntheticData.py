@@ -30,7 +30,7 @@ def getCfgFileFullPath():  # type: ignore
 def test_runSyntheticData():
     print("rtfMRI: test_runSyntheticData")
     setupTest()
-    client_args = ['ClientMain.py', '-l', '-e', getCfgFileFullPath()]
+    client_args = ['ClientMain.py', '-l', '-p', '5200', '-e', getCfgFileFullPath()]
     # import pdb; pdb.set_trace()
     result = ClientMain.client_main(client_args)
     assert result is True

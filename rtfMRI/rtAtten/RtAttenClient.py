@@ -157,7 +157,7 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
-                    startTime = time.time()
+
                     self.id_fields.trId = TR.trId
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
@@ -167,6 +167,7 @@ class RtAttenClient(RtfMRIClient):
                     else:
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
+                    startTime = time.time()
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     endTime = time.time()
                     # log the TR processing time
