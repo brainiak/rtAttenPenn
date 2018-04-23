@@ -5,6 +5,7 @@ Utils - various utilites for rtfMRI
 import os
 import time
 import glob
+import subprocess
 import numpy as np  # type: ignore
 import scipy.io as sio  # type: ignore
 from .StructDict import MatlabStructDict, isStructuredArray
@@ -24,10 +25,10 @@ def loadMatFile(filename: str) -> MatlabStructDict:
         raise FileNotFoundError("File \'{}\' not found".format(filename))
     top_struct = sio.loadmat(filename)
     substruct_names = [key for key in top_struct.keys() if isStructuredArray(top_struct[key])]
-    if len(substruct_names) > 1:
-        # Currently we only support one sub structured array
-        raise TooManySubStructsError(
-            "Too many substructs: {}".format(substruct_names))
+    # if len(substruct_names) > 1:
+    #     # Currently we only support one sub structured array
+    #     raise TooManySubStructsError(
+    #         "Too many substructs: {}".format(substruct_names))
     substruct_name = substruct_names[0] if len(substruct_names) > 0 else None
     matstruct = MatlabStructDict(top_struct, substruct_name)
     return matstruct
@@ -82,6 +83,14 @@ def flatten_1Ds(M):
 def dateStr30(timeval):
     return time.strftime("%Y%m%dT%H%M%S", timeval)
 
+
+def getGitCodeId():
+    branchB = subprocess.check_output(['bash', '-c', 'git symbolic-ref --short -q HEAD'])
+    branchName = branchB.decode("utf-8").rstrip()
+    commitB = subprocess.check_output(['bash', '-c', 'git rev-parse --short HEAD'])
+    commitId = commitB.decode("utf-8").rstrip()
+    gitCode = branchName + ":" + commitId
+    return gitCode
 
 '''
 import inspect  # type: ignore
