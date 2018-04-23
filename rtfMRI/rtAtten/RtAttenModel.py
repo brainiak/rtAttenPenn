@@ -206,7 +206,9 @@ class RtAttenModel(BaseModel):
         elif self.blkGrp.type == 1:  # training
             outputlns.append('\n*********************************************')
             outputlns.append('beginning highpassfilter/zscore...')
-
+            if self.blkGrp.blkGrpId == 1:
+                patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :],
+                                                                 self.run.TRTime, self.session.cutoff)
             
             # Calculate mean and stddev values for phase1 data (i.e. 1st blkGrp)
             patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :], axis=0)
@@ -215,6 +217,7 @@ class RtAttenModel(BaseModel):
             patterns.phase1Var[0, :] = patterns.phase1Std[0, :] ** 2
             tileSize = [patterns.raw_sm_filt[i1:i2, :].shape[0], 1]
             if self.blkGrp.blkGrpId == 1:
+                
                 patterns.raw_sm_filt_z[i1:i2, :] = np.divide(
                         (patterns.raw_sm_filt[i1:i2, :] - np.tile(patterns.phase1Mean, tileSize)),
                         np.tile(patterns.phase1Std, tileSize))
@@ -300,14 +303,15 @@ class RtAttenModel(BaseModel):
         
         if self.blkGrp.blkGrpId == 1:
             # we only have current data
-            if TR.trId == self.run.firstTestTR - 1:
-                # then filter between runs here
-                patterns.raw_sm_filt[0:TR.trId+1, :] = \
-                    highPassBetweenRuns(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
-            elif TR.trId >= self.run.firstTestTR:
-                # then do highpass in real-time
-                patterns.raw_sm_filt[TR.trId, :] = \
-                    highPassRealTime(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
+            pass
+            #if TR.trId == self.run.firstTestTR - 1:
+            #    # then filter between runs here
+            #    patterns.raw_sm_filt[0:TR.trId+1, :] = \
+            #        highPassBetweenRuns(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
+            #elif TR.trId >= self.run.firstTestTR:
+            #    # then do highpass in real-time
+            ##    patterns.raw_sm_filt[TR.trId, :] = \
+            #        highPassRealTime(patterns.raw_sm[0:TR.trId+1, :], self.run.TRTime, self.session.cutoff)
         elif self.blkGrp.blkGrpId == 2:
             # we want to get combined data
             combined_raw_sm = self.blkGrp.combined_raw_sm
