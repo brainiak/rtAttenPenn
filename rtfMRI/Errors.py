@@ -29,3 +29,8 @@ class MessageError(RTError):
 class InvocationError(RTError):
     """program arguments incorrect"""
     pass
+
+
+class VersionError(RTError):
+    """Client/Server code versions don't agree"""
+    pass

@@ -1,9 +1,12 @@
 import os
 import argparse
 import numpy as np  # type: ignore
-from rtfMRI.RtfMRIClient import loadConfigFile
+import sys
+# Add current working dir so main can be run from the top level rtAttenPenn directory
+sys.path.append(os.getcwd())
 import rtfMRI.utils as utils
 import rtfMRI.ValidationUtils as vutils
+from rtfMRI.RtfMRIClient import loadConfigFile
 from rtfMRI.Errors import ValidationError
 from rtfMRI.rtAtten.RtAttenModel import getSubjectDayDir
 
@@ -124,7 +127,9 @@ def validateFileprocessingTxt(matDataDir, pyDataDir, runId):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    descStr = 'Compare and validate that python and matlab output agree. Specify '\
+        'either a config file or a directory and runID to test'
+    parser = argparse.ArgumentParser(description=descStr)
     parser.add_argument('-e', action="store", dest="cfg")
     parser.add_argument('-d', action="store", dest="dir")
     parser.add_argument('-r', action="store", dest="runId", type=int)
