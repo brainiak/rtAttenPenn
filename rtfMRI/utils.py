@@ -84,13 +84,20 @@ def dateStr30(timeval):
     return time.strftime("%Y%m%dT%H%M%S", timeval)
 
 
+# define as global variable
+gitCodeId = None
+
+
 def getGitCodeId():
-    branchB = subprocess.check_output(['bash', '-c', 'git symbolic-ref --short -q HEAD'])
-    branchName = branchB.decode("utf-8").rstrip()
-    commitB = subprocess.check_output(['bash', '-c', 'git rev-parse --short HEAD'])
-    commitId = commitB.decode("utf-8").rstrip()
-    gitCode = branchName + ":" + commitId
-    return gitCode
+    global gitCodeId
+    if gitCodeId is None:
+        branchB = subprocess.check_output(['bash', '-c', 'git symbolic-ref --short -q HEAD'])
+        branchName = branchB.decode("utf-8").rstrip()
+        commitB = subprocess.check_output(['bash', '-c', 'git rev-parse --short HEAD'])
+        commitId = commitB.decode("utf-8").rstrip()
+        gitCodeId = branchName + ":" + commitId
+    return gitCodeId
+
 
 '''
 import inspect  # type: ignore

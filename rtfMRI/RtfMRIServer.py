@@ -9,8 +9,9 @@ import logging
 from .BaseModel import BaseModel
 from .rtAtten.RtAttenModel import RtAttenModel
 from .MsgTypes import MsgType, MsgEvent, MsgResult
+from .utils import getGitCodeId
 from .Messaging import RtMessagingServer, Message
-from .Errors import RequestError, StateError, RTError
+from .Errors import RequestError, StateError, VersionError, RTError
 
 
 class RtfMRIServer():
@@ -39,6 +40,12 @@ class RtfMRIServer():
                         raise RequestError(
                             "unknown model type '{}'".
                             format(modelType))
+                    # Check that source code versions match
+                    clientGitCodeId = msg.fields.cfg.gitCodeId
+                    serverGitCodeId = getGitCodeId()
+                    if serverGitCodeId != clientGitCodeId:
+                        raise VersionError("Mismatching gitCodeId {} {}".
+                                           format(clientGitCodeId, serverGitCodeId))
                 elif msg.type == MsgType.Command:
                     if msg.event_type == MsgEvent.Ping:
                         reply = successReply(msg)
@@ -53,6 +60,8 @@ class RtfMRIServer():
                 else:
                     raise RequestError(
                         "unknown request type '{}'".format(msg.type))
+            except VersionError as err:
+                reply = warningReply(msg, err)
             except RTError as err:
                 logging.error("RtfMRIServer:RunEventLoop: %r", err)
                 reply = errorReply(msg, err)
@@ -68,6 +77,20 @@ def errorReply(msg, error):
     rmsg = Message()
     rmsg.type = MsgType.Reply
     rmsg.result = MsgResult.Error
+    if msg is not None:
+        rmsg.id = msg.id
+        rmsg.event_type = msg.event_type
+        rmsg.data = repr(error).encode()
+    else:
+        rmsg.id = 0
+        rmsg.event_type = MsgEvent.NoneType
+    return rmsg
+
+
+def warningReply(msg, error):
+    rmsg = Message()
+    rmsg.type = MsgType.Reply
+    rmsg.result = MsgResult.Warning
     if msg is not None:
         rmsg.id = msg.id
         rmsg.event_type = msg.event_type

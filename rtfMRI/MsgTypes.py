@@ -32,4 +32,5 @@ class MsgResult:
     NoneType = 0
     Success  = 1
     Error    = 2
-    MaxType  = 3
+    Warning  = 3
+    MaxType  = 4
