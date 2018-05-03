@@ -8,7 +8,7 @@ After=network.target
 User=amennen
 Group=amennen
 WorkingDirectory=/home/amennen/rtAttenPenn
-ExecStart=/home/amennen/rtAttenPenn/run-server.sh
+ExecStart=/home/amennen/rtAttenPenn/scripts/run-server.sh
 ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
