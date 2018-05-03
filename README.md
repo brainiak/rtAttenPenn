@@ -19,8 +19,8 @@ The code expects a data/ directory
 
 ## Phantom data:
 Available on ```spock.pni.princeton.edu```
-- images in ```/scratch/amennen/20180301.0301181_rtAttenPenn.0301181_rtAttenPenn```
-- datafiles in ```/scratch/amennen/subject7```
+- images in ```/scratch/amennen/20180301.0301181_rtAttenPenn.0301181_rtAttenPenn``` to ```data/img```
+- datafiles in ```/scratch/amennen/subject7``` to ```data```
 
 ## Issues
 - Add z-scoring [scipy link](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.zscore.html)
