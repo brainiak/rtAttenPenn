@@ -18,4 +18,3 @@ dependencies:
   - flake8
   - mypy
   - brainiak
-

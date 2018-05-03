@@ -49,11 +49,11 @@ else
     git clone https://github.com/brainiak/rtAttenPenn.git
     cd rtAttenPenn/
 fi
-if [ ! -e "conda_environment.yml" ]; then
-    echo "Missing conda_environment.yml file"
+if [ ! -e "environment.yml" ]; then
+    echo "Missing environment.yml file"
     exit -1;
 fi
-conda env create -f conda_environment.yml
+conda env create -f environment.yml
 conda activate rtAtten
 python setup.py build_ext --inplace
 cd certs
