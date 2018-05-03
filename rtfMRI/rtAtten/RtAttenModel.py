@@ -150,6 +150,9 @@ class RtAttenModel(BaseModel):
         # blkGrp.patterns.fileAvail = np.zeros((1, blkGrp.nTRs), dtype=np.uint8)
         blkGrp.patterns.fileload = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint8)
         blkGrp.patterns.fileNum = np.full((1, blkGrp.nTRs), np.nan, dtype=np.uint16)
+        blkGrp.FWHM = self.session.FWHM
+        blkGrp.cutoff = self.session.cutoff
+        blkGrp.gitCodeId = utils.getGitCodeId()
         self.blkGrp = blkGrp
         if self.blkGrp.type == 2 or blkGrp.legacyRun1Phase2Mode:
             # ** Realtime Feedback Phase ** #
@@ -213,19 +216,12 @@ class RtAttenModel(BaseModel):
 
             patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :],
                                                                  self.run.TRTime, self.session.cutoff)
-            # if self.blkGrp.blkGrpId == 1:
-            # Calculate mean and stddev values for phase1 data (i.e. 1st blkGrp)
+
             patterns.phase1Mean[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :], axis=0)
             patterns.phase1Y[0, :] = np.mean(patterns.raw_sm_filt[i1:i2, :]**2, axis=0)
             patterns.phase1Std[0, :] = np.std(patterns.raw_sm_filt[i1:i2, :], axis=0)
             patterns.phase1Var[0, :] = patterns.phase1Std[0, :] ** 2
-            # else:
-            #     # get blkGrp from phase 1
-            #     prev_bg = self.getPrevBlkGrp(self.id_fields.sessionId, self.id_fields.runId, 1)
-            #     patterns.phase1Mean[0, :] = prev_bg.patterns.phase1Mean[0, :]
-            #     patterns.phase1Y[0, :] = prev_bg.patterns.phase1Y[0, :]
-            #     patterns.phase1Std[0, :] = prev_bg.patterns.phase1Std[0, :]
-            #     patterns.phase1Var[0, :] = prev_bg.patterns.phase1Var[0, :]
+
             tileSize = [patterns.raw_sm_filt[i1:i2, :].shape[0], 1]
             patterns.raw_sm_filt_z[i1:i2, :] = np.divide(
                 (patterns.raw_sm_filt[i1:i2, :] - np.tile(patterns.phase1Mean, tileSize)),
@@ -282,6 +278,9 @@ class RtAttenModel(BaseModel):
             return errorReply
         if TR.trId is None:
             errorReply.data = "missing TR.trId"
+            return errorReply
+        if TR.type != 0 and TR.type != self.blkGrp.type:
+            errorReply.data = "TR.type and blkGrp.type do not agree!!"
             return errorReply
         outputlns = []  # type: ignore
         self.run.fileCounter = self.run.fileCounter + 1
@@ -413,6 +412,9 @@ class RtAttenModel(BaseModel):
         newTrainedModel.trainedModel.biases = np.concatenate((lrc1.intercept_, lrc2.intercept_)).reshape(1, 2)
         newTrainedModel.trainPats = trainPats
         newTrainedModel.trainLabels = trainLabels
+        newTrainedModel.FWHM = self.session.FWHM
+        newTrainedModel.cutoff = self.session.cutoff
+        newTrainedModel.gitCodeId = utils.getGitCodeId()
 
         trainEnd = time.time()  # end timing
         trainingOnlyTime = trainEnd - trainStart

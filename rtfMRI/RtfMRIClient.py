@@ -9,6 +9,7 @@ import pathlib
 import logging
 from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
+from .utils import getGitCodeId
 from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .Errors import ValidationError, RequestError, InvocationError
 
@@ -42,6 +43,7 @@ class RtfMRIClient():
         self.modelName = modelName
         msgfields = StructDict()
         msgfields.modelType = modelName
+        msgfields.gitCodeId = getGitCodeId()
         logging.debug("Init Model {}".format(modelName))
         self.sendExpectSuccess(MsgType.Init, MsgEvent.NoneType, msgfields)
 
@@ -98,8 +100,17 @@ class RtfMRIClient():
                 reasonStr = reply.data
             elif len(reply.data) < 1024:
                 reasonStr = str(reply.data, 'utf-8')
-            raise RequestError("type:{} event:{} fields:{}: {}".format(
-                msg_type, msg_event, msg.fields, reasonStr))
+
+            if reply.result == MsgResult.Warning:
+                logging.warn(reasonStr)
+                print("WARNING!!: {}".format(reasonStr))
+                resp = input("WARNING!!: {}. Continue? Y/N [N]:".format(reasonStr))
+                if resp.upper() != 'Y':
+                    raise RequestError("type:{} event:{} fields:{}: {}".format(
+                        msg_type, msg_event, msg.fields, reasonStr))
+            else:
+                raise RequestError("type:{} event:{} fields:{}: {}".format(
+                    msg_type, msg_event, msg.fields, reasonStr))
         assert reply.id == msg.id
         return reply
 
