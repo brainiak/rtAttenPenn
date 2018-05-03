@@ -5,7 +5,7 @@ model = "rtAtten"
 
 [session]
 rtData = true
-date = "today"  # i.e. "2018-03-01" or "03/01/2018" or "today" or "now" etc.
+date = "2018-03-01"  # i.e. "2018-03-01" or "03/01/2018" or "today" or "now" etc.
 sessionId = "20180310T123000"
 subjectName = "0301181_rtAttenPenn"
 subjectNum = 7
