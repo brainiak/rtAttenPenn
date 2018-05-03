@@ -1,8 +1,8 @@
 """Convert a Matlab patternsDesign file to a config file for rtfMRI"""
 import os
 import numpy as np  # type: ignore
-from ..StructDict import StructDict
-from ..utils import loadMatFile, findNewestFile
+from rtfMRI.StructDict import StructDict
+from rtfMRI.utils import loadMatFile, findNewestFile
 
 
 def createRunConfig(session, runId):

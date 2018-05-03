@@ -15,11 +15,11 @@ import numpy as np  # type: ignore
 from enum import Enum, unique
 import scipy.io as sio  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
-import rtfMRI.utils as utils
-import rtfMRI.ValidationUtils as vutils
-from ..MsgTypes import MsgResult
-from ..BaseModel import BaseModel
-from ..StructDict import StructDict, MatlabStructDict
+from rtfMRI import utils
+from rtfMRI import ValidationUtils as vutils
+from rtfMRI.MsgTypes import MsgResult
+from rtfMRI.BaseModel import BaseModel
+from rtfMRI.StructDict import StructDict, MatlabStructDict
 from .smooth import smooth
 from .highpassFunc import highPassRealTime, highPassBetweenRuns
 from .Test_L2_RLR_realtime import Test_L2_RLR_realtime

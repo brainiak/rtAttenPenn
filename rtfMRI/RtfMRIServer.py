@@ -7,7 +7,7 @@ RtfMRIServer Module - Server handler for loading and running a model
 """
 import logging
 from .BaseModel import BaseModel
-from .rtAtten.RtAttenModel import RtAttenModel
+from rtAtten.RtAttenModel import RtAttenModel
 from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .utils import getGitCodeId
 from .Messaging import RtMessagingServer, Message

@@ -15,7 +15,7 @@ from rtfMRI.StructDict import StructDict
 from rtfMRI.Errors import InvocationError
 
 defaultSettings = {
-    'port': 5500,
+    'port': 5200,
 }
 
 
