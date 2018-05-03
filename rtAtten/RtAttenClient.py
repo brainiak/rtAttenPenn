@@ -157,7 +157,6 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
-
                     self.id_fields.trId = TR.trId
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
