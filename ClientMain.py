@@ -6,17 +6,17 @@ import sys
 import threading
 import getopt
 import logging
+from rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
-from rtfMRI.rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.BaseClient import BaseClient
 from rtfMRI.StructDict import StructDict
 from rtfMRI.Errors import InvocationError, RequestError
 
 defaultSettings = StructDict({
     'addr': 'localhost',
-    'port': 5500,
+    'port': 5200,
     'model': None,
-    'experiment_file': 'experiment.toml',
+    'experiment_file': 'conf/example.toml',
     'run_local': False
 })
 
