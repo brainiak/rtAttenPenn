@@ -279,6 +279,9 @@ class RtAttenModel(BaseModel):
         if TR.trId is None:
             errorReply.data = "missing TR.trId"
             return errorReply
+        if TR.type != 0 and TR.type != self.blkGrp.type:
+            errorReply.data = "TR.type and blkGrp.type do not agree!!"
+            return errorReply
         outputlns = []  # type: ignore
         self.run.fileCounter = self.run.fileCounter + 1
 
