@@ -7,7 +7,7 @@ from rtfMRI.rtAtten.PatternsDesign2Config import createRunConfig
 # parse experiment file
 # copy run images every 2 seconds
 
-expFile = 'rtAttenPennCfg.toml'
+expFile = 'conf/example.toml'
 srcDir = '/scratch/amennen/newdataforgrant/20180122.0122182_rtAttenPenn.0122182_rtAttenPenn'
 timeDelay = 2  # seconds
 
