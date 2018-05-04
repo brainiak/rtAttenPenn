@@ -1,10 +1,29 @@
 #!/usr/bin/bash
+
 clientAddr="128.112.0.0"
 serverAddr="128.112.102.11"
 servicePort="5200"
 
-which_conda=`which conda`
-if [[ $which_conda == "" ]]; then
+# Install git
+if [[ `command -v git` == "" ]]; then
+  if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    os=`cat /etc/*release | grep ^NAME`
+    if echo $os | grep Ubuntu; then
+      sudo apt install -y git
+    elif echo $os | grep CentOS; then
+      sudo yum install -y git
+    elif echo $os | grep "Red Hat"; then
+        sudo yum install -y git
+    fi
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # Assumes user has brew
+    brew install git
+  fi
+else
+  echo "Git already installed"
+fi
+
+if [[ `command -v conda` == "" ]]; then
     echo "INSTALL MINICONDA"
     if [ ! -e  ~/Downloads ]; then
         echo "Make direcorty ~/Downloads"
@@ -49,25 +68,46 @@ else
     git clone https://github.com/brainiak/rtAttenPenn.git
     cd rtAttenPenn/
 fi
+
 if [ ! -e "environment.yml" ]; then
     echo "Missing environment.yml file"
     exit -1;
 fi
+
+# Install rtfMRI and rtAtten
 conda env create -f environment.yml
-conda activate rtAtten
-python setup.py build_ext --inplace
-cd certs
+source activate rtAtten
+python setup.py install
+
+# Install certificates
+pushd certs
 rm rtfMRI*
 randNum=$RANDOM
 openssl req -newkey rsa:2048 -nodes -keyout rtfMRI_rsa-$randNum.private -x509 -days 365 -out rtfMRI-$randNum.crt \
   -subj "/C=US/ST=New Jersey/L=Princeton/O=Princeton University/CN=rtAtten"; \
 ln -s rtfMRI_rsa-$randNum.private rtfMRI_rsa.private; \
 ln -s rtfMRI-$randNum.crt rtfMRI.crt
-cd ..
+popd # certs
+
+# Install conda autoenv
+# TODO: Assign this path to variable; we use it a lot
+$HOME/miniconda3/bin/python -m pip install conda-autoenv
+echo "source \$HOME/miniconda3/bin/conda_autoenv.sh" >> ~/.bashrc
+source ~/.bashrc
 
 # For Server Only
+if [[ "$OSTYPE" == "linux-gnu" ]]; then
+  # Install service
+  sudo cp scripts/rtatten-server.service /usr/lib/systemd/system
+  sudo systemctl enable rtatten-server
+
+  # Set iptables
+  # sudo iptables -I INPUT 6 -p tcp -s $clientAddr/16 --dport $servicePort -j ACCEPT
+  sudo iptables -I INPUT 6 -p tcp --dport 5200 -j ACCEPT
+fi
+
 # echo "START SERVER"
-# sudo iptables -I INPUT 8 -p tcp -s $clientAddr/16 --dport $servicePort -j ACCEPT
+#
 # python ServerMain.py -p $servicePort
 
 # For Client Only
