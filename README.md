@@ -38,6 +38,6 @@ Available on ```spock.pni.princeton.edu```
 
 # Clean up
 - Move ```copy_files.py``` and similar to ```scripts```
-- Move ```ServerMain.py``` and similar to ```bin``` or make command line
 - Do we need to support ```*.json``` config files?
+~~- Move ```ServerMain.py``` and similar to ```bin``` or make command line~~
 - ~~Create ```conf``` directory to hold ```*.toml``` copy_files~~

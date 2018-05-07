@@ -1,4 +1,4 @@
-from setuptools import setup, Extension
+from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
 
 
@@ -33,6 +33,7 @@ setup(
         'pytest',
         'flake8',
         'mypy',
+        'click',
         'brainiak'
     ],
     extras_require={},
@@ -43,7 +44,7 @@ setup(
     license='Apache 2',
     keywords='neuroscience, algorithm, fMRI, distributed, scalable',
     cmdclass={'build_ext': build_ext},
-    packages=['rtAttenPy_v0', 'rtAtten', 'rtfMRI'],
+    packages=find_packages(),
     ext_modules=[
         Extension('rtAttenPy_v0.highpass', [
                   'rtAttenPy_v0/highpass.pyx'], include_dirs=['.']),
@@ -54,7 +55,7 @@ setup(
     options={'build_ext': {'inplace': True, 'force': True}},
     entry_points='''
         [console_scripts]
-        watch=rtcloud.watcher:watch
-        serve=rtcloud.server:serve
+        client=rtfMRI.scripts.ClientMain:ClientMain
+        server=rtfMRI.scripts.ServerMain:ServerMain
     '''
 )

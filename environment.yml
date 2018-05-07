@@ -17,4 +17,5 @@ dependencies:
   - pytest
   - flake8
   - mypy
+  - click
   - brainiak
