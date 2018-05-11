@@ -29,10 +29,10 @@ def generate_data(cfgFile):
     runPatterns = ['patternsdesign_1_20180101T000000.mat',
                    'patternsdesign_2_20180101T000000.mat',
                    'patternsdesign_3_20180101T000000.mat']
-    template_name = os.path.join(moduleDir, 'sub_template.nii.gz')
-    noise_dict_name = os.path.join(moduleDir, 'sub_noise_dict.txt')
-    inputA_name = os.path.join(moduleDir, 'ROI_A.nii.gz')
-    inputB_name = os.path.join(moduleDir, 'ROI_B.nii.gz')
+    template_filename = os.path.join(moduleDir, 'sub_template.nii.gz')
+    noise_dict_filename = os.path.join(moduleDir, 'sub_noise_dict.txt')
+    roiA_filename = os.path.join(moduleDir, 'ROI_A.nii.gz')
+    roiB_filename = os.path.join(moduleDir, 'ROI_B.nii.gz')
     output_file_pattern = '001_0000{}_000{}.mat'
     if not os.path.exists(imgDir):
         os.makedirs(imgDir)
@@ -40,20 +40,20 @@ def generate_data(cfgFile):
         os.makedirs(dataDir)
 
     print('Load data')
-    template_nii = nibabel.load(template_name)
+    template_nii = nibabel.load(template_filename)
     template = template_nii.get_data()
     # dimsize = template_nii.header.get_zooms()
 
-    inputA_nii = nibabel.load(inputA_name)
-    inputB_nii = nibabel.load(inputB_name)
-    signalA = inputA_nii.get_data()
-    signalB = inputB_nii.get_data()
+    roiA_nii = nibabel.load(roiA_filename)
+    roiB_nii = nibabel.load(roiB_filename)
+    roiA = roiA_nii.get_data()
+    roiB = roiB_nii.get_data()
 
     dimensions = np.array(template.shape[0:3])  # What is the size of the brain
 
     print('Create mask')
     # Generate the continuous mask from the voxels
-    mask, _ = sim.mask_brain(volume=template,
+    mask, template = sim.mask_brain(volume=template,
                              mask_self=True,
                              )
     # Write out the mask as matlab
@@ -63,10 +63,10 @@ def generate_data(cfgFile):
     sio.savemat(maskfilename, {'mask': mask_uint8})
 
     # Load the noise dictionary
-    with open(noise_dict_name, 'r') as f:
+    with open(noise_dict_filename, 'r') as f:
         noise_dict = f.read()
 
-    print('Loading ' + noise_dict_name)
+    print('Loading ' + noise_dict_filename)
     noise_dict = eval(noise_dict)
 
     runNum = 1
@@ -82,22 +82,27 @@ def generate_data(cfgFile):
 
         pat = sio.loadmat(fullPatfile)
         scanNum += 1
-        regressor = pat['patterns']['regressor'][0][0]
-        trialType = pat['patterns']['type'][0][0]
-        TR_dur = pat['TR'][0][0]
+        # shifted labels are in regressor field
+        shiftedLabels = pat['patterns']['regressor'][0][0]
+        # non-shifted labels are in attCateg field and whether stimulus applied in the stim field
+        nsLabels = pat['patterns']['attCateg'][0][0] * pat['patterns']['stim'][0][0]
+        labels_A = (nsLabels == 1).astype(int)
+        labels_B = (nsLabels == 2).astype(int)
+
+        # trialType = pat['patterns']['type'][0][0]
+        tr_duration = pat['TR'][0][0]
         disdaqs = pat['disdaqs'][0][0]
-        begTrOffset = disdaqs // TR_dur
+        begTrOffset = disdaqs // tr_duration
         nTRs = pat['nTRs'][0][0]
-        nTestTRs = np.count_nonzero(trialType == 2)
+        # nTestTRs = np.count_nonzero(trialType == 2)
 
         # Preset some of the parameters
-        tr_duration = TR_dur  # How long in seconds is each TR?
-        trs = nTRs + begTrOffset  # How many time points are there?
+        total_trs = nTRs + begTrOffset  # How many time points are there?
 
         print('Generating data')
         start = time.time()
         noiseVols = sim.generate_noise(dimensions=dimensions,
-                                       stimfunction_tr=np.zeros((trs, 1)),
+                                       stimfunction_tr=np.zeros((total_trs, 1)),
                                        tr_duration=int(tr_duration),
                                        template=template,
                                        mask=mask,
@@ -105,24 +110,64 @@ def generate_data(cfgFile):
                                        )
         print("Time: generate noise vols {} sec".format(time.time() - start))
 
-        testTrId = 0
+        nVoxelsA = int(roiA.sum())
+        nVoxelsB = int(roiB.sum())
+        # Multiply each pattern by each voxel time course
+        weights_A = np.tile(labels_A.reshape(-1, 1), nVoxelsA)
+        weights_B = np.tile(labels_B.reshape(-1, 1), nVoxelsB)
+
+        print('Creating signal time course')
+        signal_func_A = sim.convolve_hrf(stimfunction=weights_A,
+                                         tr_duration=tr_duration,
+                                         temporal_resolution=(1/tr_duration),
+                                         scale_function=1,
+                                         )
+
+        signal_func_B = sim.convolve_hrf(stimfunction=weights_B,
+                                         tr_duration=tr_duration,
+                                         temporal_resolution=(1/tr_duration),
+                                         scale_function=1,
+                                         )
+
+        max_activity = noise_dict['max_activity']
+        signal_change = 10  # .01 * max_activity
+        signal_func_A *= signal_change
+        signal_func_B *= signal_change
+
+        # Combine the signal time course with the signal volume
+        print('Creating signal volumes')
+        signal_A = sim.apply_signal(signal_func_A,
+                                    roiA,
+                                    )
+
+        signal_B = sim.apply_signal(signal_func_B,
+                                    roiB,
+                                    )
+        # Combine the two signal timecourses
+        signal = signal_A + signal_B
+
+        # testTrId = 0
         numVols = noiseVols.shape[3]
         for idx in range(numVols):
             start = time.time()
             brain = noiseVols[:, :, :, idx]
             if idx >= begTrOffset:
-                trIdx = idx-begTrOffset
-                if trialType[0][trIdx] == 1:
-                    # training TR, so create pure A or B signal
-                    if regressor[0][trIdx] != 0:
-                        brain = brain + signalA
-                    elif regressor[1][trIdx] != 0:
-                        brain = brain + signalB
-                elif trialType[0][trIdx] == 2:
-                    # testing TR, so create a mixture of A and B signal
-                    testTrId += 1
-                    testPercent = testTrId / nTestTRs
-                    brain = brain + testPercent * signalA + (1-testPercent) * signalB
+                # some initial scans are skipped as only instructions and not stimulus are shown
+                signalIdx = idx-begTrOffset
+                brain += signal[:, :, :, signalIdx]
+
+            # TODO: how to create a varying combined percentage of A and B signals
+            #     if trialType[0][idx] == 1:
+            #         # training TR, so create pure A or B signal
+            #         if labels_A[idx] != 0:
+            #             brain = brain + roiA
+            #         elif labels_B[idx] != 0:
+            #             brain = brain + roiB
+            #     elif trialType[0][idx] == 2:
+            #         # testing TR, so create a mixture of A and B signal
+            #         testTrId += 1
+            #         testPercent = testTrId / nTestTRs
+            #         brain = brain + testPercent * roiA + (1-testPercent) * roiB
 
             # Save the volume as a matlab file
             filenum = idx+1
@@ -131,3 +176,7 @@ def generate_data(cfgFile):
             brain_float32 = brain.astype(np.float32)
             sio.savemat(outputfile, {'vol': brain_float32})
             print("Time: generate vol {}: {} sec".format(filenum, time.time() - start))
+
+
+if __name__ == "__main__":
+    generate_data("syntheticDataCfg.toml")
