@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 clientAddr="128.112.0.0"
 serverAddr="128.112.102.11"

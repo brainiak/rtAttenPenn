@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
 dataDrive=/mnt/rtexport/RTexport_Current/
 matlab=/opt/MATLAB/R2014a/bin/matlab
@@ -17,7 +17,7 @@ fi
 files=$(shopt -s nullglob dotglob; echo $dataDrive)
 if (( ${#files} )); then
     echo "OK: $dataDrive is accessible"
-else 
+else
     echo "FAILED: $dataDrive not accessible or empty"
     exit -1
 fi

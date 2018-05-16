@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 source ~/.bashrc
 conda activate rtAtten
 until python ServerMain.py -p 5200; do
