@@ -13,9 +13,8 @@ datasets
 # Cython
 rtAttenPy_v0/*.c
 rtAttenPy_v0/*.html
-rtAttenPy/*.c
-rtAttenPy/*.html
-rtfMRI/rtAtten/*.c
+rtAtten/*.c
+rtAtten/*.html
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

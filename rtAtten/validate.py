@@ -8,7 +8,7 @@ import rtfMRI.utils as utils
 import rtfMRI.ValidationUtils as vutils
 from rtfMRI.RtfMRIClient import loadConfigFile
 from rtfMRI.Errors import ValidationError
-from rtfMRI.rtAtten.RtAttenModel import getSubjectDayDir
+from rtAtten.RtAttenModel import getSubjectDayDir
 
 
 def validateMatlabPython(configFile):

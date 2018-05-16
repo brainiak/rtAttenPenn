@@ -1,13 +1,16 @@
 import os
 import time
 import shutil
+# Add current working dir so main can be run from the top level rtAttenPenn directory
+import sys
+sys.path.append(os.getcwd())
 from rtfMRI.RtfMRIClient import loadConfigFile, validateRunCfg
-from rtfMRI.rtAtten.PatternsDesign2Config import createRunConfig
+from rtAtten.PatternsDesign2Config import createRunConfig
 
 # parse experiment file
 # copy run images every 2 seconds
 
-expFile = 'rtAttenPennCfg.toml'
+expFile = 'conf/example.toml'
 srcDir = '/scratch/amennen/newdataforgrant/20180122.0122182_rtAttenPenn.0122182_rtAttenPenn'
 timeDelay = 2  # seconds
 

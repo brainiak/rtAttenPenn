@@ -132,6 +132,7 @@ class BaseModel():
         return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndRun(self, msg):
+        logging.info("End Run: %s", self.id_fields.runId)
         self.id_fields.runId = -1
         return self.createReplyMessage(msg, MsgResult.Success)
 
@@ -142,6 +143,7 @@ class BaseModel():
         return self.createReplyMessage(msg, MsgResult.Success)
 
     def EndBlockGroup(self, msg):
+        logging.info("End BlockGroup: %s", self.id_fields.blkGrpId)
         self.id_fields.blkGrpId = -1
         return self.createReplyMessage(msg, MsgResult.Success)
 

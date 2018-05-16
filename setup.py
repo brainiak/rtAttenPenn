@@ -1,4 +1,4 @@
-from setuptools import setup, Extension
+from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
 
 
@@ -22,17 +22,19 @@ setup(
     install_requires=[
         'cython',
         'pybind11',
-        'matplotlib',
         'numpy',
         'scipy',
         'sklearn',
-        'ipython',
-        'jupyter_contrib_nbextensions',
-        'jupyter',
+        'pydicom',
         'toml',
-        'pytest',
         'watchdog',
-        'pydicom'
+        'ipython',
+        'jupyter',
+        'pytest',
+        'flake8',
+        'mypy',
+        'click',
+        'brainiak'
     ],
     extras_require={},
     author='Princeton Neuroscience Institute and Intel Corporation',
@@ -42,15 +44,18 @@ setup(
     license='Apache 2',
     keywords='neuroscience, algorithm, fMRI, distributed, scalable',
     cmdclass={'build_ext': build_ext},
-    packages=['rtAttenPy_v0', 'rtfMRI'],
+    packages=find_packages(),
     ext_modules=[
-        Extension('rtAttenPy_v0.highpass', ['rtAttenPy_v0/highpass.pyx']),
-        Extension('rtfMRI.rtAtten.highpass', ['rtfMRI/rtAtten/highpass.pyx'])
+        Extension('rtAttenPy_v0.highpass', [
+                  'rtAttenPy_v0/highpass.pyx'], include_dirs=['.']),
+        Extension('rtAtten.highpass', [
+                  'rtAtten/highpass.pyx'], include_dirs=['.'])
     ],
     python_requires='>=3.4',
+    options={'build_ext': {'inplace': True, 'force': True}},
     entry_points='''
         [console_scripts]
-        watch=rtcloud.watcher:watch
-        serve=rtcloud.server:serve
+        client=rtfMRI.scripts.ClientMain:ClientMain
+        server=rtfMRI.scripts.ServerMain:ServerMain
     '''
 )

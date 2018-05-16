@@ -15,11 +15,11 @@ import numpy as np  # type: ignore
 from enum import Enum, unique
 import scipy.io as sio  # type: ignore
 from sklearn.linear_model import LogisticRegression  # type: ignore
-import rtfMRI.utils as utils
-import rtfMRI.ValidationUtils as vutils
-from ..MsgTypes import MsgResult
-from ..BaseModel import BaseModel
-from ..StructDict import StructDict, MatlabStructDict
+from rtfMRI import utils
+from rtfMRI import ValidationUtils as vutils
+from rtfMRI.MsgTypes import MsgResult
+from rtfMRI.BaseModel import BaseModel
+from rtfMRI.StructDict import StructDict, MatlabStructDict
 from .smooth import smooth
 from .highpassFunc import highPassRealTime, highPassBetweenRuns
 from .Test_L2_RLR_realtime import Test_L2_RLR_realtime
@@ -128,9 +128,13 @@ class RtAttenModel(BaseModel):
             errorReply.data = "StartBlkGrp: BlkGrpId {} not valid" % (blkGrp.blkGrpId)
             return errorReply
         blkGrp.legacyRun1Phase2Mode = False
-        if run.runId == 1 and blkGrp.blkGrpId == 2 and self.session.legacyRun1Phase2Mode:
-            # Handle as legacy matlab where run1, phase2 is treated as testing
+        if run.runId == 1 and blkGrp.blkGrpId == 2:
+            # Legacy matlab mode is where run1 phase2 is treated as a predict phase
+            # By default use legacy mode for run1 phase2
             blkGrp.legacyRun1Phase2Mode = True
+            if self.session.legacyRun1Phase2Mode is False:
+                blkGrp.legacyRun1Phase2Mode = False
+            reply.fields.outputlns.append('Legacy mode: {}'.format(blkGrp.legacyRun1Phase2Mode))
         blkGrp.patterns = StructDict()
         blkGrp.patterns.raw = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
         blkGrp.patterns.raw_sm = np.full((blkGrp.nTRs, self.session.nVoxels), np.nan)
@@ -238,14 +242,15 @@ class RtAttenModel(BaseModel):
                     logging.error("validateTrainBlkGrp: %r", err)
                     pass
 
-            # cache the block group for predict phase and training the model
-            bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
-            self.blkGrpCache[bgKey] = self.blkGrp
-
         else:
             errorReply = self.createReplyMessage(msg, MsgResult.Error)
             errorReply.data = "Unknown blkGrp type {}".format(self.blkGrp.type)
             return errorReply
+
+        if self.blkGrp.type == 1:
+            # cache the block group for training the model and predict phase
+            bgKey = getBlkGrpKey(self.id_fields.runId, self.id_fields.blkGrpId)
+            self.blkGrpCache[bgKey] = self.blkGrp
 
         # save BlockGroup Data
         filename = getBlkGrpFilename(self.id_fields.sessionId,

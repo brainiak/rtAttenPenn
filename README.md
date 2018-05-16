@@ -6,6 +6,9 @@ This project is to port the matlab version of rtAttenPenn (the real-time attenti
 ## Process:
 We will start with the existing matlab code and incrementally convert portions to python (python can be called from Matlab and vice versa). We will also have a testing framework which will run to compare to an original expected_output generated from the original matlab version. Then continue incrementally converting to python and validating the output for each change.
 
+## Installing on Linux Server
+Run ````bash <(curl https://raw.githubusercontent.com/brainiak/rtAttenPenn/master/scripts/install-rtAtten.sh)```
+
 ## Running:
 Initial Matlab version:
 <path_to_matlab>/bin/matlab -nodisplay -nosplash -nodesktop -nojvm -r RealTimePunisherFileProcess
@@ -35,6 +38,6 @@ Available on ```spock.pni.princeton.edu```
 
 # Clean up
 - Move ```copy_files.py``` and similar to ```scripts```
-- Move ```ServerMain.py``` and similar to ```bin``` or make command line
 - Do we need to support ```*.json``` config files?
+~~- Move ```ServerMain.py``` and similar to ```bin``` or make command line~~
 - ~~Create ```conf``` directory to hold ```*.toml``` copy_files~~

@@ -6,12 +6,12 @@ import datetime
 import logging
 from dateutil import parser
 import rtfMRI.utils as utils
-from ..RtfMRIClient import RtfMRIClient, validateRunCfg
-from ..MsgTypes import MsgEvent
-from ..StructDict import StructDict, copy_toplevel
-from ..ReadDicom import readDicom, applyMask
-from ..utils import dateStr30
-from ..Errors import InvocationError, ValidationError
+from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
+from rtfMRI.MsgTypes import MsgEvent
+from rtfMRI.StructDict import StructDict, copy_toplevel
+from rtfMRI.ReadDicom import readDicom, applyMask
+from rtfMRI.utils import dateStr30
+from rtfMRI.Errors import InvocationError, ValidationError
 from .PatternsDesign2Config import createRunConfig
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
@@ -157,7 +157,6 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
-
                     self.id_fields.trId = TR.trId
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based

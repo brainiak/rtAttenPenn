@@ -1,6 +1,5 @@
 import numpy as np  # type: ignore
-from .highpass import highpass
-
+from . import highpass
 
 def highPassBetweenRuns(A_matrix, TR, cutoff):
     return np.transpose(highpass(np.transpose(A_matrix), cutoff/(2*TR), False))
