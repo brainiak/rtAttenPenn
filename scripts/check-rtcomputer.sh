@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 dataDrive=/mnt/rtexport/RTexport_Current/
-matlab=/opt/MATLAB/R2015a/bin/matlab
+matlab=/opt/MATLAB/R2014a/bin/matlab
 
 # Check internet access
 wget -q --tries=3 --timeout=3 --spider http://www.google.com
@@ -23,7 +23,7 @@ else
 fi
 
 # Check if python (and conda) working properly
-conda --version # &> /dev/null
+conda --version  &> /dev/null
 if [[ $? -eq 0 ]]; then
     echo "OK: Conda installed"
 else
