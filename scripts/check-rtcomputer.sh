@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-dataDrive=/tmp/*
+dataDrive=/mnt/rtexport/RTexport_Current/
 matlab=/opt/MATLAB/R2015a/bin/matlab
 
 # Check internet access
@@ -13,7 +13,7 @@ else
 fi
 
 # Check if mount drive is accessible
-dataDrive=/tmp/*
+#dataDrive=/mnt/rtexport/RTexport_Current/
 files=$(shopt -s nullglob dotglob; echo $dataDrive)
 if (( ${#files} )); then
     echo "OK: $dataDrive is accessible"
@@ -23,7 +23,7 @@ else
 fi
 
 # Check if python (and conda) working properly
-conda --version &> /dev/null
+conda --version # &> /dev/null
 if [[ $? -eq 0 ]]; then
     echo "OK: Conda installed"
 else
