@@ -9,11 +9,10 @@ The server will receive commands from the client, execute them and reply.
 import os
 import logging
 import click
+import clickutil
 from rtfMRI.RtfMRIServer import RtfMRIServer
 
 
-@click.command(context_settings=dict(help_option_names=['-h', '--help']))
-@click.option('--port', '-p', default=5200, type=int, help="server port")
 def ServerMain(port):
     if not os.path.exists('logs'):
         os.makedirs('logs')
@@ -37,5 +36,12 @@ def ServerMain(port):
         raise err
 
 
+@click.command(context_settings=dict(help_option_names=['-h', '--help']))
+@click.option('--port', '-p', default=5200, type=int, help="server port")
+@clickutil.call(ServerMain)
+def _ServerMain():
+    pass
+
+
 if __name__ == "__main__":
-    ServerMain()
+    _ServerMain()

@@ -34,6 +34,7 @@ setup(
         'flake8',
         'mypy',
         'click',
+        'clickutil',
         'brainiak'
     ],
     extras_require={},

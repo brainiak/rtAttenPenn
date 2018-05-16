@@ -1,4 +1,4 @@
-import ClientMain
+import rtfMRI.scripts.ClientMain as ClientMain
 import os
 import inspect
 import typing
@@ -22,9 +22,8 @@ def getCfgFileFullPath():  # type: ignore
 def test_baseModel():
     print("test_baseModel")
     logging.error("###Test logging###")
-    client_args = ['ClientMain.py', '-l', '-e', getCfgFileFullPath()]
     # import pdb; pdb.set_trace()
-    result = ClientMain.client_main(client_args)
+    result = ClientMain.ClientMain("localhost", 5200, getCfgFileFullPath(), True, None)
     assert result is True
 
 

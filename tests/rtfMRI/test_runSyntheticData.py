@@ -3,7 +3,7 @@ import os
 import inspect
 import typing
 import logging
-import ClientMain
+import rtfMRI.scripts.ClientMain as ClientMain
 import tests.rtfMRI.simfmri.generate_data as gd
 # import generate_fmri_data.generate_data as gd
 
@@ -30,9 +30,8 @@ def getCfgFileFullPath():  # type: ignore
 def test_runSyntheticData():
     print("rtfMRI: test_runSyntheticData")
     setupTest()
-    client_args = ['ClientMain.py', '-l', '-p', '5200', '-e', getCfgFileFullPath()]
     # import pdb; pdb.set_trace()
-    result = ClientMain.client_main(client_args)
+    result = ClientMain.ClientMain("localhost", 5200, getCfgFileFullPath(), True, None)
     assert result is True
 
 

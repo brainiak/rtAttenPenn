@@ -19,3 +19,6 @@ dependencies:
   - mypy
   - click
   - brainiak
+  - pip
+  - pip:
+    - clickutil

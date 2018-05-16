@@ -5,18 +5,14 @@ Top level routine for client side rtfMRI processing
 import threading
 import logging
 import click
+import clickutil
 from rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.BaseClient import BaseClient
 from rtfMRI.Errors import InvocationError, RequestError
+import rtfMRI.scripts.ServerMain as ServerMain
 
 
-@click.command(context_settings=dict(help_option_names=['-h', '--help']))
-@click.option('--addr', '-a', default='localhost', type=str, help='server ip address')
-@click.option('--port', '-p', default=5200, type=int, help='server port')
-@click.option('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
-@click.option('--run-local', '-l', default=False, is_flag=True, type=bool, help='run client and server together locally')
-@click.option('--model', '-m', default=None, type=str, help='model name')
 def ClientMain(addr: str, port: int, experiment: str, run_local: bool, model: str):
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
@@ -61,16 +57,22 @@ def ClientMain(addr: str, port: int, experiment: str, run_local: bool, model: st
     return True
 
 
-def startLocalServer(port):
-    from .ServerMain import server_main
+@click.command(context_settings=dict(help_option_names=['-h', '--help']))
+@click.option('--addr', '-a', default='localhost', type=str, help='server ip address')
+@click.option('--port', '-p', default=5200, type=int, help='server port')
+@click.option('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
+@click.option('--run-local', '-l', default=False, is_flag=True, type=bool, help='run client and server together locally')
+@click.option('--model', '-m', default=None, type=str, help='model name')
+@clickutil.call(ClientMain)
+def _ClientMain():
+    pass
 
-    def start_server():
-        server_args = ['ServerMain.py', '-p', str(port)]
-        server_main(server_args)
-    server_thread = threading.Thread(name='server', target=start_server)
+
+def startLocalServer(port):
+    server_thread = threading.Thread(name='server', target=ServerMain.ServerMain, args=(port,))
     server_thread.setDaemon(True)
     server_thread.start()
 
 
 if __name__ == "__main__":
-    ClientMain()
+    _ClientMain()
