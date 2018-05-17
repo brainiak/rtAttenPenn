@@ -56,7 +56,7 @@ setup(
     options={'build_ext': {'inplace': True, 'force': True}},
     entry_points='''
         [console_scripts]
-        client=rtfMRI.scripts.ClientMain:ClientMain
-        server=rtfMRI.scripts.ServerMain:ServerMain
+        client=rtfMRI.scripts.ClientMain:_ClientMain
+        server=rtfMRI.scripts.ServerMain:_ServerMain
     '''
 )
