@@ -12,7 +12,7 @@ from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicom, applyMask
 from rtfMRI.utils import dateStr30
 from rtfMRI.Errors import InvocationError, ValidationError
-from .PatternsDesign2Config import createRunConfig
+from .PatternsDesign2Config import createRunConfig, getRunIndex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
 from watchdog.observers import Observer  # type: ignore
@@ -99,11 +99,9 @@ class RtAttenClient(RtfMRIClient):
             self.runRun(runId)
 
     def runRun(self, runId, scanNum=-1):
-        run = createRunConfig(self.cfg.session, runId)
+        run = createRunConfig(self.cfg.session, runId, scanNum)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
-        if scanNum >= 0:
-            run.scanNum = scanNum
 
         if self.cfg.session.rtData:
             # Check if images already exist and warn and ask to continue
@@ -114,11 +112,18 @@ class RtAttenClient(RtfMRIClient):
                     resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
                     if resp.upper() != 'Y':
                         return
-
-        if self.cfg.session.validate or self.cfg.session.replayMatFileMode:
-            idx = runId - 1
-            run.validationModel = os.path.join(self.dirs.dataDir, self.cfg.session.validationModels[idx])
-            run.validationDataFile = os.path.join(self.dirs.dataDir, self.cfg.session.validationData[idx])
+        elif self.cfg.session.replayMatFileMode or self.cfg.session.validate:
+            idx = getRunIndex(self.cfg.session, runId)
+            if idx >= 0 and len(self.cfg.session.validationModels) > idx:
+                run.validationModel = os.path.join(self.dirs.dataDir, self.cfg.session.validationModels[idx])
+            else:
+                raise ValidationError("Insufficient config runs or validationModels specified: "
+                                      "runId {}, validationModel idx {}", runId, idx)
+            if idx >= 0 and len(self.cfg.session.validationData) > idx:
+                run.validationDataFile = os.path.join(self.dirs.dataDir, self.cfg.session.validationData[idx])
+            else:
+                raise ValidationError("Insufficient config runs or validationDataFiles specified: "
+                                      "runId {}, validationData idx {}", runId, idx)
 
         # Setup output directory and output file
         runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(run.runId))

@@ -3,30 +3,37 @@ import os
 import numpy as np  # type: ignore
 from rtfMRI.StructDict import StructDict
 from rtfMRI.utils import loadMatFile, findNewestFile
+from rtfMRI.Errors import ValidationError
 
 
-def createRunConfig(session, runId):
+def createRunConfig(session, runId, scanNum=-1):
     run = StructDict()
     run.runId = runId
-    ids = [idx for (idx, run) in enumerate(session.Runs) if run == runId]
-    if len(ids) == 0:
-        print("Run {} not in Runs List".format(runId))
-        return None
-    elif len(ids) > 1:
-        print("Run {} declared multiple times in Runs List".format(runId))
-        return None
-    idx = ids[0]
-    if session.ScanNums is not None and len(session.ScanNums) > idx:
+    idx = getRunIndex(session, runId)
+    if scanNum >= 0:
+        run.scanNum = scanNum
+    elif session.ScanNums is not None and idx >= 0 and len(session.ScanNums) > idx:
         run.scanNum = session.ScanNums[idx]
     else:
         run.scanNum = -1
     dataDir = getSubjectDayDir(session, session.dataDir)
+
     if session.findNewestPatterns:
         # load the newest file patterns
         patternsFilename = findPatternsDesignFile(dataDir, runId)
     else:
-        patternsFilename = session.patternsDesignFiles[idx]
-        patternsFilename = os.path.join(session.dataDir, os.path.basename(patternsFilename))
+        if idx >= 0 and len(session.patternsDesignFiles) > idx:
+            patternsFilename = session.patternsDesignFiles[idx]
+            patternsFilename = os.path.join(session.dataDir, os.path.basename(patternsFilename))
+        else:
+            # either not enough runs specified or not enough patternsDesignFiles specified
+            if idx < 0:
+                raise ValidationError("Insufficient runs specified in config file session: "
+                                      "run {} idx {}".format(runId, idx))
+            else:
+                raise ValidationError("Insufficient patternsDesignFiles specified in "
+                                      "config file session for run {}".format(runId))
+
     # load and parse the pattensDesign file
     patterns = loadMatFile(patternsFilename)
 
@@ -117,3 +124,18 @@ def findPatternsDesignFile(inputDir, runNum):
 def getSubjectDayDir(session, dataDir):
     subjectDayDir = "subject{}/day{}".format(session.subjectNum, session.subjectDay)
     return os.path.join(dataDir, subjectDayDir)
+
+
+def getRunIndex(session, runId):
+    if session.Runs is None:
+        print("session config has no Runs value defined")
+        return -1
+    ids = [idx for (idx, run) in enumerate(session.Runs) if run == runId]
+    if len(ids) == 0:
+        print("Run {} not in Runs List".format(runId))
+        return -1
+    elif len(ids) > 1:
+        print("Run {} declared multiple times in Runs List".format(runId))
+        return -1
+    idx = ids[0]
+    return idx

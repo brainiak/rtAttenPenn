@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env
+import os
+import sys
+# fix up the module search path to be the rtAtten project path
+scriptPath = os.path.dirname(os.path.realpath(__file__))
+rootPath = os.path.join(scriptPath, "../")
+sys.path.append(rootPath)
+
 import rtAttenPy_v0
 
 trace_file_date_pattern = '20180208T'

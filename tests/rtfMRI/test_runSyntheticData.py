@@ -36,4 +36,4 @@ def test_runSyntheticData():
 
 
 if __name__ == '__main__':
-    pytest.main(['-s', '--log-cli-level', 'debug', 'tests/test_runSyntheticData.py'])
+    pytest.main(['-s', '--log-cli-level', 'debug', 'tests/rtfMRI/test_runSyntheticData.py'])
