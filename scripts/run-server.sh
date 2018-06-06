@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 source ~/.bashrc
+conda deactivate
 conda activate rtAtten
 until python rtfMRI/scripts/ServerMain.py -p 5200; do
     echo "Server crashed with exit code $?.  Respawning.." >&2
