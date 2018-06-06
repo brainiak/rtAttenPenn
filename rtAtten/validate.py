@@ -19,12 +19,17 @@ def validateMatlabPython(configFile):
     subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
     matDataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
     pyDataDir = matDataDir
+    all_ROC = np.zeros((4,2,len(cfg.session.Runs)))
     for runId in cfg.session.Runs:
         print("EXECUTING ANALYSES FOR RUN {}".format(runId))
         validatePatternsData(matDataDir, pyDataDir, runId)
         validateFileprocessingTxt(matDataDir, pyDataDir, runId)
-        crossvalidateModels(matDataDir,pyDataDir,runId)
-
+        mat_roc,py_roc = crossvalidateModels(matDataDir,pyDataDir,runId)
+        all_ROC[:,0,runId-1] = mat_roc
+        all_ROC[:,1,runId-1] = py_roc
+    fullfilename = matDataDir + '/' + 'xvalresults.npy'
+    print("saving to %s\n" % fullfilename)
+    np.save(fullfilename,all_ROC)
 
 def validatePatternsData(matDataDir, pyDataDir, runId):
     runDir = 'run'+str(runId)+'/'
@@ -149,22 +154,9 @@ def crossvalidateModels(matDataDir, pyDataDir, runId):
         trTrain = np.in1d(selector,train_index)
         trTest = np.in1d(selector,test_index)
         # matlab first
-        #mat_lrc1 = LogisticRegression()
-        #mat_lrc2 = LogisticRegression()
         mat_lrc = LogisticRegression()
         categoryTrainLabels = np.argmax(matModel.trainLabels[trTrain,:],axis=1)
         mat_lrc.fit(matModel.trainPats[trTrain,:], categoryTrainLabels)
-        #mat_lrc2.fit(matModel.trainPats[trTrain,:], matModel.trainLabels[trTrain, 1])
-        #newMM1 = utils.MatlabStructDict({}, 'MM1')
-        #newMM1.MM1 = StructDict({})
-        #newMM1.MM1.weights = np.concatenate((mat_lrc1.coef_.T, mat_lrc2.coef_.T), axis=1)
-        #newMM1.MM1.biases = np.concatenate((mat_lrc1.intercept_, mat_lrc2.intercept_)).reshape(1, 2)
-        # check with both methods
-        #mat_predict, _, _, mat_activations = \
-        #            Test_L2_RLR_offline(newMM1, matModel.trainPats[trTest,:],matModel.trainLabels[trTest,:])
-        #categ_sep2 = np.diff(mat_activations,axis=0)
-        #mat_predict1 = mat_lrc1.predict_proba(matModel.trainPats[trTest,:])[:,1] # always second class because they're given same label
-        #mat_predict2 = mat_lrc2.predict_proba(matModel.trainPats[trTest,:])[:,1]
         mat_predict = mat_lrc.predict_proba(matModel.trainPats[trTest,:])
         categ_sep = -1*np.diff(mat_predict,axis=1)
         C0 = np.argwhere(np.argmax(matModel.trainLabels[trTest,:],axis=1)==0)
@@ -187,9 +179,13 @@ def crossvalidateModels(matDataDir, pyDataDir, runId):
         print("PY AUC for iteration %i is: %.2f\n" %(i,py_roc[i]))
         i+= 1
     print("AVG AUC MAT,PY is: %.2f,%.2f\n" %(np.mean(mat_roc),np.mean(py_roc)))
-
-
-
+    #mat_mean = np.mean(mat_roc)
+    #py_mean = np.mean(py_roc)
+    #all_ROC = np.concatenate((mat_roc[:,np.newaxis],py_roc[:,np.newaxis]),axis=1)
+    #fullfilename = matDataDir + '/' + 'xvalresults.npy'
+    #print("saving to %s\n" % fullfilename)
+    #np.save(fullfilename,all_ROC)
+    return mat_roc,py_roc
 def main():
     descStr = 'Compare and validate that python and matlab output agree. Specify '\
         'either a config file or a directory and runID to test'
