@@ -175,7 +175,7 @@ def recvMsg(conn):
 def validateHeader(msg_type, msg_event_type, msg_size):
     if msg_type < MsgType.NoneType or msg_type >= MsgType.MaxType:
         raise MessageError("Invalid type {}".format(msg_type))
-    elif msg_event_type < MsgEvent.NoneType or msg_type >= MsgEvent.MaxType:
+    elif msg_event_type < MsgEvent.NoneType or msg_event_type >= MsgEvent.MaxType:
         raise MessageError("Invalid event_type {}".format(msg_event_type))
 
     if msg_event_type == MsgEvent.RetrieveData:
