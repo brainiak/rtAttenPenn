@@ -116,14 +116,14 @@ class RtAttenModel_Ray(BaseModel_Ray):
             return reply
         errorReply = makeReply(False)
         run = self.run
-        if blkGrp.nTRs is None:
-            errorReply.errorMsg = "StartBlkGrp msg missing nTRs in blockGroup"
-            return errorReply
         if self.session.nVoxels is None:
-            errorReply.errorMsg = "StartBlkGrp msg missing nVoxels in blockGroup"
+            errorReply.errorMsg = "Session config missing nVoxels in blockGroup"
             return errorReply
         if self.session.roiInds is None:
-            errorReply.errorMsg = "StartBlkGrp msg missing roiInds in blockGroup"
+            errorReply.errorMsg = "Session config missing roiInds in blockGroup"
+            return errorReply
+        if blkGrp.nTRs is None:
+            errorReply.errorMsg = "StartBlkGrp msg missing nTRs in blockGroup"
             return errorReply
         if blkGrp.blkGrpId not in (1, 2):
             errorReply.errorMsg = "StartBlkGrp: BlkGrpId {} not valid" % (blkGrp.blkGrpId)

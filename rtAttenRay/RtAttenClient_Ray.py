@@ -12,16 +12,19 @@ import rtfMRI.utils as utils
 from rtfMRI.StructDict import StructDict
 from rtfMRI.ReadDicom import readDicom, applyMask
 from rtfMRI.RtfMRIClient import loadConfigFile, validateSessionCfg, validateRunCfg
-from rtAtten.PatternsDesign2Config import createRunConfig
-from ray.RtAttenModel_Ray import RtAttenModel_Ray, getSubjectDayDir, getBlkGrpFilename, getModelFilename
 from rtfMRI.Errors import InvocationError, ValidationError
+from rtAtten.PatternsDesign2Config import createRunConfig
+from rtAttenRay.RtAttenModel_Ray import RtAttenModel_Ray, getSubjectDayDir, getBlkGrpFilename, getModelFilename
+import ray
 
 
-def ClientMain(experiment: str, ray: str):
-    cfg = loadConfigFile(experiment)
-    rtatten = RtAttenModel_Ray()
-    rtatten.StartSession(cfg.session)
+def ClientMain(config: str, rayremote: str):
+    ray.init(redis_address=rayremote)
+    RtAttenModel_Remote = ray.remote(RtAttenModel_Ray)
+
+    rtatten = RtAttenModel_Remote.remote()
     client = LocalClient(rtatten)
+    cfg = loadConfigFile(config)
     client.start_session(cfg)
     for runId in cfg.session.Runs:
         run = createRunConfig(cfg.session, runId)
@@ -104,6 +107,9 @@ class LocalClient():
         cfg.session.roiDims = roi.shape
         cfg.session.nVoxels = cfg.session.roiInds.size
         print("Using mask {}".format(maskFileName))
+        replyId = self.rtatten.StartSession.remote(cfg.session)
+        reply = ray.get(replyId)
+        assert reply.success is True
 
     def end_session(self):
         pass
@@ -118,7 +124,8 @@ class LocalClient():
             os.makedirs(classOutputDir)
         outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
 
-        reply = self.rtatten.StartRun(run)
+        replyId = self.rtatten.StartRun.remote(run)
+        reply = ray.get(replyId)
         assert reply.success is True
         outputReplyLines(reply.outputlns, outputFile)
 
@@ -130,11 +137,13 @@ class LocalClient():
             run.rtfeedback = 0
 
         for blockGroup in run.blockGroups:
-            reply = self.rtatten.StartBlockGroup(blockGroup)
+            replyId = self.rtatten.StartBlockGroup.remote(blockGroup)
+            reply = ray.get(replyId)
             assert reply.success is True
             outputReplyLines(reply.outputlns, outputFile)
             for block in blockGroup.blocks:
-                reply = self.rtatten.StartBlock(block)
+                replyId = self.rtatten.StartBlock.remote(block)
+                reply = ray.get(replyId)
                 assert reply.success is True
                 outputReplyLines(reply.outputlns, outputFile)
                 for TR in block.TRs:
@@ -142,21 +151,26 @@ class LocalClient():
                     fileNum = TR.vol + run.disdaqs // run.TRTime
                     trVolumeData = self.getNextTRData(run, fileNum)
                     TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
-                    reply = self.rtatten.TRData(TR)
+                    replyId = self.rtatten.TRData.remote(TR)
+                    reply = ray.get(replyId)
                     assert reply.success is True
                     outputReplyLines(reply.outputlns, outputFile)
                     outputPredictionFile(reply.predict, classOutputDir)
-                reply = self.rtatten.EndBlock()
+                replyId = self.rtatten.EndBlock.remote()
+                reply = ray.get(replyId)
                 assert reply.success is True
                 outputReplyLines(reply.outputlns, outputFile)
-            reply = self.rtatten.EndBlockGroup()
+            replyId = self.rtatten.EndBlockGroup.remote()
+            reply = ray.get(replyId)
             assert reply.success is True
             outputReplyLines(reply.outputlns, outputFile)
         trainCfg = makeTrainCfg(run)
-        reply = self.rtatten.TrainModel(trainCfg)
+        replyId = self.rtatten.TrainModel.remote(trainCfg)
+        reply = ray.get(replyId)
         assert reply.success is True
         outputReplyLines(reply.outputlns, outputFile)
-        reply = self.rtatten.EndRun()
+        replyId = self.rtatten.EndRun.remote()
+        reply = ray.get(replyId)
         assert reply.success is True
         outputReplyLines(reply.outputlns, outputFile)
         if self.cfg.session.retrieveServerFiles:
@@ -177,7 +191,8 @@ class LocalClient():
         fileInfo.subjectDay = self.id_fields.subjectDay
         fileInfo.filename = filename
         stime = time.time()
-        reply = self.rtatten.RetrieveData(fileInfo)
+        replyId = self.rtatten.RetrieveData.remote(fileInfo)
+        reply = ray.get(replyId)
         assert reply.success is True
         print("took {:.2f} secs".format(time.time() - stime))
         clientFile = os.path.join(self.dirs.dataDir, filename)
@@ -286,8 +301,8 @@ def writeFile(filename, data):
 
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help']))
-@click.option('--ray', '-r', default=None, type=str, help='ray server ip address')
-@click.option('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
+@click.option('--rayremote', '-r', default=None, type=str, help='ray server ip address')
+@click.option('--config', '-c', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
 @clickutil.call(ClientMain)
 def _ClientMain():
     pass
