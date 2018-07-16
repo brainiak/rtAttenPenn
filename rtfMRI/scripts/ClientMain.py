@@ -2,10 +2,16 @@
 """
 Top level routine for client side rtfMRI processing
 """
+import sys
+import os
 import threading
 import logging
 import click
 import clickutil
+# fix up search path
+currPath = os.path.dirname(os.path.realpath(__file__))
+rootPath = os.path.join(currPath, "../../")
+sys.path.append(rootPath)
 from rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.BaseClient import BaseClient
@@ -34,7 +40,7 @@ def ClientMain(addr: str, port: int, experiment: str, run_local: bool, model: st
             raise InvocationError("No model specified in experiment file")
         # Start up client logic for the specified model
         model = cfg.experiment.model
-        client: RtfMRIClient
+        client: RtfMRIClient  # define a new variable of type RtfMRIClient
         if model == 'base':
             client = BaseClient()
         elif model == 'rtAtten':

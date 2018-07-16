@@ -7,9 +7,14 @@ Only one connection (therefore) only one client can be supported at a time.
 The server will receive commands from the client, execute them and reply.
 """
 import os
+import sys
 import logging
 import click
 import clickutil
+# fix up search path
+currPath = os.path.dirname(os.path.realpath(__file__))
+rootPath = os.path.join(currPath, "../../")
+sys.path.append(rootPath)
 from rtfMRI.RtfMRIServer import RtfMRIServer
 
 

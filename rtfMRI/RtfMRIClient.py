@@ -7,6 +7,7 @@ import json
 import toml  # type: ignore
 import pathlib
 import logging
+import time
 from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
 from .utils import getGitCodeId
@@ -58,6 +59,14 @@ class RtfMRIClient():
         validateSessionCfg(cfg)
         self.modelName = cfg.experiment.model
         self.initModel(self.modelName)
+
+        # calculate clockSkew and round-trip time
+        time_fields = StructDict()
+        time_fields.clientTime1 = time.time()
+        reply = self.sendCmdExpectSuccess(MsgEvent.SyncClock, time_fields)
+        print("ServerTime {}".format(reply.fields.serverTime))
+        clientTime2 = time.time()
+        # calculate clockSkew and RTT
 
         self.id_fields = StructDict()
         self.id_fields.experimentId = cfg.experiment.experimentId

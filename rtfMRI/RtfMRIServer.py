@@ -6,8 +6,10 @@ RtfMRIServer Module - Server handler for loading and running a model
   - Sends replies back to the client
 """
 import logging
+import time
 from .BaseModel import BaseModel
 from rtAtten.RtAttenModel import RtAttenModel
+from .StructDict import StructDict
 from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .utils import getGitCodeId
 from .Messaging import RtMessagingServer, Message
@@ -49,6 +51,10 @@ class RtfMRIServer():
                 elif msg.type == MsgType.Command:
                     if msg.event_type == MsgEvent.Ping:
                         reply = successReply(msg)
+                    elif msg.event_type == MsgEvent.SyncClock:
+                        reply = successReply(msg)
+                        reply.fields = StructDict()
+                        reply.fields.serverTime = time.time()
                     elif self.model is not None:
                         reply = self.model.handleMessage(msg)
                     else:
