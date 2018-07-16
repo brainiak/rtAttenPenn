@@ -22,6 +22,22 @@ else
     exit -1
 fi
 
+uname -a | grep  3.10.0-514 &> /dev/null
+if [[ $? -eq 0 ]]; then
+    echo "OK: RHE 7.3 (514) Kernel running"
+else
+    echo "FAILED: Wrong Kernel running"
+    exit -1
+fi
+
+nvidia-smi | grep 384 &> /dev/null
+if [[ $? -eq 0 ]]; then
+    echo "OK: NVidia driver 384 running"
+else
+    echo "FAILED: Wrong NVidia driver running"
+    exit -1
+fi
+
 # Check if python (and conda) working properly
 conda --version  &> /dev/null
 if [[ $? -eq 0 ]]; then
@@ -47,6 +63,7 @@ else
     echo "FAILED: python installation error"
     exit -1
 fi
+
 
 # Check if Matlab working properly
 $matlab -nodisplay -nodesktop -nosplash -r '2+3, quit'
