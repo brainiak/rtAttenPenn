@@ -172,13 +172,21 @@ class RtAttenClient(RtfMRIClient):
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
                     startTime = time.time()
+                    if (self.cfg.session.enforceDeadlines is not None and
+                            self.cfg.session.enforceDeadlines is True):
+                        TR.deadline = time.time() + self.cfg.clockSkew - \
+                                      (0.5 * self.cfg.maxRTT) + run.TRTime
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     endTime = time.time()
                     # log the TR processing time
                     logStr = "TR:{}:{}:{:3} {:.3f}s\n".format(runId, block.blockId, TR.trId, endTime - startTime)
                     self.logtimeFile.write(logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
-                    outputPredictionFile(reply.fields.predict, classOutputDir)
+                    if reply.fields.missedDeadline:
+                        # TODO - store reply.fields.threadId in order to get completed reply later
+                        pass
+                    else:
+                        outputPredictionFile(reply.fields.predict, classOutputDir)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)

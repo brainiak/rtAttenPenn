@@ -34,3 +34,13 @@ class InvocationError(RTError):
 class VersionError(RTError):
     """Client/Server code versions don't agree"""
     pass
+
+
+class MissedDeadlineError(RTError):
+    """Server missed a deadline"""
+    pass
+
+
+class MissedMultipleDeadlines(RTError):
+    """Server missed two or more deadlines"""
+    pass
