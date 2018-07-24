@@ -45,6 +45,7 @@ class TestDeadlines:
 
         # Start Server
         cls.server = threading.Thread(name='server', target=ServerMain, args=(cls.serverPort,))
+        cls.server.setDaemon(True)
         cls.server.start()
 
         # Start client

@@ -36,9 +36,8 @@ class RtfMRIServer():
     def runThread(self, msg):
         # calculate seconds until deadline
         secondstil = msg.fields.cfg.deadline - time.time()
-        # Check if there is a thread from the previous request is still running
-        if self.deadlineThread and self.deadlineThread.is_alive():
-            # Previous request didn't complete, wait for it
+        # Check if a thread from the previous request is still running
+        if self.deadlineThread:
             self.deadlineThread.join(timeout=secondstil)
             if self.deadlineThread.is_alive():
                 # Previous analysis still not complete (server isn't keeping up)
@@ -47,6 +46,7 @@ class RtfMRIServer():
 
         # Start the new task in a thread
         self.deadlineThread = threading.Thread(target=self.threadMethod, args=(msg,))
+        self.deadlineThread.setDaemon(True)  # set to daemon so we don't need to join it
         self.deadlineThread.start()
         deadlineThreadId = self.deadlineThread.ident
         self.deadlineThread.join(timeout=secondstil)

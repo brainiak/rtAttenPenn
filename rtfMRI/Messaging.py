@@ -6,7 +6,7 @@ import ssl
 import os
 import struct
 import logging
-import pickle
+import pyarrow as pa
 from .StructDict import StructDict
 from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .Errors import MessageError, ValidationError
@@ -54,6 +54,46 @@ class Message():
         self.id = msg_id
         self.type = msg_type
         self.event_type = msg_event
+
+
+# Serialization Context Stuff
+def _serialize_Message(msg):
+    return dict(
+        type=msg.type,
+        event_type=msg.event_type,
+        result=msg.result,
+        id=msg.id,
+        fields=msg.fields,
+        data=msg.data
+    )
+
+
+def _deserialize_Message(data):
+    msg = Message()
+    msg.type = data["type"]
+    msg.event_type = data["event_type"]
+    msg.result = data["result"]
+    msg.id = data["id"]
+    msg.fields = data["fields"]
+    msg.data = data["data"]
+    return msg
+
+
+def _serialize_StructDict(struct):
+    return struct.__getstate__()
+
+
+def _deserialize_StructDict(data):
+    return StructDict(data)
+
+
+pyarrow_context = pa.SerializationContext()
+pyarrow_context.register_type(Message, 'Message',
+                      custom_serializer=_serialize_Message,
+                      custom_deserializer=_deserialize_Message)
+pyarrow_context.register_type(StructDict, 'StructDict',
+                      custom_serializer=_serialize_StructDict,
+                      custom_deserializer=_deserialize_StructDict)
 
 
 class RtMessagingClient:
@@ -147,14 +187,13 @@ class RtMessagingServer:
 
 
 def sendMsg(conn, msg):
-    data = pickle.dumps(msg)
+    data = pyarrow_context.serialize(msg).to_buffer()
     hdr = hdrStruct.pack(HDR_MAGIC, msg.type, msg.event_type, len(data))
     conn.sendall(hdr)
     conn.sendall(data)
 
+
 # header = (magic, msg_type, msg_event_type, msg_size)
-
-
 def recvMsg(conn):
     """Recieve a formatted message from a socket connection.
     Returns: The message as a StructDict data structure
@@ -168,7 +207,7 @@ def recvMsg(conn):
     # Do some basic validation before reading and unpickling, can throw MessageError
     validateHeader(msg_type, msg_event_type, msg_size)
     data = recvall(conn, msg_size)
-    msg = pickle.loads(data)   # can throw PickleError
+    msg = pyarrow_context.deserialize(data)
     return msg
 
 

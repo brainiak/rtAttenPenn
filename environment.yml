@@ -14,6 +14,7 @@ dependencies:
   - watchdog
   - ipython
   - jupyter
+  - pyarrow
   - pytest
   - flake8
   - mypy
