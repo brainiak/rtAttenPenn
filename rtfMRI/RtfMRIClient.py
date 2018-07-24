@@ -6,6 +6,8 @@ and divided between Runs, BlockGroups, Blocks and Trials.
 import json
 import toml  # type: ignore
 import pathlib
+import time
+import re
 import logging
 from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
@@ -59,6 +61,9 @@ class RtfMRIClient():
         self.modelName = cfg.experiment.model
         self.initModel(self.modelName)
 
+        # calculate clockSkew and round-trip time
+        self.calculateclockSkew()
+
         self.id_fields = StructDict()
         self.id_fields.experimentId = cfg.experiment.experimentId
         self.id_fields.sessionId = cfg.session.sessionId
@@ -104,10 +109,17 @@ class RtfMRIClient():
             if reply.result == MsgResult.Warning:
                 logging.warn(reasonStr)
                 print("WARNING!!: {}".format(reasonStr))
-                resp = input("WARNING!!: {}. Continue? Y/N [N]:".format(reasonStr))
-                if resp.upper() != 'Y':
-                    raise RequestError("type:{} event:{} fields:{}: {}".format(
-                        msg_type, msg_event, msg.fields, reasonStr))
+                if reply.fields.resp is True:
+                    resp = input("WARNING!!: {}. Continue? Y/N [N]:".format(reasonStr))
+                    if resp.upper() != 'Y':
+                        raise RequestError("type:{} event:{} fields:{}: {}".format(
+                            msg_type, msg_event, msg.fields, reasonStr))
+                if re.search("MissedDeadlineError", reasonStr):
+                    logging.warning("Missed Deadline: Msg {}".format(msg.fields.ids))
+                    reply.fields.missedDeadline = True
+                    if reply.fields.outputlns is None:
+                        reply.fields.outputlns = []
+                    reply.fields.outputlns.append("Missed Deadline")
             else:
                 raise RequestError("type:{} event:{} fields:{}: {}".format(
                     msg_type, msg_event, msg.fields, reasonStr))
@@ -116,6 +128,31 @@ class RtfMRIClient():
 
     def sendCmdExpectSuccess(self, msg_event, msg_fields, data=None):
         return self.sendExpectSuccess(MsgType.Command, msg_event, msg_fields, data)
+
+    def calculateclockSkew(self):
+        RTT_list = []
+        clockSkew_list = []
+        time_fields = StructDict()
+        numIters = 30
+        if self.cfg.session.calcClockSkewIters is not None:
+            numIters = self.cfg.session.calcClockSkewIters
+        for _ in range(numIters):
+            time_fields.clientTime1 = time.time()
+            reply = self.sendCmdExpectSuccess(MsgEvent.SyncClock, time_fields)
+            time_fields.clientTime2 = time.time()
+            ServerTimeStamp = reply.fields.serverTime
+            # Clock Skew Formula from
+            # "Improved Algorithms for Synchronizing Computer Network Clocks"
+            # by: David Mills, Transactions on Networking, June 1995
+            a = ServerTimeStamp - time_fields.clientTime1
+            b = ServerTimeStamp - time_fields.clientTime2
+            RTT = a - b
+            clockSkew = (a + b)/2
+            RTT_list.append(RTT)
+            clockSkew_list.append(clockSkew)
+            self.cfg.minRTT = min(RTT_list)
+            self.cfg.maxRTT = max(RTT_list)
+            self.cfg.clockSkew = clockSkew_list[RTT_list.index(self.cfg.minRTT)]
 
     def close(self):
         self.disconnect()
