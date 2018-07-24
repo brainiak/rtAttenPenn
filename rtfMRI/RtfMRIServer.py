@@ -39,7 +39,7 @@ class RtfMRIServer():
         # Check if there is a thread from the previous request is still running
         if self.deadlineThread and self.deadlineThread.is_alive():
             # Previous request didn't complete, wait for it
-            self.deadlineThread.join(secondstil)
+            self.deadlineThread.join(timeout=secondstil)
             if self.deadlineThread.is_alive():
                 # Previous analysis still not complete (server isn't keeping up)
                 err1 = MissedMultipleDeadlines("Missed Multiple Deadlines")

@@ -174,8 +174,9 @@ class RtAttenClient(RtfMRIClient):
                     startTime = time.time()
                     if (self.cfg.session.enforceDeadlines is not None and
                             self.cfg.session.enforceDeadlines is True):
-                        TR.deadline = time.time() + self.cfg.clockSkew - \
-                                      (0.5 * self.cfg.maxRTT) + run.TRTime
+                        # TODO - capture TTL pulse from scanner to calculate next deadline
+                        TR.deadline = (time.time() + self.cfg.clockSkew -
+                                       (0.5 * self.cfg.maxRTT) + run.TRTime)
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     endTime = time.time()
                     # log the TR processing time
@@ -184,6 +185,7 @@ class RtAttenClient(RtfMRIClient):
                     outputReplyLines(reply.fields.outputlns, outputFile)
                     if reply.fields.missedDeadline:
                         # TODO - store reply.fields.threadId in order to get completed reply later
+                        # TODO - add a message type that retrieves previous thread results
                         pass
                     else:
                         outputPredictionFile(reply.fields.predict, classOutputDir)
