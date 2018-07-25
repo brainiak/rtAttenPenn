@@ -30,7 +30,7 @@ def getCfgFileFullPath():  # type: ignore
 
 
 class TestDeadlines:
-    serverPort = 5205
+    serverPort = 5212
     client = None
     server = None
     run = None
