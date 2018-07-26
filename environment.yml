@@ -15,6 +15,7 @@ dependencies:
   - ipython
   - jupyter
   - pyarrow
+  - pyserial
   - pytest
   - flake8
   - mypy
