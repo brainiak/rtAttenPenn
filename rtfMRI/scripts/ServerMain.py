@@ -16,17 +16,14 @@ currPath = os.path.dirname(os.path.realpath(__file__))
 rootPath = os.path.join(currPath, "../../")
 sys.path.append(rootPath)
 from rtfMRI.RtfMRIServer import RtfMRIServer
+from rtfMRI.utils import installLoggers
 
 
 def ServerMain(port):
     if not os.path.exists('logs'):
         os.makedirs('logs')
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s %(levelname)-8s %(message)s',
-                        filename='logs/rtAttenServer.log')
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    logging.getLogger('').addHandler(console)
+
+    installLoggers(logging.INFO, filename='logs/rtAttenServer.log')
 
     try:
         # Parse and add any additional settings from the command line

@@ -6,6 +6,7 @@ import os
 import time
 import glob
 import subprocess
+import logging
 import numpy as np  # type: ignore
 import scipy.io as sio  # type: ignore
 from .StructDict import MatlabStructDict, isStructuredArray
@@ -82,6 +83,34 @@ def flatten_1Ds(M):
 
 def dateStr30(timeval):
     return time.strftime("%Y%m%dT%H%M%S", timeval)
+
+
+def installLoggers(level, filename=None):
+    logging.basicConfig()
+    logging.getLogger().setLevel(level)
+    logger = logging.getLogger()
+    hasFileHandler = False
+    hasConsoleHandler = False
+    for handler in list(logger.handlers):
+        if isinstance(handler, logging.FileHandler):
+            # print("Has FileHandler")
+            hasFileHandler = True
+            handler.setLevel(level)
+        if isinstance(handler, logging.StreamHandler):
+            # print("Has StreamHandler")
+            hasConsoleHandler = True
+            handler.setLevel(level)
+    if not hasConsoleHandler:
+        # print("Create StreamHandler")
+        consoleLogger = logging.StreamHandler()
+        consoleLogger.setLevel(level)
+        logger.addHandler(consoleLogger)
+    if not hasFileHandler and filename is not None:
+        # print("Create FileHandler")
+        fileLogger = logging.FileHandler(filename)
+        fileLogger.setLevel(level)
+        fileLogger.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s %(message)s'))
+        logger.addHandler(fileLogger)
 
 
 # define as global variable

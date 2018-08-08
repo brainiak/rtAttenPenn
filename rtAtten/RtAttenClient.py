@@ -10,6 +10,7 @@ from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicom, applyMask
+from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30
 from rtfMRI.Errors import InvocationError, ValidationError
 from .PatternsDesign2Config import createRunConfig, getRunIndex
@@ -29,6 +30,7 @@ class RtAttenClient(RtfMRIClient):
         self.fileNotifyQ = Queue()  # type: None
         self.printFirstFilename = True
         self.logtimeFile = None
+        self.ttlClient = TTLPulseClient()
 
     def __del__(self):
         if self.observer is not None:
@@ -36,6 +38,8 @@ class RtAttenClient(RtfMRIClient):
         if self.logtimeFile is not None:
             self.logtimeFile.write("## End Log ##")
             self.logtimeFile.close()
+        if self.ttlClient is not None:
+            self.ttlClient.close()
         super().__del__()
 
     def initSession(self, cfg):
@@ -172,23 +176,35 @@ class RtAttenClient(RtfMRIClient):
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
                     startTime = time.time()
+                    timeSinceStartTR = 0
                     if (self.cfg.session.enforceDeadlines is not None and
                             self.cfg.session.enforceDeadlines is True):
-                        # TODO - capture TTL pulse from scanner to calculate next deadline
-                        TR.deadline = (time.time() + self.cfg.clockSkew -
-                                       (0.5 * self.cfg.maxRTT) + run.TRTime)
+                        # capture TTL pulse from scanner to calculate next deadline
+                        trStartTime = self.ttlClient.getTimestamp()
+                        timeSinceStartTR = time.time() - trStartTime
+                        if trStartTime == 0 or timeSinceStartTR > run.TRTime:
+                            # Approximate trStart as current time minus .5 seconds
+                            #   because scan reconstruction takes about 500ms
+                            timeSinceStartTR = 0
+                            trStartTime = time.time() - 0.5
+                        TR.deadline = (trStartTime + self.cfg.clockSkew + run.TRTime -
+                                       (0.5 * self.cfg.maxRTT))
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     endTime = time.time()
-                    # log the TR processing time
-                    logStr = "TR:{}:{}:{:3} {:.3f}s\n".format(runId, block.blockId, TR.trId, endTime - startTime)
-                    self.logtimeFile.write(logStr)
-                    outputReplyLines(reply.fields.outputlns, outputFile)
-                    if reply.fields.missedDeadline:
+                    missedDeadline = False
+                    if reply.fields.missedDeadline and reply.fields.missedDeadline is True:
                         # TODO - store reply.fields.threadId in order to get completed reply later
                         # TODO - add a message type that retrieves previous thread results
-                        pass
+                        missedDeadline = True
                     else:
                         outputPredictionFile(reply.fields.predict, classOutputDir)
+                    # log the TR processing time
+                    logStr = "{}, TR:{}:{}:{:03}, process_time {:.3f}s, " \
+                             "image_time {:.3f}s, missed_deadline {}\n" \
+                             .format(datetime.datetime.now(), runId, block.blockId, TR.trId,
+                                     endTime - startTime, timeSinceStartTR, missedDeadline)
+                    self.logtimeFile.write(logStr)
+                    outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)

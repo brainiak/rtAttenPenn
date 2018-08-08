@@ -2,7 +2,8 @@ import pytest
 import os
 import sys
 import time
-import subprocess
+# import subprocess
+import threading
 currPath = os.path.dirname(os.path.realpath(__file__))
 rootPath = os.path.join(currPath, "../../")
 sys.path.append(rootPath)
@@ -14,7 +15,11 @@ class TestDeadlines:
 
     def setup_class(cls):
         # Start Pulse Server
-        cls.serverProc = subprocess.Popen(['python', 'rtfMRI/ttlPulse.py'])
+        # cls.serverProc = subprocess.Popen(['python', 'rtfMRI/ttlPulse.py'])
+        cls.pulseServer = threading.Thread(name='pulseServer', target=ttl.TTLPulseServer, args=(None, 0))
+        cls.pulseServer.setDaemon(True)
+        cls.pulseServer.start()
+
         # Start Pulse Client
         cls.pulseClient = ttl.TTLPulseClient()
 
@@ -22,7 +27,8 @@ class TestDeadlines:
         print("Stop pulseClient")
         cls.pulseClient.close()
         print("Stop pulseServer")
-        cls.serverProc.kill()
+        # cls.serverProc.kill()
+        cls.pulseServer.join(timeout=1)
 
     def test_receivePulse(self):
         pulseEvent = self.pulseClient.getPulseEvent()

@@ -107,19 +107,22 @@ class RtfMRIClient():
                 reasonStr = str(reply.data, 'utf-8')
 
             if reply.result == MsgResult.Warning:
-                logging.warn(reasonStr)
-                print("WARNING!!: {}".format(reasonStr))
                 if reply.fields.resp is True:
                     resp = input("WARNING!!: {}. Continue? Y/N [N]:".format(reasonStr))
                     if resp.upper() != 'Y':
                         raise RequestError("type:{} event:{} fields:{}: {}".format(
                             msg_type, msg_event, msg.fields, reasonStr))
-                if re.search("MissedDeadlineError", reasonStr):
+                elif re.search("MissedDeadlineError", reasonStr):
                     logging.warning("Missed Deadline: Msg {}".format(msg.fields.ids))
                     reply.fields.missedDeadline = True
                     if reply.fields.outputlns is None:
                         reply.fields.outputlns = []
-                    reply.fields.outputlns.append("Missed Deadline")
+                    ids = msg.fields.ids
+                    outStr = "{:d}\t{:d}\t{:d}\t## Missed Deadline ##".format(ids.runId, ids.blockId, ids.trId)
+                    reply.fields.outputlns.append(outStr)
+                else:
+                    logging.warning(reasonStr)
+                    print("WARNING!!: {}".format(reasonStr))
             else:
                 raise RequestError("type:{} event:{} fields:{}: {}".format(
                     msg_type, msg_event, msg.fields, reasonStr))

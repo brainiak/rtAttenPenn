@@ -11,7 +11,7 @@ MULTICAST_PORT = 5300
 MsgFormat = struct.Struct("!d")
 
 
-def TTLPulseServer(serialDevice, serialBaud):
+def TTLPulseServer(serialDevice, serialBaud, interval=1):
     while True:
         try:
             serialConn = None
@@ -22,7 +22,12 @@ def TTLPulseServer(serialDevice, serialBaud):
             # Open UDP Socket for Multicast (or Broadcast)
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            try:
+                # Option REUSEPORT is not always available
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except Exception:
+                pass
+
             if USE_MULTICAST:
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
             else:
@@ -37,7 +42,7 @@ def TTLPulseServer(serialDevice, serialBaud):
                     pulseCnt = int(pulseStr)
                     assert 0 <= pulseCnt <= 9
                 else:
-                    time.sleep(1)
+                    time.sleep(interval)
                     pulseCnt = (pulseCnt + 1) % 10
 
                 timestamp = time.time()
@@ -64,6 +69,7 @@ class TTLPulseClient():
         # Class attributes
         self.sock = None
         self.timestamp = 0
+        self.serverTimestamp = 0
         self.resetThread = None
         self.listenThread = None
         self.PulseNotify = None
@@ -72,7 +78,12 @@ class TTLPulseClient():
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        try:
+            # Option REUSEPORT is not always available
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except Exception:
+            pass
+
         if USE_MULTICAST:
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
             sock.bind((MULTICAST_ADDR, MULTICAST_PORT))
@@ -127,6 +138,7 @@ class TTLPulseClient():
             if self.timestamp == prevTimestamp:
                 # print("Client reset timestamp")
                 self.timestamp = 0
+                self.serverTimestamp = 0
             prevTimestamp = self.timestamp
 
     def listenTTLThread(self):
@@ -137,8 +149,10 @@ class TTLPulseClient():
                 data, addr = self.sock.recvfrom(256)
             except OSError as err:
                 print("ListenTTLThread drop connection")
+                return
             msg = MsgFormat.unpack(data)
-            self.timestamp = msg[0]
+            self.serverTimestamp = msg[0]
+            self.timestamp = time.time()
             # Set the PulseNotify Event to wake up calling threads
             self.PulseNotify.set()
             # print("Pulse: {} {}".format(self.timestamp, time.time() - self.timestamp))
@@ -148,12 +162,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', action="store", dest="serialDev")
     parser.add_argument('-b', action="store", dest="serialBaud")
+    parser.add_argument('-i', action="store", dest="interval", type=float)
     args = parser.parse_args()
+    if args.interval is None:
+        args.interval = 1
+    if args.serialBaud is None:
+        args.serialBaud = 9600
     if args.serialDev is None:
-        print("No serial device specified, sending pulse every second")
-        TTLPulseServer(None, 0)
+        print("No serial device specified, sending pulse every {} sec".format(args.interval))
+        TTLPulseServer(None, 0, interval=args.interval)
     else:
-        if args.serialBaud is None:
-            args.serialBaud = 9600
         print("Listen on device {} {}".format(args.serialDev, args.serialBaud))
         TTLPulseServer(args.serialDev, args.serialBaud)

@@ -17,11 +17,12 @@ from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.BaseClient import BaseClient
 from rtfMRI.Errors import InvocationError, RequestError
 import rtfMRI.scripts.ServerMain as ServerMain
+from rtfMRI.utils import installLoggers
 
 
 def ClientMain(addr: str, port: int, experiment: str, run_local: bool, model: str):
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.INFO)
+    installLoggers(logging.INFO, filename='logs/rtAttenClient.log')
+
     try:
         # Get params and load config file
         # settings = parseCommandArgs(argv, defaultSettings)

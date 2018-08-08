@@ -8,7 +8,6 @@ import tests.rtfMRI.simfmri.generate_data as gd
 # import generate_fmri_data.generate_data as gd
 
 cfgFile = './syntheticDataCfg.toml'
-logging.basicConfig(level=logging.DEBUG)
 
 
 @pytest.fixture(scope="module")
