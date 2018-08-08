@@ -22,6 +22,5 @@ dependencies:
   - click
   - brainiak
   - pip
-  - socat
   - pip:
     - clickutil

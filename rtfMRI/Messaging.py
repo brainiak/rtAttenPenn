@@ -6,7 +6,7 @@ import ssl
 import os
 import struct
 import logging
-from ray import pyarrow as pa
+import pyarrow as pa
 from .StructDict import StructDict
 from .MsgTypes import MsgType, MsgEvent, MsgResult
 from .Errors import MessageError, ValidationError
