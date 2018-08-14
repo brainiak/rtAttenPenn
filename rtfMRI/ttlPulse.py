@@ -115,10 +115,10 @@ class TTLPulseClient():
             self.sock.close()
             self.sock = None
         if self.listenThread is not None:
-            self.listenThread.join()
+            self.listenThread.join(timeout=1)
             self.listenThread = None
         if self.resetThread is not None:
-            self.resetThread.join()
+            self.resetThread.join(timeout=1)
             self.resetThread = None
 
     def getTimestamp(self):
