@@ -175,35 +175,58 @@ class RtAttenClient(RtfMRIClient):
                     else:
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
-                    startTime = time.time()
-                    timeSinceStartTR = 0
+                    processingStartTime = time.time()
+                    imageAcquisitionTime = 0
+                    pulseBroadcastTime = 0
+                    trStartTime = 0
+                    gotTTLTime = False
                     if (self.cfg.session.enforceDeadlines is not None and
                             self.cfg.session.enforceDeadlines is True):
                         # capture TTL pulse from scanner to calculate next deadline
                         trStartTime = self.ttlClient.getTimestamp()
-                        timeSinceStartTR = time.time() - trStartTime
-                        if trStartTime == 0 or timeSinceStartTR > run.TRTime:
-                            # Approximate trStart as current time minus .5 seconds
+                        if trStartTime == 0 or imageAcquisitionTime > run.TRTime:
+                            # Either no TTL Pulse time signal or stale time signal
+                            #   Approximate trStart as current time minus 500ms 
                             #   because scan reconstruction takes about 500ms
-                            timeSinceStartTR = 0
+                            gotTTLTime = False
                             trStartTime = time.time() - 0.5
+                            # logging.info("Approx TR deadline: {}".format(trStartTime))
+                        else:
+                            gotTTLTime = True
+                            imageAcquisitionTime = time.time() - trStartTime
+                            pulseBroadcastTime = trStartTime - self.ttlClient.getServerTimestamp()
+                            # logging.info("TTL TR deadline: {}".format(trStartTime))
+                        # Deadline is TR_Start_Time + time between TRs +
+                        #  clockSkew adjustment - 1/2 Max Net Round_Trip_Time -
+                        #  Min RTT because clock skew calculation can be off
+                        #  by the RTT used for calculation which is Min RTT.
                         TR.deadline = (trStartTime + self.cfg.clockSkew + run.TRTime -
-                                       (0.5 * self.cfg.maxRTT))
+                                       (0.5 * self.cfg.maxRTT) - self.cfg.minRTT)
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
-                    endTime = time.time()
+                    processingEndTime = time.time()
                     missedDeadline = False
-                    if reply.fields.missedDeadline and reply.fields.missedDeadline is True:
+                    if (reply.fields.missedDeadline is not None and 
+                            reply.fields.missedDeadline is True):
                         # TODO - store reply.fields.threadId in order to get completed reply later
                         # TODO - add a message type that retrieves previous thread results
                         missedDeadline = True
                     else:
                         outputPredictionFile(reply.fields.predict, classOutputDir)
                     # log the TR processing time
-                    logStr = "{}, TR:{}:{}:{:03}, process_time {:.3f}s, " \
-                             "image_time {:.3f}s, missed_deadline {}\n" \
-                             .format(datetime.datetime.now(), runId, block.blockId, TR.trId,
-                                     endTime - startTime, timeSinceStartTR, missedDeadline)
+                    serverProcessTime = processingEndTime - processingStartTime
+                    elapsedTRTime = 0
+                    if gotTTLTime is True:
+                        elapsedTRTime = time.time() - trStartTime
+                    logStr = "{}, TR:{}:{}:{:03}, server_process_time {:.3f}s, " \
+                            "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
+                            "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}\n" \
+                             .format(datetime.datetime.now(),
+                                     runId, block.blockId, TR.trId,
+                                     serverProcessTime, elapsedTRTime, 
+                                     imageAcquisitionTime, pulseBroadcastTime,
+                                     gotTTLTime, missedDeadline)
                     self.logtimeFile.write(logStr)
+                    # logging.info(logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
@@ -221,11 +244,11 @@ class RtAttenClient(RtfMRIClient):
             trainCfg.blkGrpRefs = [{'run': 1, 'phase': 2}, {'run': 2, 'phase': 1}]
         else:
             trainCfg.blkGrpRefs = [{'run': run.runId-1, 'phase': 1}, {'run': run.runId, 'phase': 1}]
-        startTime = time.time()
+        processingStartTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
-        endTime = time.time()
+        processingEndTime = time.time()
         # log the model generation time
-        logStr = "Model:{} {:.3f}s\n".format(runId, endTime - startTime)
+        logStr = "Model:{} {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
         self.logtimeFile.write(logStr)
         self.logtimeFile.flush()
         outputReplyLines(reply.fields.outputlns, outputFile)
@@ -325,10 +348,10 @@ class RtAttenClient(RtfMRIClient):
         outputReplyLines(reply.fields.outputlns, None)
 
     def ping(self):
-        startTime = time.time()
+        processingStartTime = time.time()
         self.sendCmdExpectSuccess(MsgEvent.Ping, None)
-        endTime = time.time()
-        print("RTT: {:.2f}ms".format(endTime-startTime))
+        processingEndTime = time.time()
+        print("RTT: {:.2f}ms".format(processingEndTime-processingStartTime))
 
 
 class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore

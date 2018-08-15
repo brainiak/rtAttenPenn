@@ -156,6 +156,9 @@ class RtfMRIClient():
             self.cfg.minRTT = min(RTT_list)
             self.cfg.maxRTT = max(RTT_list)
             self.cfg.clockSkew = clockSkew_list[RTT_list.index(self.cfg.minRTT)]
+            avgRTT = sum(RTT_list) / float(len(RTT_list))
+        logging.info("MaxRTT {:.3f}s, MinRTT {:.3f}, AvgRTT {:.3f}, ClockSkew {:.3f}s".\
+                     format(self.cfg.maxRTT, self.cfg.minRTT, avgRTT, self.cfg.clockSkew))
 
     def close(self):
         self.disconnect()

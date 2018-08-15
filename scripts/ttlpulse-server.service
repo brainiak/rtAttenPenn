@@ -1,0 +1,15 @@
+# copy to /usr/lib/systemd/system
+# systemctl enable ttlpulse-server
+[Unit]
+Description=TTLPulse Server
+After=network.target
+
+[Service]
+User=gwallace
+Group=rtshare
+WorkingDirectory=/Data1/code/rtAttenPenn_cloud
+ExecStart=/Data1/code/rtAttenPenn_cloud/scripts/run-ttlserver.sh
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

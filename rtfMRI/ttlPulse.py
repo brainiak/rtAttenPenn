@@ -124,6 +124,9 @@ class TTLPulseClient():
     def getTimestamp(self):
         return self.timestamp
 
+    def getServerTimestamp(self):
+        return self.serverTimestamp
+
     def getPulseEvent(self):
         return self.PulseNotify
 
