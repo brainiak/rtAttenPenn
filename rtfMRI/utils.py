@@ -85,9 +85,22 @@ def dateStr30(timeval):
     return time.strftime("%Y%m%dT%H%M%S", timeval)
 
 
-def installLoggers(level, filename=None):
+class DebugLevels:
+    L1  = 19
+    L2  = 18
+    L3  = 17
+    L4  = 16
+    L5  = 15
+    L6  = 14
+    L7  = 13
+    L8  = 12
+    L9  = 11
+    L10 = 10
+
+
+def installLoggers(consoleLevel, fileLevel, filename=None):
     logging.basicConfig()
-    logging.getLogger().setLevel(level)
+    logging.getLogger().setLevel(logging.DEBUG)
     logger = logging.getLogger()
     hasFileHandler = False
     hasConsoleHandler = False
@@ -95,20 +108,20 @@ def installLoggers(level, filename=None):
         if isinstance(handler, logging.FileHandler):
             # print("Has FileHandler")
             hasFileHandler = True
-            handler.setLevel(level)
+            handler.setLevel(fileLevel)
         if isinstance(handler, logging.StreamHandler):
             # print("Has StreamHandler")
             hasConsoleHandler = True
-            handler.setLevel(level)
+            handler.setLevel(consoleLevel)
     if not hasConsoleHandler:
         # print("Create StreamHandler")
         consoleLogger = logging.StreamHandler()
-        consoleLogger.setLevel(level)
+        consoleLogger.setLevel(consoleLevel)
         logger.addHandler(consoleLogger)
     if not hasFileHandler and filename is not None:
         # print("Create FileHandler")
         fileLogger = logging.FileHandler(filename)
-        fileLogger.setLevel(level)
+        fileLogger.setLevel(fileLevel)
         fileLogger.setFormatter(logging.Formatter('%(asctime)s %(levelname)-8s %(message)s'))
         logger.addHandler(fileLogger)
 

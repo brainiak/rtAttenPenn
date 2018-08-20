@@ -11,13 +11,13 @@ from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicom, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
-from rtfMRI.utils import dateStr30
+from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.Errors import InvocationError, ValidationError
 from .PatternsDesign2Config import createRunConfig, getRunIndex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
 from watchdog.observers import Observer  # type: ignore
-from queue import Queue
+from queue import Queue, Empty
 
 
 class RtAttenClient(RtfMRIClient):
@@ -45,6 +45,10 @@ class RtAttenClient(RtfMRIClient):
     def initSession(self, cfg):
         if cfg.session.sessionId is None or cfg.session.sessionId == '':
             cfg.session.sessionId = dateStr30(time.localtime())
+
+        logging.log(DebugLevels.L1, "Start Session: %s, subNum%d subDay%d",
+                    cfg.session.sessionId, cfg.session.subjectNum, cfg.session.subjectDay)
+        logging.log(DebugLevels.L1, "Config: %r", cfg)
 
         # Set Directories
         subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
@@ -107,15 +111,20 @@ class RtAttenClient(RtfMRIClient):
         validateRunCfg(run)
         self.id_fields.runId = run.runId
 
+        logging.log(DebugLevels.L4, "Run: %d, scanNum %d", runId, run.scanNum)
+
         if self.cfg.session.rtData:
             # Check if images already exist and warn and ask to continue
             firstFileName = self.getDicomFileName(run.scanNum, 1)
             if os.path.exists(firstFileName):
+                logging.log(DebugLevels.L3, "Dicoms already exist")
                 skipCheck = self.cfg.session.skipConfirmForReprocess
                 if skipCheck is None or skipCheck is False:
                     resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
                     if resp.upper() != 'Y':
                         return
+            else:
+                logging.log(DebugLevels.L3, "Dicoms - waiting for")
         elif self.cfg.session.replayMatFileMode or self.cfg.session.validate:
             idx = getRunIndex(self.cfg.session, runId)
             if idx >= 0 and len(self.cfg.session.validationModels) > idx:
@@ -158,15 +167,18 @@ class RtAttenClient(RtfMRIClient):
         for blockGroup in run.blockGroups:
             self.id_fields.blkGrpId = blockGroup.blkGrpId
             blockGroupCfg = copy_toplevel(blockGroup)
+            logging.log(DebugLevels.L4, "BlkGrp: %d", blockGroup.blkGrpId)
             reply = self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
             outputReplyLines(reply.fields.outputlns, outputFile)
             for block in blockGroup.blocks:
                 self.id_fields.blockId = block.blockId
                 blockCfg = copy_toplevel(block)
+                logging.log(DebugLevels.L4, "Blk: %d", block.blockId)
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
+                    logging.log(DebugLevels.L3, "TR: %d", TR.trId)
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
                         fileNum = TR.vol + run.disdaqs // run.TRTime
@@ -186,7 +198,7 @@ class RtAttenClient(RtfMRIClient):
                         trStartTime = self.ttlClient.getTimestamp()
                         if trStartTime == 0 or imageAcquisitionTime > run.TRTime:
                             # Either no TTL Pulse time signal or stale time signal
-                            #   Approximate trStart as current time minus 500ms 
+                            #   Approximate trStart as current time minus 500ms
                             #   because scan reconstruction takes about 500ms
                             gotTTLTime = False
                             trStartTime = time.time() - 0.5
@@ -205,7 +217,7 @@ class RtAttenClient(RtfMRIClient):
                     reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                     processingEndTime = time.time()
                     missedDeadline = False
-                    if (reply.fields.missedDeadline is not None and 
+                    if (reply.fields.missedDeadline is not None and
                             reply.fields.missedDeadline is True):
                         # TODO - store reply.fields.threadId in order to get completed reply later
                         # TODO - add a message type that retrieves previous thread results
@@ -218,15 +230,15 @@ class RtAttenClient(RtfMRIClient):
                     if gotTTLTime is True:
                         elapsedTRTime = time.time() - trStartTime
                     logStr = "{}, TR:{}:{}:{:03}, server_process_time {:.3f}s, " \
-                            "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
-                            "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}\n" \
+                             "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
+                             "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}" \
                              .format(datetime.datetime.now(),
                                      runId, block.blockId, TR.trId,
-                                     serverProcessTime, elapsedTRTime, 
+                                     serverProcessTime, elapsedTRTime,
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline)
-                    self.logtimeFile.write(logStr)
-                    # logging.info(logStr)
+                    self.logtimeFile.write(logStr + '\n')
+                    logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
@@ -293,23 +305,35 @@ class RtAttenClient(RtfMRIClient):
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
         fileExists = os.path.exists(specificFileName)
-        if not fileExists and self.observer is None:
-            raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
+        if not fileExists:
+            if self.observer is None:
+                raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
+            else:
+                logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
+        eventLoopCount = 0
         while not fileExists:
             # look for file creation event
-            event, ts = self.fileNotifyQ.get()
+            eventLoopCount += 1
+            try:
+                event, ts = self.fileNotifyQ.get(block=True, timeout=0.5)
+            except Empty as err:
+                fileExists = os.path.exists(specificFileName)
+                continue
             if event.src_path == specificFileName:
                 fileExists = True
+                logging.log(DebugLevels.L6, "File creation event: %s", specificFileName)
         # wait for the full file to be written, wait at most 200 ms
         fileSize = 0
-        totalWait = 0.0
+        totalWriteWait = 0.0
         waitIncrement = 0.01
-        while fileSize < self.cfg.session.minExpectedDicomSize and totalWait <= 0.3:
+        while fileSize < self.cfg.session.minExpectedDicomSize and totalWriteWait <= 0.3:
             time.sleep(waitIncrement)
-            totalWait += waitIncrement
+            totalWriteWait += waitIncrement
             fileSize = os.path.getsize(specificFileName)
-        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".format(fileNum, fileSize, totalWait)
+        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".format(fileNum, fileSize, totalWriteWait)
         self.logtimeFile.write(logStr)
+        logging.log(DebugLevels.L6, "File avail: fileNum %d, eventLoopCount %d, writeWaitTime %.3f",
+                    fileNum, eventLoopCount, totalWriteWait)
         _, file_extension = os.path.splitext(specificFileName)
         if file_extension == '.mat':
             data = utils.loadMatFile(specificFileName)

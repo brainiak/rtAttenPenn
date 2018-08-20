@@ -23,7 +23,7 @@ def ServerMain(port):
     if not os.path.exists('logs'):
         os.makedirs('logs')
 
-    installLoggers(logging.INFO, filename='logs/rtAttenServer.log')
+    installLoggers(logging.INFO, logging.INFO, filename='logs/rtAttenServer.log')
 
     try:
         # Parse and add any additional settings from the command line
