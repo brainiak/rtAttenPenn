@@ -21,7 +21,7 @@ from rtfMRI.utils import installLoggers
 
 
 def ClientMain(addr: str, port: int, experiment: str, run_local: bool, model: str):
-    installLoggers(logging.INFO, logging.DEBUG, filename='logs/rtAttenClient.log')
+    installLoggers(logging.INFO, logging.DEBUG+1, filename='logs/rtAttenClient.log')
 
     try:
         # Get params and load config file

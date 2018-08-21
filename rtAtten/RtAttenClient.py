@@ -178,10 +178,10 @@ class RtAttenClient(RtfMRIClient):
                 outputReplyLines(reply.fields.outputlns, outputFile)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
-                    logging.log(DebugLevels.L3, "TR: %d", TR.trId)
+                    fileNum = TR.vol + run.disdaqs // run.TRTime
+                    logging.log(DebugLevels.L3, "TR: %d, fileNum %d", TR.trId, fileNum)
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
-                        fileNum = TR.vol + run.disdaqs // run.TRTime
                         trVolumeData = self.getNextTRData(run, fileNum)
                         TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
                     else:
@@ -229,15 +229,15 @@ class RtAttenClient(RtfMRIClient):
                     elapsedTRTime = 0
                     if gotTTLTime is True:
                         elapsedTRTime = time.time() - trStartTime
-                    logStr = "{}, TR:{}:{}:{:03}, server_process_time {:.3f}s, " \
+                    logStr = "TR:{}:{}:{:03}, fileNum {}, server_process_time {:.3f}s, " \
                              "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
                              "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}" \
-                             .format(datetime.datetime.now(),
-                                     runId, block.blockId, TR.trId,
+                             .format(runId, block.blockId, TR.trId, fileNum,
                                      serverProcessTime, elapsedTRTime,
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline)
-                    self.logtimeFile.write(logStr + '\n')
+                    self.logtimeFile.write(str(datetime.datetime.now()) +
+                                           ' ' + logStr + '\n')
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
@@ -311,17 +311,21 @@ class RtAttenClient(RtfMRIClient):
             else:
                 logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
         eventLoopCount = 0
+        exitWithFileCreationEvent = False
         while not fileExists:
             # look for file creation event
             eventLoopCount += 1
             try:
-                event, ts = self.fileNotifyQ.get(block=True, timeout=0.5)
+                event, ts = self.fileNotifyQ.get(block=True, timeout=1.0)
             except Empty as err:
                 fileExists = os.path.exists(specificFileName)
                 continue
+            assert event is not None
+            # We may have a stale event from a previous file if the previous
+            #   file eventloop timed out and then the event arrived later.
             if event.src_path == specificFileName:
                 fileExists = True
-                logging.log(DebugLevels.L6, "File creation event: %s", specificFileName)
+                exitWithFileCreationEvent = True
         # wait for the full file to be written, wait at most 200 ms
         fileSize = 0
         totalWriteWait = 0.0
@@ -330,10 +334,14 @@ class RtAttenClient(RtfMRIClient):
             time.sleep(waitIncrement)
             totalWriteWait += waitIncrement
             fileSize = os.path.getsize(specificFileName)
-        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".format(fileNum, fileSize, totalWriteWait)
+        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".\
+                 format(fileNum, fileSize, totalWriteWait)
         self.logtimeFile.write(logStr)
-        logging.log(DebugLevels.L6, "File avail: fileNum %d, eventLoopCount %d, writeWaitTime %.3f",
-                    fileNum, eventLoopCount, totalWriteWait)
+        logging.log(DebugLevels.L6, 
+                    "File avail: fileNum %d, eventLoopCount %d, "
+                    "writeWaitTime %.3f, fileEventCaptured %s",
+                    fileNum, eventLoopCount, totalWriteWait,
+                    exitWithFileCreationEvent)
         _, file_extension = os.path.splitext(specificFileName)
         if file_extension == '.mat':
             data = utils.loadMatFile(specificFileName)
