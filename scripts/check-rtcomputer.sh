@@ -13,9 +13,10 @@ else
 fi
 
 # Check if mount drive is accessible
-#dataDrive=/mnt/rtexport/RTexport_Current/
-files=$(shopt -s nullglob dotglob; echo $dataDrive)
-if (( ${#files} )); then
+# nullglob will return '' empty string if no files found
+echo "Checking access to $dataDrive"
+files=($(shopt -s nullglob dotglob; ls $dataDrive))
+if [[ ${#files[*]} -gt 0 ]]; then
     echo "OK: $dataDrive is accessible"
 else
     echo "FAILED: $dataDrive not accessible or empty"
