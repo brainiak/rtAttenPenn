@@ -29,15 +29,12 @@ class RtAttenClient(RtfMRIClient):
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
         self.printFirstFilename = True
-        self.logtimeFile = None
         self.ttlClient = TTLPulseClient()
 
     def __del__(self):
+        logging.log(DebugLevels.L1, "## Stop Client")
         if self.observer is not None:
             self.observer.stop()
-        if self.logtimeFile is not None:
-            self.logtimeFile.write("## End Log ##")
-            self.logtimeFile.close()
         if self.ttlClient is not None:
             self.ttlClient.close()
         super().__del__()
@@ -46,7 +43,7 @@ class RtAttenClient(RtfMRIClient):
         if cfg.session.sessionId is None or cfg.session.sessionId == '':
             cfg.session.sessionId = dateStr30(time.localtime())
 
-        logging.log(DebugLevels.L1, "Start Session: %s, subNum%d subDay%d",
+        logging.log(DebugLevels.L1, "## Start Session: %s, subNum%d subDay%d",
                     cfg.session.sessionId, cfg.session.subjectNum, cfg.session.subjectDay)
         logging.log(DebugLevels.L1, "Config: %r", cfg)
 
@@ -77,15 +74,6 @@ class RtAttenClient(RtfMRIClient):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
         self.initFileNotifier(self.dirs.imgDir, cfg.session.watchFilePattern)
-
-        # Open file for logging processing time measurements
-        logtimeFilename = os.path.join(self.dirs.dataDir, "logtime.txt")
-        self.logtimeFile = open(logtimeFilename, "a", 1)  # linebuffered=1
-        initLogStr = "## Start Session: date:{} subNum:{} subDay:{} ##\n".format(
-                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                     cfg.session.subjectNum,
-                     cfg.session.subjectDay)
-        self.logtimeFile.write(initLogStr)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
@@ -236,8 +224,6 @@ class RtAttenClient(RtfMRIClient):
                                      serverProcessTime, elapsedTRTime,
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline)
-                    self.logtimeFile.write(str(datetime.datetime.now()) +
-                                           ' ' + logStr + '\n')
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
@@ -256,13 +242,16 @@ class RtAttenClient(RtfMRIClient):
             trainCfg.blkGrpRefs = [{'run': 1, 'phase': 2}, {'run': 2, 'phase': 1}]
         else:
             trainCfg.blkGrpRefs = [{'run': run.runId-1, 'phase': 1}, {'run': run.runId, 'phase': 1}]
+        outlns = []
+        outlns.append('*********************************************')
+        outlns.append("Train Model {} {}".format(trainCfg.blkGrpRefs[0], trainCfg.blkGrpRefs[1]))
+        outputReplyLines(outlns, outputFile)
         processingStartTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
         processingEndTime = time.time()
         # log the model generation time
-        logStr = "Model:{} {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
-        self.logtimeFile.write(logStr)
-        self.logtimeFile.flush()
+        logStr = "Model:{} training time {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
+        logging.log(DebugLevels.L3, logStr)
         outputReplyLines(reply.fields.outputlns, outputFile)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
         outputReplyLines(reply.fields.outputlns, outputFile)
@@ -334,10 +323,7 @@ class RtAttenClient(RtfMRIClient):
             time.sleep(waitIncrement)
             totalWriteWait += waitIncrement
             fileSize = os.path.getsize(specificFileName)
-        logStr = "FileWait: fileNum {}: size {}: wait {:.3f}s\n".\
-                 format(fileNum, fileSize, totalWriteWait)
-        self.logtimeFile.write(logStr)
-        logging.log(DebugLevels.L6, 
+        logging.log(DebugLevels.L6,
                     "File avail: fileNum %d, eventLoopCount %d, "
                     "writeWaitTime %.3f, fileEventCaptured %s",
                     fileNum, eventLoopCount, totalWriteWait,

@@ -23,7 +23,7 @@ def test_baseModel():
     print("test_baseModel")
     logging.error("###Test logging###")
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5210, getCfgFileFullPath(), True, None)
+    result = ClientMain.ClientMain("localhost", 5210, getCfgFileFullPath(), True, None, None, None)
     assert result is True
 
 

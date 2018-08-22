@@ -30,7 +30,7 @@ def test_runSyntheticData():
     print("rtfMRI: test_runSyntheticData")
     setupTest()
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5211, getCfgFileFullPath(), True, None)
+    result = ClientMain.ClientMain("localhost", 5211, getCfgFileFullPath(), True, None, None, None)
     assert result is True
 
 

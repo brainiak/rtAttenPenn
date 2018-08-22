@@ -87,6 +87,7 @@ class RtAttenModel(BaseModel):
         reply.fields.outputlns.append('* Subject Number: ' + str(self.session.subjectNum))
         reply.fields.outputlns.append('* Subject Name: ' + str(self.session.subjectName))
         reply.fields.outputlns.append('* Run Number: ' + str(run.runId))
+        reply.fields.outputlns.append('* Scan Number: ' + str(run.scanNum))
         reply.fields.outputlns.append('* Real-Time Data: ' + str(self.session.rtData))
         reply.fields.outputlns.append('*********************************************\n')
 
@@ -98,8 +99,10 @@ class RtAttenModel(BaseModel):
         return reply
 
     def EndRun(self, msg):
+        runId = self.id_fields.runId
         self.trimCache(self.id_fields.runId)
         reply = super().EndRun(msg)
+        reply.fields.outputlns.append("End Run {}".format(runId))
         return reply
 
     def StartBlockGroup(self, msg):
@@ -183,7 +186,7 @@ class RtAttenModel(BaseModel):
                     errorReply.data = "Error: getTrainedModel(%r, %r): %r" %\
                         (self.id_fields.sessionId, self.id_fields.runId-1, err)
                     return errorReply
-            reply.fields.outputlns.append('\n*********************************************')
+            reply.fields.outputlns.append('*********************************************')
             reply.fields.outputlns.append('beginning model testing...')
             # prepare for TR sequence
             reply.fields.outputlns.append('run\tblock\tTR\tbltyp\tblcat\tstim\tfilenum\tloaded\tpredict\toutput\tavg')
@@ -202,6 +205,7 @@ class RtAttenModel(BaseModel):
         validation_i1 = self.blkGrp.firstVol
         validation_i2 = validation_i1 + self.blkGrp.nTRs
 
+        outputlns.append("End Block Group {}".format(self.id_fields.blkGrpId))
         if self.blkGrp.type == 2 or self.blkGrp.legacyRun1Phase2Mode:  # RT predict
             runStd = np.nanstd(patterns.raw_sm_filt, axis=0)
             patterns.runStd = runStd.reshape(1, -1)
@@ -215,7 +219,7 @@ class RtAttenModel(BaseModel):
                     pass
 
         elif self.blkGrp.type == 1:  # training
-            outputlns.append('\n*********************************************')
+            outputlns.append('*********************************************')
             outputlns.append('beginning highpassfilter/zscore...')
 
             patterns.raw_sm_filt[i1:i2, :] = highPassBetweenRuns(patterns.raw_sm[i1:i2, :],
@@ -370,9 +374,6 @@ class RtAttenModel(BaseModel):
         """
         reply = super().TrainModel(msg)
         trainStart = time.time()  # start timing
-        # print training results
-        reply.fields.outputlns.append('\n*********************************************')
-        reply.fields.outputlns.append('beginning model training...')
 
         # load data to train model
         trainCfg = msg.fields.cfg
@@ -425,10 +426,11 @@ class RtAttenModel(BaseModel):
         trainingOnlyTime = trainEnd - trainStart
 
         # print training timing and results
-        outStr = 'model training time: \t{:.3f}'.format(trainingOnlyTime)
+        reply.fields.outputlns.append('Model training completed')
+        outStr = 'Model training time: \t{:.3f}'.format(trainingOnlyTime)
         reply.fields.outputlns.append(outStr)
         if newTrainedModel.biases is not None:
-            outStr = 'model biases: \t{:.3f}\t{:.3f}'.format(
+            outStr = 'Model biases: \t{:.3f}\t{:.3f}'.format(
                 newTrainedModel.biases[0, 0], newTrainedModel.biases[0, 1])
             reply.fields.outputlns.append(outStr)
 
