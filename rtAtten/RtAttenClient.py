@@ -301,20 +301,30 @@ class RtAttenClient(RtfMRIClient):
                 logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
         eventLoopCount = 0
         exitWithFileCreationEvent = False
+        timeToCheckForFile = time.time() + 1  # check if file exists at least every second
         while not fileExists:
             # look for file creation event
             eventLoopCount += 1
             try:
                 event, ts = self.fileNotifyQ.get(block=True, timeout=1.0)
             except Empty as err:
+                # The timeout occured on fileNotifyQ.get()
                 fileExists = os.path.exists(specificFileName)
                 continue
             assert event is not None
-            # We may have a stale event from a previous file if the previous
-            #   file eventloop timed out and then the event arrived later.
+            # We may have a stale event from a previous file if multiple events
+            #   are created per file or if the previous file eventloop
+            #   timed out and then the event arrived later.
             if event.src_path == specificFileName:
                 fileExists = True
                 exitWithFileCreationEvent = True
+                continue
+            if time.time() > timeToCheckForFile:
+                # periodically check if file exists, can occur if we get
+                #   swamped with unrelated events
+                fileExists = os.path.exists(specificFileName)
+                timeToCheckForFile = time.time() + 1
+
         # wait for the full file to be written, wait at most 200 ms
         fileSize = 0
         totalWriteWait = 0.0
@@ -380,6 +390,8 @@ class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
     def on_created(self, event):
         self.q.put((event, time.time()))
 
+    def on_modified(self, event):
+        self.q.put((event, time.time()))
 
 def outputReplyLines(lines, filehandle):
     if lines is not None:

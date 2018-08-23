@@ -5,6 +5,11 @@ Utility to test if the server is accessible and measure round-trip time
 import sys
 import time
 import getopt
+import os
+# fix up search path
+currPath = os.path.dirname(os.path.realpath(__file__))
+rootPath = os.path.join(currPath, "../")
+sys.path.append(rootPath)
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.RtfMRIClient import RtfMRIClient
 from rtfMRI.Errors import RequestError, InvocationError
