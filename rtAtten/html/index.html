@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <link rel="shortcut icon" href="">
+    <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
+    <script>
+      $(function () {
+        // var socket = io('http://localhost:8080');
+        var wsUser = new WebSocket("ws://localhost:8888/wsUser");
+        wsUser.onopen = function () {
+          // wsUser.send("Hello, world");
+        };
+        wsUser.onmessage = function (evt) {
+          $('#messages').append($('<li>').text(evt.data));
+        };
+        var wsSubj = new WebSocket("ws://localhost:8888/wsSubject")
+        wsSubj.onmessage = function (evt) {
+          $('#messages').append($('<li>').text(evt.data));
+        };
+        $('#start').click(function(){
+          // console.log('start')
+          wsUser.send('start');
+          return false;
+        });
+      });
+</script>
+    <style>
+      /* * { margin: 0; padding: 0; box-sizing: border-box; } */
+      body { font: 13px Helvetica, Arial; }
+      form { background: #000; padding: 3px; position: fixed; bottom: 0; width: 100%; }
+      #messages { list-style-type: none; margin: 0; padding: 0; }
+      #messages li { padding: 5px 10px; }
+      #messages li:nth-child(odd) { background: #eee; }
+    </style>
+  </head>
+  <body>
+    <button type="button" id="start">Start</button>
+    <ul id="messages"></ul>
+  </body>
+</html>

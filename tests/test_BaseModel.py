@@ -4,6 +4,7 @@ import inspect
 import typing
 import logging
 import pytest  # type: ignore
+from rtfMRI.StructDict import StructDict
 
 logging.basicConfig(level=logging.DEBUG)
 cfgFile = 'baseExpCfg.toml'
@@ -23,7 +24,12 @@ def test_baseModel():
     print("test_baseModel")
     logging.error("###Test logging###")
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5210, getCfgFileFullPath(), True, None, None, None)
+    params = StructDict(
+        {'addr': 'localhost', 'port': 5210,
+         'experiment': getCfgFileFullPath(),
+         'run_local': True, 'use_web': False,
+        })
+    result = ClientMain.ClientMain(params)
     assert result is True
 
 

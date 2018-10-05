@@ -5,9 +5,10 @@ import re
 from queue import Queue, Empty
 from glob import iglob
 from watchdog.observers import Observer
-from rtAtten.RtAttenClient import FileNotifyHandler
+from rtfMRI.fileWatcher import FileNotifyHandler
 
 testDir = '/tmp/'
+
 
 def test_watchdog():
     observer = Observer()

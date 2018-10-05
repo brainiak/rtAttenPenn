@@ -1,6 +1,9 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
 import time
+import json
+import tempfile
+import asyncio
 import numpy as np  # type: ignore
 import datetime
 import logging
@@ -12,12 +15,10 @@ from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicom, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
+from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError
 from .PatternsDesign2Config import createRunConfig, getRunIndex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
-from watchdog.events import PatternMatchingEventHandler  # type: ignore
-from watchdog.observers import Observer  # type: ignore
-from queue import Queue, Empty
 
 
 class RtAttenClient(RtfMRIClient):
@@ -25,19 +26,21 @@ class RtAttenClient(RtfMRIClient):
         super().__init__()
         self.dirs = StructDict()
         self.prevData = None
-        self.observer = None
-        self.fileNotifyHandler = None
-        self.fileNotifyQ = Queue()  # type: None
         self.printFirstFilename = True
-        self.ttlClient = TTLPulseClient()
+        self.ttlPulseClient = TTLPulseClient()
+        self.fileWatcher = FileWatcher()
+        self.webInterface = None
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
-        if self.observer is not None:
-            self.observer.stop()
-        if self.ttlClient is not None:
-            self.ttlClient.close()
+        if self.ttlPulseClient is not None:
+            self.ttlPulseClient.close()
         super().__del__()
+
+    def setWebInterface(self, web):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        self.webInterface = web
+        self.fileWatcher = None
 
     def initSession(self, cfg):
         if cfg.session.sessionId is None or cfg.session.sessionId == '':
@@ -73,7 +76,21 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(self.dirs.imgDir):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        self.initFileNotifier(self.dirs.imgDir, cfg.session.watchFilePattern)
+        if self.fileWatcher is not None:
+            self.fileWatcher.initFileNotifier(
+                self.dirs.imgDir,
+                cfg.session.watchFilePattern,
+                cfg.session.minExpectedDicomSize
+            )
+        else:
+            assert self.webInterface is not None
+            cmd = {
+                'cmd': 'init',
+                'imgDir': self.dirs.imgDir,
+                'filePattern': cfg.session.watchFilePattern,
+                'minFileSize': cfg.session.minExpectedDicomSize
+            }
+            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=30)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
@@ -144,7 +161,7 @@ class RtAttenClient(RtfMRIClient):
 
         runCfg = copy_toplevel(run)
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
 
         if self.cfg.session.replayMatFileMode and not self.cfg.session.rtData:
             # load previous patterns data for this run
@@ -157,13 +174,13 @@ class RtAttenClient(RtfMRIClient):
             blockGroupCfg = copy_toplevel(blockGroup)
             logging.log(DebugLevels.L4, "BlkGrp: %d", blockGroup.blkGrpId)
             reply = self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile)
+            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             for block in blockGroup.blocks:
                 self.id_fields.blockId = block.blockId
                 blockCfg = copy_toplevel(block)
                 logging.log(DebugLevels.L4, "Blk: %d", block.blockId)
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile)
+                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
                     fileNum = TR.vol + run.disdaqs // run.TRTime
@@ -176,14 +193,14 @@ class RtAttenClient(RtfMRIClient):
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
                     processingStartTime = time.time()
-                    imageAcquisitionTime = 0
-                    pulseBroadcastTime = 0
-                    trStartTime = 0
+                    imageAcquisitionTime = 0.0
+                    pulseBroadcastTime = 0.0
+                    trStartTime = 0.0
                     gotTTLTime = False
                     if (self.cfg.session.enforceDeadlines is not None and
                             self.cfg.session.enforceDeadlines is True):
                         # capture TTL pulse from scanner to calculate next deadline
-                        trStartTime = self.ttlClient.getTimestamp()
+                        trStartTime = self.ttlPulseClient.getTimestamp()
                         if trStartTime == 0 or imageAcquisitionTime > run.TRTime:
                             # Either no TTL Pulse time signal or stale time signal
                             #   Approximate trStart as current time minus 500ms
@@ -194,7 +211,7 @@ class RtAttenClient(RtfMRIClient):
                         else:
                             gotTTLTime = True
                             imageAcquisitionTime = time.time() - trStartTime
-                            pulseBroadcastTime = trStartTime - self.ttlClient.getServerTimestamp()
+                            pulseBroadcastTime = trStartTime - self.ttlPulseClient.getServerTimestamp()
                             # logging.info("TTL TR deadline: {}".format(trStartTime))
                         # Deadline is TR_Start_Time + time between TRs +
                         #  clockSkew adjustment - 1/2 Max Net Round_Trip_Time -
@@ -214,7 +231,7 @@ class RtAttenClient(RtfMRIClient):
                         outputPredictionFile(reply.fields.predict, classOutputDir)
                     # log the TR processing time
                     serverProcessTime = processingEndTime - processingStartTime
-                    elapsedTRTime = 0
+                    elapsedTRTime = 0.0
                     if gotTTLTime is True:
                         elapsedTRTime = time.time() - trStartTime
                     logStr = "TR:{}:{}:{:03}, fileNum {}, server_process_time {:.3f}s, " \
@@ -225,13 +242,13 @@ class RtAttenClient(RtfMRIClient):
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline)
                     logging.log(DebugLevels.L3, logStr)
-                    outputReplyLines(reply.fields.outputlns, outputFile)
+                    outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile)
+                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             del self.id_fields.blockId
             reply = self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile)
+            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             # self.retrieveBlkGrp(self.id_fields.sessionId, self.id_fields.runId, self.id_fields.blkGrpId)
         del self.id_fields.blkGrpId
         # Train the model for this Run
@@ -245,16 +262,16 @@ class RtAttenClient(RtfMRIClient):
         outlns = []
         outlns.append('*********************************************')
         outlns.append("Train Model {} {}".format(trainCfg.blkGrpRefs[0], trainCfg.blkGrpRefs[1]))
-        outputReplyLines(outlns, outputFile)
+        outputReplyLines(outlns, outputFile, self.webInterface)
         processingStartTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
         processingEndTime = time.time()
         # log the model generation time
         logStr = "Model:{} training time {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
         logging.log(DebugLevels.L3, logStr)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
         if self.cfg.session.retrieveServerFiles:
             self.retrieveRunFiles(runId)
         del self.id_fields.runId
@@ -290,60 +307,33 @@ class RtAttenClient(RtfMRIClient):
 
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
+        _, file_extension = os.path.splitext(specificFileName)
+        tmpFile = None
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        fileExists = os.path.exists(specificFileName)
-        if not fileExists:
-            if self.observer is None:
-                raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
-            else:
-                logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
-        eventLoopCount = 0
-        exitWithFileCreationEvent = False
-        timeToCheckForFile = time.time() + 1  # check if file exists at least every second
-        while not fileExists:
-            # look for file creation event
-            eventLoopCount += 1
-            try:
-                event, ts = self.fileNotifyQ.get(block=True, timeout=1.0)
-            except Empty as err:
-                # The timeout occured on fileNotifyQ.get()
-                fileExists = os.path.exists(specificFileName)
-                continue
-            assert event is not None
-            # We may have a stale event from a previous file if multiple events
-            #   are created per file or if the previous file eventloop
-            #   timed out and then the event arrived later.
-            if event.src_path == specificFileName:
-                fileExists = True
-                exitWithFileCreationEvent = True
-                continue
-            if time.time() > timeToCheckForFile:
-                # periodically check if file exists, can occur if we get
-                #   swamped with unrelated events
-                fileExists = os.path.exists(specificFileName)
-                timeToCheckForFile = time.time() + 1
-
-        # wait for the full file to be written, wait at most 200 ms
-        fileSize = 0
-        totalWriteWait = 0.0
-        waitIncrement = 0.01
-        while fileSize < self.cfg.session.minExpectedDicomSize and totalWriteWait <= 0.3:
-            time.sleep(waitIncrement)
-            totalWriteWait += waitIncrement
-            fileSize = os.path.getsize(specificFileName)
-        logging.log(DebugLevels.L6,
-                    "File avail: fileNum %d, eventLoopCount %d, "
-                    "writeWaitTime %.3f, fileEventCaptured %s",
-                    fileNum, eventLoopCount, totalWriteWait,
-                    exitWithFileCreationEvent)
-        _, file_extension = os.path.splitext(specificFileName)
+        if self.fileWatcher is not None:
+            self.fileWatcher.waitForFile(specificFileName)
+        else:
+            assert self.webInterface is not None
+            cmd = {'cmd': 'get', 'filename': specificFileName}
+            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
+            # Note: Tried using named pipes os.mkfifo(pipeName) but sio.loadmat() failed
+            # with error 'io.UnsupportedOperation: File or stream is not seekable'.
+            # So reverting to creating a temporary file.
+            tmpName = "np.{}{}".format(time.time(), file_extension)
+            tmpFile = os.path.join(tempfile.gettempdir(), tmpName)
+            print("tmpFile: %s", tmpFile)
+            with open(tmpFile, 'wb') as fp:
+                fp.write(self.webInterface.fileData)
+            specificFileName = tmpFile
         if file_extension == '.mat':
             data = utils.loadMatFile(specificFileName)
             trVol = data.vol
         else:
             trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
+        if tmpFile is not None:
+            os.remove(tmpFile)
         return trVol
 
     def getDicomFileName(self, scanNum, fileNum):
@@ -357,23 +347,13 @@ class RtAttenClient(RtfMRIClient):
         fullFileName = os.path.join(self.dirs.imgDir, fileName)
         return fullFileName
 
-    def initFileNotifier(self, imgDir, filePattern):
-        if self.observer is not None:
-            self.observer.stop()
-        self.observer = Observer()
-        if filePattern is None or filePattern == '':
-            filePattern = '*'
-        self.fileNotifyHandler = FileNotifyHandler(self.fileNotifyQ, [filePattern])
-        self.observer.schedule(self.fileNotifyHandler, imgDir, recursive=False)
-        self.observer.start()
-
     def deleteSessionData(self):
         filePattern = os.path.join(self.dirs.serverDataDir,
                                    "*" + self.id_fields.sessionId + "*.mat")
         fileInfo = StructDict()
         fileInfo.filePattern = filePattern
         reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)
-        outputReplyLines(reply.fields.outputlns, None)
+        outputReplyLines(reply.fields.outputlns, None, self.webInterface)
 
     def ping(self):
         processingStartTime = time.time()
@@ -382,23 +362,14 @@ class RtAttenClient(RtfMRIClient):
         print("RTT: {:.2f}ms".format(processingEndTime-processingStartTime))
 
 
-class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
-    def __init__(self, q, patterns):
-        super().__init__(patterns=patterns)
-        self.q = q
-
-    def on_created(self, event):
-        self.q.put((event, time.time()))
-
-    def on_modified(self, event):
-        self.q.put((event, time.time()))
-
-def outputReplyLines(lines, filehandle):
+def outputReplyLines(lines, filehandle, web):
     if lines is not None:
         for line in lines:
             print(line)
             if filehandle is not None:
                 filehandle.write(line + '\n')
+            if web is not None:
+                web.sendUserMessage(line)
 
 
 def outputPredictionFile(predict, classOutputDir):

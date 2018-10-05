@@ -21,6 +21,8 @@ dependencies:
   - click
   - brainiak
   - pip
+  - tornado
+  - websocket-client
   - pip:
     - clickutil
     - watchdog
