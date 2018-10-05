@@ -49,7 +49,7 @@ class WatchdogFileWatcher():
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
         self.filePattern = None
-        self.dir = None
+        self.imgDir = None
         self.minFileSize = 0
 
     def __del__(self):
@@ -59,7 +59,7 @@ class WatchdogFileWatcher():
             except Exception as err:
                 logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
 
-    def initFileNotifier(self, dir, filePattern, minFileSize):
+    def initFileNotifier(self, imgDir, filePattern, minFileSize):
         self.minFileSize = minFileSize
         if self.observer is not None:
             self.observer.stop()
@@ -67,9 +67,9 @@ class WatchdogFileWatcher():
         if filePattern is None or filePattern == '':
             filePattern = '*'
         self.filePattern = filePattern
-        self.dir = dir
+        self.imgDir = imgDir
         self.fileNotifyHandler = FileNotifyHandler(self.fileNotifyQ, [filePattern])
-        self.observer.schedule(self.fileNotifyHandler, dir, recursive=False)
+        self.observer.schedule(self.fileNotifyHandler, imgDir, recursive=False)
         self.observer.start()
 
     def waitForFile(self, specificFileName, timeout=0):
@@ -136,7 +136,6 @@ class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
 
     def on_modified(self, event):
         self.q.put((event, time.time()))
-
 
 # import libraries for Linux version
 if sys.platform in ("linux", "linux2"):
@@ -208,7 +207,7 @@ class InotifyFileWatcher():
                 timeToCheckForFile = time.time() + 1
         logging.log(DebugLevels.L6,
                     "File avail: eventLoopCount %d, fileEventCaptured %s, "
-                    "fileName %s, eventTimeStamp %d", eventLoopCount, 
+                    "fileName %s, eventTimeStamp %d", eventLoopCount,
                     exitWithFileEvent, specificFileName, eventTimeStamp)
         return specificFileName
 
@@ -223,3 +222,66 @@ class InotifyFileWatcher():
                     self.fileNotifyQ.put((fullpath, time.time()))
                 else:
                     self.fileNotifyQ.put(('', time.time()))
+
+
+class WebSocketFileWatcher:
+    ''' A server that watches for files on the scanner computer and replies to
+        cloud service requests with the file data.
+    '''
+    fileWatcher = FileWatcher()
+
+    @staticmethod
+    def runFileWatcher(serverAddr, retryInterval=10):
+        # go into loop trying to do webSocket connection periodically
+        while True:
+            try:
+                wsAddr = os.path.join('ws://', serverAddr, 'wsData')
+                logging.log(DebugLevels.L6, "Trying connection: %s", wsAddr)
+                ws = websocket.WebSocketApp(wsAddr,
+                                            on_message=WebSocketFileWatcher.on_message,
+                                            on_error=WebSocketFileWatcher.on_error)
+                logging.log(DebugLevels.L1, "Connected to: %s", wsAddr)
+                ws.run_forever()
+            except Exception as err:
+                logging.log(logging.INFO, "WSFileWatcher Exception: %s", str(err))
+            time.sleep(retryInterval)
+
+    def on_message(client, message):
+        fileWatcher = WebSocketFileWatcher.fileWatcher
+        request = json.loads(message)
+        cmd = request['cmd']
+        if cmd == "init":
+            imgDir = request['imgDir']
+            filePattern = request['filePattern']
+            minFileSize = request['minFileSize']
+            logging.log(DebugLevels.L3, "init: %s, %s, %d", imgDir, filePattern, minFileSize)
+            if imgDir is None or filePattern is None or minFileSize is None:
+                response = {'status': 400, 'error': 'missing file information'}
+            else:
+                fileWatcher.initFileNotifier(imgDir, filePattern, minFileSize)
+                response = {'status': 200}
+        elif cmd == "get":
+            filename = request['filename']
+            logging.log(DebugLevels.L3, "get: %s", filename)
+            if filename is None:
+                response = {'status': 400, 'error': 'missing filename'}
+            elif fileWatcher.observer is None:
+                # fileWatcher hasn't been initialized yet
+                response = {'status': 400, 'error': 'fileWatcher not initialized'}
+            else:
+                fileWatcher.waitForFile(filename)
+                with open(filename, 'rb') as fp:
+                    data = fp.read()
+                b64Data = b64encode(data)
+                b64StrData = b64Data.decode('utf-8')
+                response = {'status': 200, 'data': b64StrData}
+        elif cmd == "ping":
+            response = {'status': 200}
+        else:
+            response = {'status': 400, 'error': 'Unrecognized command'}
+        # merge request into the response dictionary
+        response.update(request)
+        client.send(json.dumps(response))
+
+    def on_error(client, error):
+        logging.log(logging.WARNING, "on_error: WSFileWatcher: %s", error)
