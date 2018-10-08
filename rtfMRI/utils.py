@@ -3,6 +3,7 @@ Utils - various utilites for rtfMRI
 """
 
 import os
+import io
 import time
 import glob
 import subprocess
@@ -16,15 +17,12 @@ class TooManySubStructsError(ValueError):
     pass
 
 
-def loadMatFile(filename: str) -> MatlabStructDict:
+def parseMatlabStruct(top_struct) -> MatlabStructDict:
     '''Load matlab data file and convert it to a MatlabStructDict object for
        easier python access. Expect only one substructure array, and use that
        one as the name variable in MatlabStructDict.
        Return the MatlabStructDict object
-    '''
-    if not os.path.isfile(filename):
-        raise FileNotFoundError("File \'{}\' not found".format(filename))
-    top_struct = sio.loadmat(filename)
+        '''
     substruct_names = [key for key in top_struct.keys() if isStructuredArray(top_struct[key])]
     # if len(substruct_names) > 1:
     #     # Currently we only support one sub structured array
@@ -33,6 +31,19 @@ def loadMatFile(filename: str) -> MatlabStructDict:
     substruct_name = substruct_names[0] if len(substruct_names) > 0 else None
     matstruct = MatlabStructDict(top_struct, substruct_name)
     return matstruct
+
+
+def loadMatFile(filename: str) -> MatlabStructDict:
+    if not os.path.isfile(filename):
+        raise FileNotFoundError("File \'{}\' not found".format(filename))
+    top_struct = sio.loadmat(filename)
+    return parseMatlabStruct(top_struct)
+
+
+def loadMatFileFromBuffer(data) -> MatlabStructDict:
+    dataBytesIO = io.BytesIO(data)
+    top_struct = sio.loadmat(dataBytesIO)
+    return parseMatlabStruct(top_struct)
 
 
 def find(A: np.ndarray) -> np.ndarray:

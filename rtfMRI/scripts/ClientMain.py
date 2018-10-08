@@ -131,8 +131,8 @@ if __name__ == "__main__":
     parser.add_argument('--model', '-m', default=None, type=str, help='model name')
     parser.add_argument('--runs', '-r', default=None, type=str, help='Comma separated list of run numbers')
     parser.add_argument('--scans', '-s', default=None, type=str, help='Comma separated list of scan number')
-    parser.add_argument('--run-local', '-l', default=False, is_flag=True, type=bool, help='run client and server together locally')
-    parser.add_argument('--use-web', '-w', default=False, is_flag=True, type=bool, help='Run client as a web portal')
+    parser.add_argument('--run-local', '-l', default=False, action='store_true', help='run client and server together locally')
+    parser.add_argument('--use-web', '-w', default=False, action='store_true', help='Run client as a web portal')
     args = parser.parse_args()
     params = StructDict({'addr': args.addr, 'port': args.port, 'experiment': args.experiment,
                          'run_local': args.run_local, 'model': args.model, 'runs': args.runs,
