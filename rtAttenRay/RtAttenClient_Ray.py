@@ -10,7 +10,7 @@ from watchdog.observers import Observer  # type: ignore
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
 import rtfMRI.utils as utils
 from rtfMRI.StructDict import StructDict
-from rtfMRI.ReadDicom import readDicom, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, applyMask
 from rtfMRI.RtfMRIClient import loadConfigFile, validateSessionCfg, validateRunCfg
 from rtfMRI.Errors import InvocationError, ValidationError
 from rtAtten.PatternsDesign2Config import createRunConfig
@@ -232,7 +232,7 @@ class LocalClient():
             data = utils.loadMatFile(specificFileName)
             trVol = data.vol
         else:
-            trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
+            trVol = readDicomFromFile(specificFileName, self.cfg.session.sliceDim)
         return trVol
 
     def getDicomFileName(self, scanNum, fileNum):

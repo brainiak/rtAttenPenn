@@ -97,6 +97,7 @@ class Web():
             raise TimeoutError("Websocket: Data Request Timed Out")
         if Web.dataStatus != 200:
             raise RequestError("WebInterface: Data Message: {}".format(Web.dataError))
+        return True
 
     class UserHttp(tornado.web.RequestHandler):
         def get(self):

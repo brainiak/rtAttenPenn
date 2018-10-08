@@ -110,6 +110,12 @@ class TestMatlabStructDict:
         res = vutils.compareMatStructs(testStruct, struct2)
         assert vutils.isMeanWithinThreshold(res, 0)
 
+        with open(matTestFilename, 'rb') as fp:
+            data = fp.read()
+        struct3 = utils.loadMatFileFromBuffer(data)
+        res = vutils.compareMatStructs(testStruct, struct3)
+        assert vutils.isMeanWithinThreshold(res, 0)
+
 
 class TestStructDict:
     def test_structDict(self):

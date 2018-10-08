@@ -2,7 +2,6 @@
 import os
 import time
 import json
-import tempfile
 import asyncio
 import numpy as np  # type: ignore
 import datetime
@@ -12,7 +11,7 @@ import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
-from rtfMRI.ReadDicom import readDicom, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, readDicomFromBuffer, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher
@@ -308,7 +307,6 @@ class RtAttenClient(RtfMRIClient):
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
         _, file_extension = os.path.splitext(specificFileName)
-        tmpFile = None
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
@@ -317,23 +315,20 @@ class RtAttenClient(RtfMRIClient):
         else:
             assert self.webInterface is not None
             cmd = {'cmd': 'get', 'filename': specificFileName}
+            # Note: sendDataMessage waits for reply and sets results in WebInterface
             self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
-            # Note: Tried using named pipes os.mkfifo(pipeName) but sio.loadmat() failed
-            # with error 'io.UnsupportedOperation: File or stream is not seekable'.
-            # So reverting to creating a temporary file.
-            tmpName = "np.{}{}".format(time.time(), file_extension)
-            tmpFile = os.path.join(tempfile.gettempdir(), tmpName)
-            print("tmpFile: %s", tmpFile)
-            with open(tmpFile, 'wb') as fp:
-                fp.write(self.webInterface.fileData)
-            specificFileName = tmpFile
         if file_extension == '.mat':
-            data = utils.loadMatFile(specificFileName)
+            if self.fileWatcher is not None:
+                data = utils.loadMatFile(specificFileName)
+            else:
+                data = utils.loadMatFileFromBuffer(self.webInterface.fileData)
             trVol = data.vol
         else:
-            trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
-        if tmpFile is not None:
-            os.remove(tmpFile)
+            # Dicom file: assert file_extension == '.dcm'
+            if self.fileWatcher is not None:
+                trVol = readDicomFromFile(specificFileName, self.cfg.session.sliceDim)
+            else:
+                trVol = readDicomFromBuffer(self.webInterface.fileData, self.cfg.session.sliceDim)
         return trVol
 
     def getDicomFileName(self, scanNum, fileNum):
