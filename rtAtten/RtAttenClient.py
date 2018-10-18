@@ -16,7 +16,7 @@ from rtfMRI.ReadDicom import readDicomFromFile, readDicomFromBuffer, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher
-from rtfMRI.Errors import InvocationError, ValidationError
+from rtfMRI.Errors import InvocationError, ValidationError, StateError
 from .PatternsDesign2Config import createRunConfig, getRunIndex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 
@@ -88,6 +88,12 @@ class RtAttenClient(RtfMRIClient):
             )
         else:
             assert self.webInterface is not None
+            if len(self.webInterface.wsDataConns) == 0:
+                # A fileWatcher hasn't connected yet
+                errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
+                response = {'cmd': 'error', 'error': errStr}
+                self.webInterface.sendUserMessage(json.dumps(response))
+                raise StateError(errStr)
             cmd = {
                 'cmd': 'init',
                 'imgDir': self.dirs.imgDir,
