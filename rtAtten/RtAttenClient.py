@@ -30,6 +30,7 @@ class RtAttenClient(RtfMRIClient):
         self.ttlPulseClient = TTLPulseClient()
         self.fileWatcher = FileWatcher()
         self.webInterface = None
+        self.stopRun = False
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
@@ -41,6 +42,9 @@ class RtAttenClient(RtfMRIClient):
         asyncio.set_event_loop(asyncio.new_event_loop())
         self.webInterface = web
         self.fileWatcher = None
+
+    def doStopRun(self):
+        self.stopRun = True
 
     def initSession(self, cfg):
         if cfg.session.sessionId is None or cfg.session.sessionId == '':
@@ -110,6 +114,8 @@ class RtAttenClient(RtfMRIClient):
         # Process each run
         for runId in self.cfg.session.Runs:
             self.runRun(runId)
+            if self.stopRun:
+                return
 
     def runRun(self, runId, scanNum=-1):
         run = createRunConfig(self.cfg.session, runId, scanNum)
@@ -244,6 +250,8 @@ class RtAttenClient(RtfMRIClient):
                                      gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+                    if self.stopRun:
+                        return
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
@@ -318,8 +326,13 @@ class RtAttenClient(RtfMRIClient):
             assert self.webInterface is not None
             cmd = {'cmd': 'get', 'filename': specificFileName}
             # Note: sendDataMessage waits for reply and sets results in WebInterface
-            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
-        if fileExtension == '.mat':
+            try:
+                self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
+            except Exception as err:
+                # TODO set web interface error
+                raise err
+
+        if file_extension == '.mat':
             if self.fileWatcher is not None:
                 data = utils.loadMatFile(specificFileName)
             else:
@@ -366,7 +379,8 @@ def outputReplyLines(lines, filehandle, web):
             if filehandle is not None:
                 filehandle.write(line + '\n')
             if web is not None:
-                web.sendUserMessage(line)
+                cmd = {'cmd': 'log', 'value': line}
+                web.sendUserMessage(json.dumps(cmd))
 
 
 def outputPredictionFile(predict, classOutputDir):

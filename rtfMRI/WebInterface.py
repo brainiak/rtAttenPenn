@@ -5,6 +5,7 @@ import json
 import asyncio
 import threading
 import logging
+from pathlib import Path
 from base64 import b64decode
 from rtfMRI.utils import DebugLevels
 from rtfMRI.Errors import RequestError
@@ -59,12 +60,18 @@ class Web():
         Web.webIndexPage = index
         Web.subjWindowCallback = subjCallback
         Web.userWidnowCallback = userCallback
+        webDir = Path(os.path.dirname(index)).parent
+        src_root = os.path.join(webDir, 'src')
+        css_root = os.path.join(webDir, 'css')
+        build_root = os.path.join(webDir, 'build')
         Web.app = tornado.web.Application([
             (r'/', Web.UserHttp),
             (r'/wsUser', Web.UserWebSocket),
             (r'/wsSubject', Web.SubjectWebSocket),
             (r'/wsData', Web.DataWebSocket),
-
+            (r'/src/(.*)', tornado.web.StaticFileHandler, {'path': src_root}),
+            (r'/css/(.*)', tornado.web.StaticFileHandler, {'path': css_root}),
+            (r'/build/(.*)', tornado.web.StaticFileHandler, {'path': build_root}),
         ])
         # start event loop if needed
         try:
@@ -77,6 +84,14 @@ class Web():
         Web.httpServer = tornado.httpserver.HTTPServer(Web.app)
         Web.httpServer.listen(port)
         tornado.ioloop.IOLoop.current().start()
+
+    def close():
+        for client in Web.wsUserConns:
+            client.close()
+        for client in Web.wsDataConns:
+            client.close()
+        for client in Web.wsSubjConns:
+            client.close()
 
     @staticmethod
     def sendUserMessage(msg):
@@ -94,7 +109,7 @@ class Web():
         Web.dataCallbackEvent.wait(timeout)
         # TODO handle case where WS connection is broken
         if Web.dataCallbackEvent.is_set() is False:
-            raise TimeoutError("Websocket: Data Request Timed Out")
+            raise TimeoutError("Websocket: Data Request Timed Out(%d) %s", timeout, msg)
         if Web.dataStatus != 200:
             raise RequestError("WebInterface: Data Message: {}".format(Web.dataError))
         return True
