@@ -130,3 +130,8 @@ venv.bak/
 
 # logs
 logs/*
+
+# web dev
+node_modules/
+build/
+*.bak

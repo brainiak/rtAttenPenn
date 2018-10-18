@@ -97,7 +97,7 @@ def dateStr30(timeval):
 
 
 class DebugLevels:
-    L1  = 19
+    L1  = 19 # most verbose
     L2  = 18
     L3  = 17
     L4  = 16
@@ -106,7 +106,7 @@ class DebugLevels:
     L7  = 13
     L8  = 12
     L9  = 11
-    L10 = 10
+    L10 = 10 # least verbose
 
 
 def installLoggers(consoleLevel, fileLevel, filename=None):

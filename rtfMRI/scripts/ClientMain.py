@@ -7,6 +7,7 @@ import os
 import threading
 import logging
 import argparse
+import json
 # fix up search path
 currPath = os.path.dirname(os.path.realpath(__file__))
 rootPath = os.path.join(currPath, "../../")
@@ -14,14 +15,16 @@ sys.path.append(rootPath)
 from rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.BaseClient import BaseClient
-from rtfMRI.Errors import InvocationError  #, RequestError
+from rtfMRI.Errors import InvocationError
 import rtfMRI.scripts.ServerMain as ServerMain
-from rtfMRI.utils import installLoggers
-from rtfMRI.StructDict import StructDict
+from rtfMRI.utils import installLoggers, DebugLevels
+from rtfMRI.StructDict import StructDict, recurseCreateStructDict
 from rtfMRI.WebInterface import Web
 
 # Globals
-clientThread = None
+params = None
+webClient = None
+webClientThread = None
 
 
 def ClientMain(params):
@@ -30,45 +33,68 @@ def ClientMain(params):
     # Start local server if requested
     if params.run_local is True:
         startLocalServer(params.port)
-        params.shutdownServer = True
 
     if params.use_web:
         # run as web server listening for requests, listens on port 8888
-        Web.start('rtAtten/html/index.html', webUserCallback, None, 8888)
+        params.webInterface = Web()
+        params.webInterface.start('rtAtten/web/html/index.html', webUserCallback, None, 8888)
     else:
         # run based on config file and passed in options
-        params = getFileConfigs(params)
+        cfg = loadConfigFile(params.experiment)
+        params = checkAndMergeConfigs(params, cfg)
         RunClient(params)
+
+    if params.run_local is True:
+        stopLocalServer(params)
 
     return True
 
 
+def webErrorResponse(client, errStr):
+    print(errStr)
+    response = {'cmd': 'error', 'error': errStr}
+    params.webInterface.sendUserMessage(json.dumps(response))
+
+
 def webUserCallback(client, message):
-    # TODO - add a stop command
-    # TODO - parse the params from the message and from the command line params
-    global clientThread
-    if clientThread is not None:
-        print("Client thread already runnning, skipping new request")
-        return
-    params = StructDict()
-    params.experiment = 'tests/rtfmri/syntheticDataCfg.toml'
-    params.addr = 'localhost'
-    params.port = 5200
-    params = getFileConfigs(params)
-    # RunClient(message.params)
-    params.webInterface = Web()
-    clientThread = threading.Thread(
-        name='clientThread',
-        target=RunClient,
-        args=(params,))
-    clientThread.setDaemon(True)
-    clientThread.start()
+    global params
+    global webClient
+    global webClientThread
+    request = json.loads(message)
+    cmd = request['cmd']
+    logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
+    if cmd == "getDefaultConfig":
+        print("web request config {}".format(params.experiment))
+        cfg = loadConfigFile(params.experiment)
+        params = checkAndMergeConfigs(params, cfg)
+        response = {'cmd': 'config', 'value': params.cfg}
+        params.webInterface.sendUserMessage(json.dumps(response))
+    elif cmd == "run":
+        if webClientThread is not None:
+            webClientThread.join(timeout=1)
+            if webClientThread.is_alive():
+                webErrorResponse(client, "Client thread already runnning, skipping new request")
+                return
+            webClientThread = None
+            webClient = None
+        cfg_struct = recurseCreateStructDict(request['config'])
+        try:
+            params = checkAndMergeConfigs(params, cfg_struct)
+        except Exception as err:
+            webErrorResponse(client, str(err))
+            return
+        webClientThread = threading.Thread(name='webClientThread', target=RunClient, args=(params,))
+        webClientThread.setDaemon(True)
+        webClientThread.start()
+    elif cmd == "stop":
+        if webClientThread is not None:
+            if webClient is not None:
+                webClient.doStopRun()
+    else:
+        webErrorResponse(client, "unknown command " + cmd)
 
 
-def getFileConfigs(params):
-    # Get params and load config file
-    # settings = parseCommandArgs(argv, defaultSettings)
-    cfg = loadConfigFile(params.experiment)
+def checkAndMergeConfigs(params, cfg):
     if 'experiment' not in cfg.keys():
         raise InvocationError("Experiment file must have \"experiment\" section")
     if 'session' not in cfg.keys():
@@ -83,6 +109,23 @@ def getFileConfigs(params):
         cfg.session.ScanNums = [int(x) for x in params.scans.split(',')]
     params.cfg = cfg
 
+    if type(cfg.session.Runs) is not list or type(cfg.session.ScanNums) is not list:
+        raise InvocationError("Runs and ScanNums must be a list of integers")
+
+    if type(cfg.session.Runs[0]) is not int:
+        # convert to list of ints
+        try:
+            cfg.session.Runs = [int(s) for s in cfg.session.Runs[0].split(',')]
+        except Exception as err:
+            raise InvocationError("List of Run integers is malformed")
+
+    if type(cfg.session.ScanNums[0]) is not int:
+        # convert to list of ints
+        try:
+            cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums[0].split(',')]
+        except Exception as err:
+            raise InvocationError("List of ScanNum integers is malformed")
+
     # Determine the desired model
     if params.model is None:
         if cfg.experiment.model is None:
@@ -93,6 +136,7 @@ def getFileConfigs(params):
 
 
 def RunClient(params):
+    global webClient
     client: RtfMRIClient  # define a new variable of type RtfMRIClient
     if params.model == 'base':
         client = BaseClient()
@@ -102,6 +146,7 @@ def RunClient(params):
             client.setWebInterface(params.webInterface)
     else:
         raise InvocationError("Unsupported model %s" % (params.model))
+    webClient = client
     # Run the session
     try:
         client.connect(params.addr, params.port)
@@ -110,17 +155,20 @@ def RunClient(params):
         client.endSession()
     except Exception as err:
         logging.log(logging.ERROR, "Client exception: %s", str(err))
-    if params.shutdownServer and params.shutdownServer is True:
-        client.sendShutdownServer()
     client.close()
-    global clientThread
-    clientThread = None
+    webClient = None
 
 
 def startLocalServer(port):
     server_thread = threading.Thread(name='server', target=ServerMain.ServerMain, args=(port,))
     server_thread.setDaemon(True)
     server_thread.start()
+
+
+def stopLocalServer(params):
+    client = BaseClient()
+    client.connect(params.addr, params.port)
+    client.sendShutdownServer()
 
 
 if __name__ == "__main__":
