@@ -11,15 +11,14 @@ class SettingsPane extends React.Component {
   constructor(props) {
     super(props)
     this.state = {
-      tomlFile: 'example.toml',
+      tomlFile: '',
       tomlErrorMsg: '',
     }
-    this.settingsInputForm = this.settingsInputForm.bind(this)
     this.tomlInputForm = this.tomlInputForm.bind(this)
     this.loadTomlFile = this.loadTomlFile.bind(this)
-    this.textInputField = this.textInputField.bind(this)
-    this.textInputField = this.textInputField.bind(this)
     this.inputOnChange = this.inputOnChange.bind(this)
+    this.textInputField = this.textInputField.bind(this)
+    this.settingsInputForm = this.settingsInputForm.bind(this)
   }
 
   tomlInputForm(props) {
@@ -106,7 +105,6 @@ class StatusPane extends React.Component {
     this.scanNumOnChange = this.scanNumOnChange.bind(this)
     this.runBttnOnClick = this.runBttnOnClick.bind(this)
     this.stopBttnOnClick = this.stopBttnOnClick.bind(this)
-    console.log("### StatusPane constructor called")
   }
 
   runNumOnChange(event) {
@@ -167,15 +165,14 @@ class RtAtten extends React.Component {
       error: '',
     }
     this.webSocket = null
-    this.startRun = this.startRun.bind(this);
-    this.stopRun = this.stopRun.bind(this);
     this.setConfig = this.setConfig.bind(this);
     this.getConfigItem = this.getConfigItem.bind(this);
     this.setConfigItem = this.setConfigItem.bind(this);
-    this.createWebSocket = this.createWebSocket.bind(this)
     this.requestDefaultConfig = this.requestDefaultConfig.bind(this)
+    this.startRun = this.startRun.bind(this);
+    this.stopRun = this.stopRun.bind(this);
+    this.createWebSocket = this.createWebSocket.bind(this)
     this.createWebSocket()
-    console.log("### RtAtten constructor called")
   }
 
   setConfig(newConfig) {
@@ -215,7 +212,7 @@ class RtAtten extends React.Component {
   startRun() {
     // clear previous log output
     this.setState({logLines: []})
-    
+
     var runs = this.getConfigItem('Runs')
     var scans = this.getConfigItem('ScanNums')
     if (! Array.isArray(runs) || ! Array.isArray(scans)) {
@@ -254,12 +251,12 @@ class RtAtten extends React.Component {
     var webSocket = new WebSocket(wsUserURL);
     webSocket.onopen = (openEvent) => {
       this.setState({connected: true})
-      console.log("WebSocket OPEN: " + JSON.stringify(openEvent, null, 4));
+      console.log("WebSocket OPEN: ");
       this.requestDefaultConfig()
     };
     webSocket.onclose = (closeEvent) => {
       this.setState({connected: false})
-      console.log("WebSocket CLOSE: " + JSON.stringify(closeEvent, null, 4));
+      console.log("WebSocket CLOSE: ");
     };
     webSocket.onerror = (errorEvent) => {
       this.setState({error: JSON.stringify(errorEvent, null, 4)})
@@ -268,15 +265,14 @@ class RtAtten extends React.Component {
     webSocket.onmessage = (messageEvent) => {
       var wsMsg = messageEvent.data;
       var request = JSON.parse(wsMsg)
+      // reset error message
+      this.setState({error: ''})
       var cmd = request['cmd']
-      // console.log(wsMsg)
-      console.log('cmd: ' + cmd)
       if (cmd == 'config') {
         var config = request['value']
         this.setState({config: config})
       } else if (cmd == 'log') {
         var logItem = request['value']
-        console.log(logItem)
         var itemPos = this.state.logLines.length + 1
         var newLine = elem('div', { key: itemPos }, logItem)
         var logLines = this.state.logLines
@@ -286,16 +282,11 @@ class RtAtten extends React.Component {
         console.log("## Got Error" + request['error'])
         this.setState({error: request['error']})
       }
-
     };
-
     this.webSocket = webSocket
   }
 
   render() {
-    // if (this.errorMsg) {
-    // var errElem = elem('span', {}, this.errorMsg)
-    // }
     var tp =
      elem(Tabs, {},
        elem(TabList, {},

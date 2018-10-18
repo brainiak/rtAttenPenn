@@ -64,7 +64,6 @@ def webUserCallback(client, message):
     cmd = request['cmd']
     logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
     if cmd == "getDefaultConfig":
-        print("web request config {}".format(params.experiment))
         cfg = loadConfigFile(params.experiment)
         params = checkAndMergeConfigs(params, cfg)
         response = {'cmd': 'config', 'value': params.cfg}
