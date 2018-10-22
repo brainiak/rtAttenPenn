@@ -2,7 +2,7 @@ const React = require('react')
 const ReactDOM = require('react-dom')
 const toml = require('toml')
 const { Tab, Tabs, TabList, TabPanel } = require('react-tabs')
-// const ScrollableFeed = require('react-scrollable-feed').default
+import AutoscrolledList from "./AutoscrolledList";
 
 const elem = React.createElement;
 
@@ -105,6 +105,7 @@ class StatusPane extends React.Component {
     this.scanNumOnChange = this.scanNumOnChange.bind(this)
     this.runBttnOnClick = this.runBttnOnClick.bind(this)
     this.stopBttnOnClick = this.stopBttnOnClick.bind(this)
+
   }
 
   runNumOnChange(event) {
@@ -134,7 +135,8 @@ class StatusPane extends React.Component {
     if (this.props.error != '') {
       errorStr = "Error: " + this.props.error
     }
-    return elem('div', {},
+    return (
+      elem('div', {},
       elem('p', {}, `MRI Scans Directory: ${this.props.getConfigItem('imgDir')}`),
       elem('hr'),
       elem('p', {}, 'Run #: ',
@@ -147,10 +149,14 @@ class StatusPane extends React.Component {
       elem('button', { onClick: this.stopBttnOnClick }, 'Stop'),
       elem('div', {}, errorStr),
       elem('hr'),
-      // elem(ScrollBox, {style: {height: '200px'}, axes: ScrollAxes.Y}, this.props.logLines),
-      // elem(ScrollableFeed, {}, this.props.logLines),
-      elem('div', {}, this.props.logLines),
+      elem(AutoscrolledList, {items: this.props.logLines}),
+      // <div>
+      //   <button onClick={this.runBttnOnClick}>Run</button>
+      //   <button onClick={this.stopBttnOnClick}>Stop</button>
+      //   <AutoscrolledList items={this.props.logLines} />
+      // </div>
     )
+  )
   }
 }
 
@@ -272,11 +278,11 @@ class RtAtten extends React.Component {
         var config = request['value']
         this.setState({config: config})
       } else if (cmd == 'log') {
-        var logItem = request['value']
-        var itemPos = this.state.logLines.length + 1
-        var newLine = elem('div', { key: itemPos }, logItem)
+        var logItem = request['value'].trim()
         var logLines = this.state.logLines
-        logLines.push(newLine)
+        // console.log(logItem)
+        logLines.push(logItem)
+        this.setState({logLines: []}) // if we don't have this it won't know to update
         this.setState({logLines: logLines})
       } else if (cmd == 'error') {
         console.log("## Got Error" + request['error'])
