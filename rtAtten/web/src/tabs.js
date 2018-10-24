@@ -1,164 +1,12 @@
 const React = require('react')
 const ReactDOM = require('react-dom')
-const toml = require('toml')
+const SettingsPane = require('./settingsPane.js')
+const StatusPane = require('./statusPane.js')
+const VNCViewerPane = require('./vncViewerPane.js')
 const { Tab, Tabs, TabList, TabPanel } = require('react-tabs')
-import AutoscrolledList from "./AutoscrolledList";
+
 
 const elem = React.createElement;
-
-
-class SettingsPane extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = {
-      tomlFile: '',
-      tomlErrorMsg: '',
-    }
-    this.tomlInputForm = this.tomlInputForm.bind(this)
-    this.loadTomlFile = this.loadTomlFile.bind(this)
-    this.inputOnChange = this.inputOnChange.bind(this)
-    this.textInputField = this.textInputField.bind(this)
-    this.settingsInputForm = this.settingsInputForm.bind(this)
-  }
-
-  tomlInputForm(props) {
-    const form =
-      elem('fieldset', {},
-        elem('legend', {}, 'Select Toml Configuration File:'),
-        elem('input', {
-          type: 'file',
-          onChange: (event) => {
-            let reader = new FileReader()
-            reader.onload = this.loadTomlFile
-            reader.readAsText(event.target.files[0])
-          },
-        }),
-        elem('p', {}, this.state.tomlErrorMsg)
-      )
-    return form
-  }
-
-  loadTomlFile(event) {
-    try {
-      const configData = toml.parse(event.target.result)
-      this.props.setConfig(configData)
-    } catch (err) {
-      this.setState({ tomlErrorMsg: err.message })
-    }
-  }
-
-  inputOnChange(event) {
-    const section = event.target.attributes.section.value
-    var revSection = Object.assign({}, this.props.config[section], { [event.target.name]: event.target.value })
-    var revConfig = Object.assign({}, this.props.config, { [section]: revSection })
-    this.props.setConfig(revConfig)
-  }
-
-  textInputField(props) {
-    return elem('p', { key: props.name },
-      props.name + ': ',
-      elem('input', Object.assign(props, { value: this.props.config[props.section][props.name], onChange: this.inputOnChange })),
-    )
-  }
-
-  settingsInputForm(props) {
-    var formSections = []
-    for (let section in this.props.config) {
-      let subform = Object.keys(this.props.config[section]).map(k =>
-        this.textInputField({ name: k, section: section })
-      )
-      formSections.push(
-        elem('fieldset', { key: section },
-          elem('legend', {}, section),
-          subform,
-        )
-      )
-    }
-    const form =
-      elem('fieldset', {},
-        elem('legend', {}, 'Configurations'),
-        formSections,
-      )
-    return form
-  }
-
-  render() {
-    // if (this.errorMsg) {
-    // var errElem = elem('span', {}, this.errorMsg)
-    // }
-    return elem('div', {},
-      this.tomlInputForm({}),
-      elem('br'),
-      this.settingsInputForm({})
-    )
-  }
-}
-
-
-class StatusPane extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = {
-    }
-    // this.scrollRef = React.createRef()
-    this.runNumOnChange = this.runNumOnChange.bind(this)
-    this.scanNumOnChange = this.scanNumOnChange.bind(this)
-    this.runBttnOnClick = this.runBttnOnClick.bind(this)
-    this.stopBttnOnClick = this.stopBttnOnClick.bind(this)
-
-  }
-
-  runNumOnChange(event) {
-    this.props.setConfigItem('Runs', [event.target.value])
-  }
-
-  scanNumOnChange(event) {
-    this.props.setConfigItem('ScanNums', [event.target.value])
-  }
-
-  runBttnOnClick(event) {
-    this.props.startRun()
-  }
-
-  stopBttnOnClick(event) {
-    this.props.stopRun()
-  }
-
-  // componentDidUpdate () {
-  //   this.scrollRef.scrollIntoView({ behavior: 'smooth' })
-  // }
-  // componentDidMount() {
-  // }
-
-  render() {
-    var errorStr
-    if (this.props.error != '') {
-      errorStr = "Error: " + this.props.error
-    }
-    return (
-      elem('div', {},
-      elem('p', {}, `MRI Scans Directory: ${this.props.getConfigItem('imgDir')}`),
-      elem('hr'),
-      elem('p', {}, 'Run #: ',
-        elem('input', { value: this.props.getConfigItem('Runs'), onChange: this.runNumOnChange }),
-      ),
-      elem('p', {}, 'Scan #: ',
-        elem('input', { value: this.props.getConfigItem('ScanNums'), onChange: this.scanNumOnChange }),
-      ),
-      elem('button', { onClick: this.runBttnOnClick }, 'Run'),
-      elem('button', { onClick: this.stopBttnOnClick }, 'Stop'),
-      elem('div', {}, errorStr),
-      elem('hr'),
-      elem(AutoscrolledList, {items: this.props.logLines}),
-      // <div>
-      //   <button onClick={this.runBttnOnClick}>Run</button>
-      //   <button onClick={this.stopBttnOnClick}>Stop</button>
-      //   <AutoscrolledList items={this.props.logLines} />
-      // </div>
-    )
-  )
-  }
-}
 
 
 class RtAtten extends React.Component {
@@ -170,7 +18,9 @@ class RtAtten extends React.Component {
       connected: false,
       error: '',
     }
+    this.fslTabIndex = 2
     this.webSocket = null
+    this.onTabSelected = this.onTabSelected.bind(this);
     this.setConfig = this.setConfig.bind(this);
     this.getConfigItem = this.getConfigItem.bind(this);
     this.setConfigItem = this.setConfigItem.bind(this);
@@ -179,6 +29,18 @@ class RtAtten extends React.Component {
     this.stopRun = this.stopRun.bind(this);
     this.createWebSocket = this.createWebSocket.bind(this)
     this.createWebSocket()
+  }
+
+  onTabSelected(index, lastIndex, event) {
+    if (index == this.fslTabIndex) {
+      // show the screen div
+      var screenDiv = document.getElementById('screen')
+      screenDiv.style.display = "initial";
+    } else if (lastIndex == this.fslTabIndex && index != lastIndex){
+      // hide the screen div
+      var screenDiv = document.getElementById('screen')
+      screenDiv.style.display = "none";
+    }
   }
 
   setConfig(newConfig) {
@@ -279,9 +141,12 @@ class RtAtten extends React.Component {
         this.setState({config: config})
       } else if (cmd == 'log') {
         var logItem = request['value'].trim()
+        var itemPos = this.state.logLines.length + 1
+        var newLine = elem('pre', { key: itemPos }, logItem)
         var logLines = this.state.logLines
         // console.log(logItem)
-        logLines.push(logItem)
+        // logLines.push(logItem)
+        logLines.push(newLine)
         this.setState({logLines: []}) // if we don't have this it won't know to update
         this.setState({logLines: logLines})
       } else if (cmd == 'error') {
@@ -294,10 +159,11 @@ class RtAtten extends React.Component {
 
   render() {
     var tp =
-     elem(Tabs, {},
+     elem(Tabs, {onSelect: this.onTabSelected},
        elem(TabList, {},
          elem(Tab, {}, 'Run'),
          elem(Tab, {}, 'Settings'),
+         elem(Tab, {}, 'FSL'),
        ),
        elem(TabPanel, {},
          elem(StatusPane,
@@ -320,6 +186,9 @@ class RtAtten extends React.Component {
             setConfigItem: this.setConfigItem,
            }
          ),
+       ),
+       elem(TabPanel, {},
+         elem(VNCViewerPane, {}),
        ),
      )
     return tp
