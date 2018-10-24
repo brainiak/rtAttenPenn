@@ -45,7 +45,28 @@ class RtAttenClient(RtfMRIClient):
     def doStopRun(self):
         self.stopRun = True
 
+    def cfgValidation(self, cfg):
+        # some model specific validations
+        if type(cfg.session.Runs) is not list or type(cfg.session.ScanNums) is not list:
+            raise InvocationError("Runs and ScanNums must be a list of integers")
+
+        if type(cfg.session.Runs[0]) is not int:
+            # convert to list of ints
+            try:
+                cfg.session.Runs = [int(s) for s in cfg.session.Runs[0].split(',')]
+            except Exception as err:
+                raise InvocationError("List of Run integers is malformed")
+
+        if type(cfg.session.ScanNums[0]) is not int:
+            # convert to list of ints
+            try:
+                cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums[0].split(',')]
+            except Exception as err:
+                raise InvocationError("List of ScanNum integers is malformed")
+
     def initSession(self, cfg):
+        self.cfgValidation(cfg)
+
         if cfg.session.sessionId is None or cfg.session.sessionId == '':
             cfg.session.sessionId = dateStr30(time.localtime())
 

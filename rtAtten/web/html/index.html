@@ -5,12 +5,18 @@
     <link rel="shortcut icon" href="">
     <script src="https://code.jquery.com/jquery-1.11.1.js"></script>
     <link rel="stylesheet" href="css/react-tabs.css">
-    <!-- <link rel="stylesheet" href="css/scrollArea.css"> -->
-    <style>
+    <style type="text/css">
+      #screen {
+        flex: 1; /* fill remaining space */
+        overflow: hidden;
+      }
     </style>
   </head>
   <body>
     <div id="tabs_container"></div>
+    <div id="screen" style="display: none;">
+      <!-- For the VNCViewerTab this is where the remote screen will appear -->
+    </div>
     <script src="build/tabsBundle.js"></script>
   </body>
 </html>
