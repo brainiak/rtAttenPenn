@@ -1,5 +1,6 @@
 const React = require('react')
-import RFB from '../lib/rfb.js';
+const RFB = require('@novnc/novnc').default
+// import RFB from '../lib/rfb.js';
 
 const elem = React.createElement
 var rfb = null; // global vnc remote framebuffer

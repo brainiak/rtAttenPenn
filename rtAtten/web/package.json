@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "browserify src/tabs.js -o build/tabsBundle.js -t [ babelify --presets [ @babel/preset-env @babel/preset-react ] ]"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@novnc/novnc": "github:danielsuo/noVNC",
     "autoscroll-react": "^3.2.0",
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
