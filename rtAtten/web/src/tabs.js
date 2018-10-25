@@ -8,6 +8,9 @@ const { Tab, Tabs, TabList, TabPanel } = require('react-tabs')
 
 const elem = React.createElement;
 
+const logLineStyle = {
+    margin: '0',
+}
 
 class RtAtten extends React.Component {
   constructor(props) {
@@ -142,12 +145,9 @@ class RtAtten extends React.Component {
       } else if (cmd == 'log') {
         var logItem = request['value'].trim()
         var itemPos = this.state.logLines.length + 1
-        var newLine = elem('pre', { key: itemPos }, logItem)
-        var logLines = this.state.logLines
-        // console.log(logItem)
-        // logLines.push(logItem)
-        logLines.push(newLine)
-        this.setState({logLines: []}) // if we don't have this it won't know to update
+        var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
+        // Need to use concat() to create a new logLines object or React won't know to re-render
+        var logLines = this.state.logLines.concat([newLine])
         this.setState({logLines: logLines})
       } else if (cmd == 'error') {
         console.log("## Got Error" + request['error'])
