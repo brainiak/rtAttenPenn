@@ -49,14 +49,18 @@ class TestDeadlines:
         global fileData
         assert len(Web.wsDataConns) > 0
         # initialize file watcher
-        cmd = {'cmd': 'init', 'imgDir': '/', 'filePattern': '*', 'minFileSize': 0}
+        cmd = {'cmd': 'initWatch', 'dir': '/', 'filePattern': '*', 'minFileSize': 0}
         Web.sendDataMessage(json.dumps(cmd), timeout=1)
-        cmd = {'cmd': 'get', 'filename': dicomTestFilename}
-        Web.sendDataMessage(json.dumps(cmd), timeout=2)
         with open(dicomTestFilename, 'rb') as fp:
             data = fp.read()
+        cmd = {'cmd': 'watch', 'filename': dicomTestFilename}
+        Web.sendDataMessage(json.dumps(cmd), timeout=2)
+        assert data == Web.fileData
+        cmd = {'cmd': 'get', 'filename': dicomTestFilename}
+        Web.sendDataMessage(json.dumps(cmd), timeout=2)
         assert data == Web.fileData
 
+
     # TODO - test websocket connection closes
-    
+
     # Get reply, write it to a file, diff the file with the original

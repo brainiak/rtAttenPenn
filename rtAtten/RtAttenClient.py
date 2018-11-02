@@ -115,8 +115,8 @@ class RtAttenClient(RtfMRIClient):
                 self.webInterface.sendUserMessage(json.dumps(response))
                 raise StateError(errStr)
             cmd = {
-                'cmd': 'init',
-                'imgDir': self.dirs.imgDir,
+                'cmd': 'initWatch',
+                'dir': self.dirs.imgDir,
                 'filePattern': cfg.session.watchFilePattern,
                 'minFileSize': cfg.session.minExpectedDicomSize
             }
@@ -125,7 +125,14 @@ class RtAttenClient(RtfMRIClient):
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
         maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
-        temp = utils.loadMatFile(maskFileName)
+        if self.webInterface:
+            # get the mask from remote site
+            cmd = {'cmd': 'get', 'filename': maskFileName}
+            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
+            temp = utils.loadMatFileFromBuffer(self.webInterface.fileData)
+        else:
+            # read mask locally
+            temp = utils.loadMatFile(maskFileName)
         roi = temp.mask
         assert type(roi) == np.ndarray
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
@@ -349,7 +356,7 @@ class RtAttenClient(RtfMRIClient):
             self.fileWatcher.waitForFile(specificFileName)
         else:
             assert self.webInterface is not None
-            cmd = {'cmd': 'get', 'filename': specificFileName}
+            cmd = {'cmd': 'watch', 'filename': specificFileName}
             # Note: sendDataMessage waits for reply and sets results in WebInterface
             try:
                 self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)

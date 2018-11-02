@@ -16,7 +16,7 @@ class FileWatcher():
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
         self.filePattern = None
-        self.imgDir = None
+        self.dir = None
         self.minFileSize = 0
 
     def __del__(self):
@@ -26,7 +26,7 @@ class FileWatcher():
             except Exception as err:
                 logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
 
-    def initFileNotifier(self, imgDir, filePattern, minFileSize):
+    def initFileNotifier(self, dir, filePattern, minFileSize):
         self.minFileSize = minFileSize
         if self.observer is not None:
             self.observer.stop()
@@ -34,12 +34,12 @@ class FileWatcher():
         if filePattern is None or filePattern == '':
             filePattern = '*'
         self.filePattern = filePattern
-        self.imgDir = imgDir
+        self.dir = dir
         self.fileNotifyHandler = FileNotifyHandler(self.fileNotifyQ, [filePattern])
-        self.observer.schedule(self.fileNotifyHandler, imgDir, recursive=False)
+        self.observer.schedule(self.fileNotifyHandler, dir, recursive=False)
         self.observer.start()
 
-    def waitForFile(self, specificFileName):
+    def waitForFile(self, specificFileName, timeout=0):
         fileExists = os.path.exists(specificFileName)
         if not fileExists:
             if self.observer is None:
@@ -48,8 +48,11 @@ class FileWatcher():
                 logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
         eventLoopCount = 0
         exitWithFileEvent = False
+        startTime = time.time()
         timeToCheckForFile = time.time() + 1  # check if file exists at least every second
         while not fileExists:
+            if timeout > 0 and startTime + timeout > time.time():
+                return None
             # look for file creation event
             eventLoopCount += 1
             try:
@@ -126,19 +129,19 @@ class WebSocketFileWatcher:
         fileWatcher = WebSocketFileWatcher.fileWatcher
         request = json.loads(message)
         cmd = request['cmd']
-        if cmd == "init":
-            imgDir = request['imgDir']
+        if cmd == "initWatch":
+            dir = request['dir']
             filePattern = request['filePattern']
             minFileSize = request['minFileSize']
-            logging.log(DebugLevels.L3, "init: %s, %s, %d", imgDir, filePattern, minFileSize)
-            if imgDir is None or filePattern is None or minFileSize is None:
+            logging.log(DebugLevels.L3, "init: %s, %s, %d", dir, filePattern, minFileSize)
+            if dir is None or filePattern is None or minFileSize is None:
                 response = {'status': 400, 'error': 'missing file information'}
             else:
-                fileWatcher.initFileNotifier(imgDir, filePattern, minFileSize)
+                fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
                 response = {'status': 200}
-        elif cmd == "get":
+        elif cmd == "watch":
             filename = request['filename']
-            logging.log(DebugLevels.L3, "get: %s", filename)
+            logging.log(DebugLevels.L3, "watch: %s", filename)
             if filename is None:
                 response = {'status': 400, 'error': 'missing filename'}
             elif fileWatcher.observer is None:
@@ -151,10 +154,23 @@ class WebSocketFileWatcher:
                 b64Data = b64encode(data)
                 b64StrData = b64Data.decode('utf-8')
                 response = {'status': 200, 'data': b64StrData}
+        elif cmd == "get":
+            filename = request['filename']
+            logging.log(DebugLevels.L3, "get: %s", filename)
+            if filename is None:
+                response = {'status': 400, 'error': 'missing filename'}
+            if not os.path.exists(filename):
+                response = {'status': 400, 'error': 'file not found'}
+            else:
+                with open(filename, 'rb') as fp:
+                    data = fp.read()
+                b64Data = b64encode(data)
+                b64StrData = b64Data.decode('utf-8')
+                response = {'status': 200, 'data': b64StrData}
         elif cmd == "ping":
             response = {'status': 200}
         else:
-            response = {'status': 400, 'error': 'Unrecognized command'}
+            response = {'status': 400, 'error': 'Unrecognized command {}'.format(cmd)}
         # merge request into the response dictionary
         response.update(request)
         client.send(json.dumps(response))
