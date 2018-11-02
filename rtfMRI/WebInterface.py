@@ -26,7 +26,7 @@ def fileDataCallback(client, message):
         pass
     elif origCmd == 'init' and Web.dataStatus == 200:
         pass
-    elif origCmd == 'get' and Web.dataStatus == 200:
+    elif (origCmd == 'get' or origCmd == 'watch') and Web.dataStatus == 200:
         assert 'data' in response
         Web.fileData = b64decode(response['data'])
     Web.dataCallbackEvent.set()
