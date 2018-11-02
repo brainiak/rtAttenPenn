@@ -11,10 +11,6 @@ import sys
 import logging
 import click
 import clickutil
-# fix up search path
-currPath = os.path.dirname(os.path.realpath(__file__))
-rootPath = os.path.join(currPath, "../../")
-sys.path.append(rootPath)
 from rtfMRI.RtfMRIServer import RtfMRIServer
 from rtfMRI.utils import installLoggers
 

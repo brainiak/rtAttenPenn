@@ -8,15 +8,11 @@ import threading
 import logging
 import argparse
 import json
-# fix up search path
-currPath = os.path.dirname(os.path.realpath(__file__))
-rootPath = os.path.join(currPath, "../../")
-sys.path.append(rootPath)
+import ServerMain
 from rtAtten.RtAttenClient import RtAttenClient
 from rtfMRI.RtfMRIClient import RtfMRIClient, loadConfigFile
 from rtfMRI.BaseClient import BaseClient
 from rtfMRI.Errors import InvocationError
-import rtfMRI.scripts.ServerMain as ServerMain
 from rtfMRI.utils import installLoggers, DebugLevels
 from rtfMRI.StructDict import StructDict, recurseCreateStructDict
 from rtfMRI.WebInterface import Web

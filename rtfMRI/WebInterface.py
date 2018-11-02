@@ -81,6 +81,7 @@ class Web():
             # Start the event loop
             asyncio.set_event_loop(asyncio.new_event_loop())
 
+        print("Listening on: http://localhost:{}".format(port))
         Web.httpServer = tornado.httpserver.HTTPServer(Web.app)
         Web.httpServer.listen(port)
         tornado.ioloop.IOLoop.current().start()

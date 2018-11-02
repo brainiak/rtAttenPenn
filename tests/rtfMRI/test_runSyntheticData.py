@@ -3,7 +3,7 @@ import os
 import inspect
 import typing
 import logging
-import rtfMRI.scripts.ClientMain as ClientMain
+import ClientMain as ClientMain
 from rtfMRI.StructDict import StructDict
 import tests.rtfMRI.simfmri.generate_data as gd
 # import generate_fmri_data.generate_data as gd
