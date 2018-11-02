@@ -1,4 +1,4 @@
-import rtfMRI.scripts.ClientMain as ClientMain
+import ClientMain as ClientMain
 import os
 import inspect
 import typing

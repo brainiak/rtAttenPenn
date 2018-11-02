@@ -5,7 +5,7 @@ import time
 import threading
 import inspect
 import typing
-from rtfMRI.scripts.ServerMain import ServerMain
+from ServerMain import ServerMain
 from rtfMRI.RtfMRIClient import loadConfigFile
 from rtfMRI.StructDict import copy_toplevel
 from rtfMRI.ReadDicom import applyMask
