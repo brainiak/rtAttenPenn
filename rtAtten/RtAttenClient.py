@@ -7,16 +7,17 @@ import numpy as np  # type: ignore
 import datetime
 import logging
 from dateutil import parser
+from pathlib import Path
 import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
-from rtfMRI.ReadDicom import readDicomFromFile, readDicomFromBuffer, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError, StateError
-from .PatternsDesign2Config import createRunConfig, getRunIndex
+from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 
 
@@ -28,6 +29,7 @@ class RtAttenClient(RtfMRIClient):
         self.printFirstFilename = True
         self.ttlPulseClient = TTLPulseClient()
         self.fileWatcher = FileWatcher()
+        self.useWeb = False
         self.webInterface = None
         self.stopRun = False
 
@@ -40,6 +42,7 @@ class RtAttenClient(RtfMRIClient):
     def setWebInterface(self, web):
         asyncio.set_event_loop(asyncio.new_event_loop())
         self.webInterface = web
+        self.useWeb = True
         self.fileWatcher = None
 
     def doStopRun(self):
@@ -100,36 +103,28 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(self.dirs.imgDir):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        if self.fileWatcher is not None:
-            self.fileWatcher.initFileNotifier(
-                self.dirs.imgDir,
-                cfg.session.watchFilePattern,
-                cfg.session.minExpectedDicomSize
-            )
-        else:
+        if self.useWeb:
             assert self.webInterface is not None
             if len(self.webInterface.wsDataConns) == 0:
-                # A fileWatcher hasn't connected yet
+                # A remote fileWatcher hasn't connected yet
                 errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
-                response = {'cmd': 'error', 'error': errStr}
-                self.webInterface.sendUserMessage(json.dumps(response))
+                self.webInterface.setUserError(errStr)
                 raise StateError(errStr)
-            cmd = {
-                'cmd': 'initWatch',
-                'dir': self.dirs.imgDir,
-                'filePattern': cfg.session.watchFilePattern,
-                'minFileSize': cfg.session.minExpectedDicomSize
-            }
-            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=30)
+            self.webInterface.initWatch(self.dirs.imgDir,
+                                        cfg.session.watchFilePattern,
+                                        cfg.session.minExpectedDicomSize)
+        else:
+            assert self.fileWatcher is not None
+            self.fileWatcher.initFileNotifier(self.dirs.imgDir,
+                                              cfg.session.watchFilePattern,
+                                              cfg.session.minExpectedDicomSize)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
         maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
-        if self.webInterface:
+        if self.useWeb and cfg.session.getMasksPatternsFromCR:
             # get the mask from remote site
-            cmd = {'cmd': 'get', 'filename': maskFileName}
-            self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
-            temp = utils.loadMatFileFromBuffer(self.webInterface.fileData)
+            temp = self.webInterface.getFile(maskFileName)
         else:
             # read mask locally
             temp = utils.loadMatFile(maskFileName)
@@ -151,12 +146,15 @@ class RtAttenClient(RtfMRIClient):
                 return
 
     def runRun(self, runId, scanNum=-1):
-        run = createRunConfig(self.cfg.session, runId, scanNum)
+        if self.useWeb and self.cfg.session.getMasksPatternsFromCR:
+            fileRegex = getPatternsFileRegex(self.cfg.session, runId, addRunDir=True)
+            patterns = self.webInterface.getNewestFile(fileRegex)
+        else:
+            patterns = getLocalPatternsFile(self.cfg.session, runId)
+        run = createRunConfig(self.cfg.session, patterns, runId, scanNum)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
-
         logging.log(DebugLevels.L4, "Run: %d, scanNum %d", runId, run.scanNum)
-
         if self.cfg.session.rtData:
             # Check if images already exist and warn and ask to continue
             firstFileName = self.getDicomFileName(run.scanNum, 1)
@@ -348,35 +346,34 @@ class RtAttenClient(RtfMRIClient):
 
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
-        _, file_extension = os.path.splitext(specificFileName)
+        data = None
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        if self.fileWatcher is not None:
-            self.fileWatcher.waitForFile(specificFileName)
-        else:
+        if self.useWeb:
             assert self.webInterface is not None
-            cmd = {'cmd': 'watch', 'filename': specificFileName}
-            # Note: sendDataMessage waits for reply and sets results in WebInterface
-            try:
-                self.webInterface.sendDataMessage(json.dumps(cmd), timeout=2)
-            except Exception as err:
-                # TODO set web interface error
-                raise err
-
-        if file_extension == '.mat':
-            if self.fileWatcher is not None:
-                data = utils.loadMatFile(specificFileName)
-            else:
-                data = utils.loadMatFileFromBuffer(self.webInterface.fileData)
-            trVol = data.vol
+            data = self.webInterface.watchFile(specificFileName)
         else:
-            # Dicom file: assert file_extension == '.dcm'
-            if self.fileWatcher is not None:
-                trVol = readDicomFromFile(specificFileName, self.cfg.session.sliceDim)
-            else:
-                trVol = readDicomFromBuffer(self.webInterface.fileData, self.cfg.session.sliceDim)
+            self.fileWatcher.waitForFile(specificFileName)
+            data = self.loadImageData(specificFileName)
+        fileExtension = Path(specificFileName).suffix
+        if fileExtension == '.mat':
+            trVol = data.vol
+        elif fileExtension == '.dcm':
+            trVol = parseDicomVolume(data, self.cfg.session.sliceDim)
+        else:
+            raise ValidationError('Only filenames of type .mat or .dcm supported')
         return trVol
+
+    def loadImageData(self, filename):
+        fileExtension = Path(filename).suffix
+        if fileExtension == '.mat':
+            data = utils.loadMatFile(filename)
+        else:
+            # Dicom file:
+            assert fileExtension == '.dcm'
+            data = readDicomFromFile(filename)
+        return data
 
     def getDicomFileName(self, scanNum, fileNum):
         if scanNum < 0:

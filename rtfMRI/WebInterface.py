@@ -7,6 +7,8 @@ import threading
 import logging
 from pathlib import Path
 from base64 import b64decode
+import rtfMRI.utils as utils
+from rtfMRI.ReadDicom import readDicomFromBuffer
 from rtfMRI.utils import DebugLevels
 from rtfMRI.Errors import RequestError
 
@@ -22,13 +24,16 @@ def fileDataCallback(client, message):
     Web.dataStatus = response.get('status')
     Web.dataError = response.get('error')
     Web.fileData = b''
-    if origCmd == 'ping' and Web.dataStatus == 200:
-        pass
-    elif origCmd == 'init' and Web.dataStatus == 200:
-        pass
-    elif (origCmd == 'get' or origCmd == 'watch') and Web.dataStatus == 200:
-        assert 'data' in response
-        Web.fileData = b64decode(response['data'])
+    if Web.dataStatus == 200:
+        if origCmd in ('ping', 'initWatch'):
+            pass
+        elif origCmd in ('get', 'getNewest', 'watch'):
+            assert 'data' in response
+            Web.fileData = b64decode(response['data'])
+        else:
+            Web.dataError = 'Unrecognized origCmd {}'.format(origCmd)
+    else:
+        assert Web.dataError is not None and Web.dataError != ''
     Web.dataCallbackEvent.set()
 
 
@@ -86,6 +91,7 @@ class Web():
         Web.httpServer.listen(port)
         tornado.ioloop.IOLoop.current().start()
 
+    @staticmethod
     def close():
         for client in Web.wsUserConns:
             client.close()
@@ -95,9 +101,68 @@ class Web():
             client.close()
 
     @staticmethod
-    def sendUserMessage(msg):
-        for client in Web.wsUserConns:
-            client.write_message(msg)
+    def formatFileData(filename, data):
+        fileExtension = Path(filename).suffix
+        if fileExtension == '.mat':
+            # Matlab file format
+            result = utils.loadMatFileFromBuffer(Web.fileData)
+        elif fileExtension == '.dcm':
+            # Dicom file format
+            result = readDicomFromBuffer(Web.fileData)
+        else:
+            result = Web.fileData
+        return result
+
+    @staticmethod
+    def getFile(filename):
+        cmd = {'cmd': 'get', 'filename': filename}
+        try:
+            Web.sendDataMessage(json.dumps(cmd), timeout=2)
+        except Exception as err:
+            # TODO set web interface error
+            raise err
+        return Web.formatFileData(filename, Web.fileData)
+
+    @staticmethod
+    def getNewestFile(filename):
+        cmd = {'cmd': 'getNewest', 'filename': filename}
+        try:
+            Web.sendDataMessage(json.dumps(cmd), timeout=2)
+        except Exception as err:
+            # TODO set web interface error
+            raise err
+        return Web.formatFileData(filename, Web.fileData)
+
+    @staticmethod
+    def watchFile(filename, timeout=3):
+        cmd = {'cmd': 'watch', 'filename': filename}
+        # Note: sendDataMessage waits for reply and sets results in Web.fileData
+        try:
+            Web.sendDataMessage(json.dumps(cmd), timeout)
+        except Exception as err:
+            # TODO set web interface error
+            raise err
+        return Web.formatFileData(filename, Web.fileData)
+
+    @staticmethod
+    def initWatch(dir, filePattern, minFileSize):
+        cmd = {
+            'cmd': 'initWatch',
+            'dir': dir,
+            'filePattern': filePattern,
+            'minFileSize': minFileSize
+        }
+        Web.sendDataMessage(json.dumps(cmd), timeout=30)
+
+    @staticmethod
+    def setUserError(errStr):
+        response = {'cmd': 'error', 'error': errStr}
+        Web.sendUserMessage(json.dumps(response))
+
+    @staticmethod
+    def sendUserConfig(config):
+        response = {'cmd': 'config', 'value': config}
+        Web.sendUserMessage(json.dumps(response))
 
     @staticmethod
     def sendDataMessage(msg, timeout=None):
@@ -111,9 +176,14 @@ class Web():
         # TODO handle case where WS connection is broken
         if Web.dataCallbackEvent.is_set() is False:
             raise TimeoutError("Websocket: Data Request Timed Out(%d) %s", timeout, msg)
-        if Web.dataStatus != 200:
+        if Web.dataStatus != 200 or Web.dataError is not None:
             raise RequestError("WebInterface: Data Message: {}".format(Web.dataError))
         return True
+
+    @staticmethod
+    def sendUserMessage(msg):
+        for client in Web.wsUserConns:
+            client.write_message(msg)
 
     class UserHttp(tornado.web.RequestHandler):
         def get(self):

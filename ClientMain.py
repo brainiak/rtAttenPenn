@@ -2,8 +2,6 @@
 """
 Top level routine for client side rtfMRI processing
 """
-import sys
-import os
 import threading
 import logging
 import argparse
@@ -18,7 +16,7 @@ from rtfMRI.StructDict import StructDict, recurseCreateStructDict
 from rtfMRI.WebInterface import Web
 
 # Globals
-params = None
+params = StructDict()
 webClient = None
 webClientThread = None
 
@@ -46,12 +44,6 @@ def ClientMain(params):
     return True
 
 
-def webErrorResponse(client, errStr):
-    print(errStr)
-    response = {'cmd': 'error', 'error': errStr}
-    params.webInterface.sendUserMessage(json.dumps(response))
-
-
 def webUserCallback(client, message):
     global params
     global webClient
@@ -62,13 +54,12 @@ def webUserCallback(client, message):
     if cmd == "getDefaultConfig":
         cfg = loadConfigFile(params.experiment)
         params = checkAndMergeConfigs(params, cfg)
-        response = {'cmd': 'config', 'value': params.cfg}
-        params.webInterface.sendUserMessage(json.dumps(response))
+        params.webInterface.sendUserConfig(cfg)
     elif cmd == "run":
         if webClientThread is not None:
             webClientThread.join(timeout=1)
             if webClientThread.is_alive():
-                webErrorResponse(client, "Client thread already runnning, skipping new request")
+                params.webInterface.setUserError("Client thread already runnning, skipping new request")
                 return
             webClientThread = None
             webClient = None
@@ -76,7 +67,7 @@ def webUserCallback(client, message):
         try:
             params = checkAndMergeConfigs(params, cfg_struct)
         except Exception as err:
-            webErrorResponse(client, str(err))
+            params.webInterface.setUserError(str(err))
             return
         webClientThread = threading.Thread(name='webClientThread', target=RunClient, args=(params,))
         webClientThread.setDaemon(True)
@@ -86,7 +77,7 @@ def webUserCallback(client, message):
             if webClient is not None:
                 webClient.doStopRun()
     else:
-        webErrorResponse(client, "unknown command " + cmd)
+        params.webInterface.setUserError("unknown command " + cmd)
 
 
 def checkAndMergeConfigs(params, cfg):

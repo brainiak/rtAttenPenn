@@ -33,15 +33,15 @@ def parseDicomVolume(dicomImg, sliceDim):
     return volume
 
 
-def readDicomFromBuffer(data, sliceDim):
+def readDicomFromBuffer(data):
     dataBytesIO = dicom.filebase.DicomBytesIO(data)
     dicomImg = dicom.dcmread(dataBytesIO)
-    return parseDicomVolume(dicomImg, sliceDim)
+    return dicomImg
 
 
-def readDicomFromFile(filename, sliceDim):
+def readDicomFromFile(filename):
     dicomImg = dicom.read_file(filename)
-    return parseDicomVolume(dicomImg, sliceDim)
+    return dicomImg
 
 
 def applyMask(volume, roiInds):
