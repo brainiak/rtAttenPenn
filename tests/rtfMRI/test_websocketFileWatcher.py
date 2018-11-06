@@ -49,15 +49,12 @@ class TestDeadlines:
         global fileData
         assert len(Web.wsDataConns) > 0
         # initialize file watcher
-        cmd = {'cmd': 'initWatch', 'dir': '/', 'filePattern': '*', 'minFileSize': 0}
-        Web.sendDataMessage(json.dumps(cmd), timeout=1)
+        Web.initWatch('/', '*', 0)
         with open(dicomTestFilename, 'rb') as fp:
             data = fp.read()
-        cmd = {'cmd': 'watch', 'filename': dicomTestFilename}
-        Web.sendDataMessage(json.dumps(cmd), timeout=2)
+        Web.watchFile(dicomTestFilename)
         assert data == Web.fileData
-        cmd = {'cmd': 'get', 'filename': dicomTestFilename}
-        Web.sendDataMessage(json.dumps(cmd), timeout=2)
+        Web.getFile(dicomTestFilename)
         assert data == Web.fileData
 
 

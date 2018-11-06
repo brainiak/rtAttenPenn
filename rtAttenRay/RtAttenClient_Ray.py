@@ -1,3 +1,4 @@
+
 import os
 import time
 import numpy as np  # type: ignore
@@ -8,12 +9,17 @@ from queue import Queue
 from dateutil import parser
 from watchdog.observers import Observer  # type: ignore
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
+import sys
+# fix up the module search path to be the rtAtten project path
+scriptPath = os.path.dirname(os.path.realpath(__file__))
+rootPath = os.path.join(scriptPath, "../")
+sys.path.append(rootPath)
 import rtfMRI.utils as utils
+import rtfMRI.ReadDicom as ReadDicom
 from rtfMRI.StructDict import StructDict
-from rtfMRI.ReadDicom import readDicomFromFile, applyMask
 from rtfMRI.RtfMRIClient import loadConfigFile, validateSessionCfg, validateRunCfg
 from rtfMRI.Errors import InvocationError, ValidationError
-from rtAtten.PatternsDesign2Config import createRunConfig
+import rtAtten.PatternsDesign2Config as Pats
 from rtAttenRay.RtAttenModel_Ray import RtAttenModel_Ray, getSubjectDayDir, getBlkGrpFilename, getModelFilename
 import ray
 
@@ -27,7 +33,8 @@ def ClientMain(config: str, rayremote: str):
     cfg = loadConfigFile(config)
     client.start_session(cfg)
     for runId in cfg.session.Runs:
-        run = createRunConfig(cfg.session, runId)
+        patterns = Pats.getLocalPatternsFile(cfg.session, runId)
+        run = Pats.createRunConfig(cfg.session, patterns, runId)
         validateRunCfg(run)
         client.do_run(run)
     client.end_session()
@@ -150,7 +157,7 @@ class LocalClient():
                     # Assuming the output file volumes are still 1's based
                     fileNum = TR.vol + run.disdaqs // run.TRTime
                     trVolumeData = self.getNextTRData(run, fileNum)
-                    TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
+                    TR.data = ReadDicom.applyMask(trVolumeData, self.cfg.session.roiInds)
                     replyId = self.rtatten.TRData.remote(TR)
                     reply = ray.get(replyId)
                     assert reply.success is True
@@ -232,7 +239,8 @@ class LocalClient():
             data = utils.loadMatFile(specificFileName)
             trVol = data.vol
         else:
-            trVol = readDicomFromFile(specificFileName, self.cfg.session.sliceDim)
+            dicomImg = ReadDicom.readDicomFromFile(specificFileName)
+            trVol = ReadDicom.parseDicomVolume(dicomImg, self.cfg.session.sliceDim)
         return trVol
 
     def getDicomFileName(self, scanNum, fileNum):

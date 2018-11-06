@@ -20,6 +20,7 @@ dicomNamePattern = "001_0000{}_000{}.mat"
 minExpectedDicomSize = 300000
 legacyRun1Phase2Mode = true
 retrieveServerFiles = false
+getMasksPatternsFromCR = true
 skipConfirmForReprocess = true
 enforceDeadlines = true
 calcClockSkewIters = 30

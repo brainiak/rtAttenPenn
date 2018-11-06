@@ -4,8 +4,9 @@ import time
 import logging
 import threading
 from queue import Queue, Empty
-from rtfMRI.utils import DebugLevels
+from rtfMRI.utils import DebugLevels, findNewestFile
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
+from watchdog.observers import Observer  # type: ignore
 
 
 class FileWatcher():
@@ -288,6 +289,24 @@ class WebSocketFileWatcher:
                 b64Data = b64encode(data)
                 b64StrData = b64Data.decode('utf-8')
                 response = {'status': 200, 'data': b64StrData}
+        elif cmd == "getNewest":
+            filename = request['filename']
+            logging.log(DebugLevels.L3, "getNewest: %s", filename)
+            if filename is None:
+                response = {'status': 400, 'error': 'missing filename'}
+            else:
+                baseDir, filePattern = os.path.split(filename)
+                filename = findNewestFile(baseDir, filePattern)
+                if filename is None or not os.path.exists(filename):
+                    errStr = 'file not found: {}'.format(os.path.join(baseDir, filePattern))
+                    response = {'status': 400, 'error': errStr}
+                else:
+                    print("FindNewestFile: read {}".format(filename))
+                    with open(filename, 'rb') as fp:
+                        data = fp.read()
+                    b64Data = b64encode(data)
+                    b64StrData = b64Data.decode('utf-8')
+                    response = {'status': 200, 'data': b64StrData}
         elif cmd == "ping":
             response = {'status': 200}
         else:
