@@ -34,7 +34,10 @@ class RtAttenClient(RtfMRIClient):
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
         if self.observer is not None:
-            self.observer.stop()
+            try:
+                self.observer.stop()
+            except Exception as err:
+                logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
         if self.ttlClient is not None:
             self.ttlClient.close()
         super().__del__()

@@ -4,6 +4,6 @@ import sklearn.linear_model
 
 
 def logistic(data, labels):
-    classifier = sklearn.linear_model.LogisticRegression()
+    classifier = sklearn.linear_model.LogisticRegression(solver='sag')
     classifier.fit(data, labels)
     return classifier

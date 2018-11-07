@@ -154,7 +154,7 @@ def crossvalidateModels(matDataDir, pyDataDir, runId):
         trTrain = np.in1d(selector,train_index)
         trTest = np.in1d(selector,test_index)
         # matlab first
-        mat_lrc = LogisticRegression()
+        mat_lrc = LogisticRegression(solver='sag')
         categoryTrainLabels = np.argmax(matModel.trainLabels[trTrain,:],axis=1)
         mat_lrc.fit(matModel.trainPats[trTrain,:], categoryTrainLabels)
         mat_predict = mat_lrc.predict_proba(matModel.trainPats[trTest,:])
@@ -166,7 +166,7 @@ def crossvalidateModels(matDataDir, pyDataDir, runId):
         mat_roc[i] = roc_auc_score(correctLabels, categ_sep)
         print("MAT AUC for iteration %i is: %.2f" %(i,mat_roc[i]))
         # python second
-        py_lrc = LogisticRegression()
+        py_lrc = LogisticRegression(solver='sag')
         categoryTrainLabels = np.argmax(pyModel.trainLabels[trTrain,:],axis=1)
         py_lrc.fit(pyModel.trainPats[trTrain,:], categoryTrainLabels)
         py_predict = py_lrc.predict_proba(pyModel.trainPats[trTest,:])
@@ -205,7 +205,7 @@ def main():
         print("Validating using dir {}: runId {}".format(args.dir, args.runId))
         validatePatternsData(args.dir, args.dir, args.runId)
         validateFileprocessingTxt(args.dir, args.dir, args.runId)
-        crossvalidateModels(args.dir,args,dir,args.runId)    
+        crossvalidateModels(args.dir,args,dir,args.runId)
     else:
         parser.print_help()
         return
