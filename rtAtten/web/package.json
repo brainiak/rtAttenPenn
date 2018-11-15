@@ -13,6 +13,8 @@
   "dependencies": {
     "@novnc/novnc": "github:danielsuo/noVNC",
     "autoscroll-react": "^3.2.0",
+    "dateformat": "^3.0.3",
+    "path": "^0.12.7",
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
     "react-tabs": "^2.3.0",

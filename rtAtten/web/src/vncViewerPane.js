@@ -30,11 +30,10 @@ class VNCViewerPane extends React.Component {
     this.state = {
       status: 'Loading',
       desktopName: 'FSL Viewer',
-      vncUrl: 'ws://gwallace-centos:6080',
+      vncUrl: '',
     }
-    // TODO: create URL from hostname
-    // consolelog(document.location.href)
-    // this.state.vncUrl = 'ws://' + window.location.hostname + ':6080'
+    // console.log(document.location.href)
+    this.state.vncUrl = 'ws://' + window.location.hostname + ':6080'
     this.connectedToServer = this.connectedToServer.bind(this)
     this.disconnectedFromServer = this.disconnectedFromServer.bind(this)
     this.credentialsAreRequired = this.credentialsAreRequired.bind(this)

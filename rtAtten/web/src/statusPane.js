@@ -58,7 +58,7 @@ class StatusPane extends React.Component {
       elem('button', { onClick: this.stopBttnOnClick }, 'Stop'),
       elem('div', {}, errorStr),
       elem('hr'),
-      elem(AutoscrolledList, {items: this.props.logLines}),
+      elem(AutoscrolledList, {items: this.props.logLines, height: "600px"}),
       // TODO: for future conversion to JSX format
       // <div>
       //   <button onClick={this.runBttnOnClick}>Run</button>

@@ -1,7 +1,10 @@
 const React = require('react')
 const ReactDOM = require('react-dom')
+const dateformat = require('dateformat');
+const path = require('path');
 const SettingsPane = require('./settingsPane.js')
 const StatusPane = require('./statusPane.js')
+const RegistrationPane = require('./registrationPane.js')
 const VNCViewerPane = require('./vncViewerPane.js')
 const { Tab, Tabs, TabList, TabPanel } = require('react-tabs')
 
@@ -17,17 +20,23 @@ class RtAtten extends React.Component {
     super(props)
     this.state = {
       config: {},
-      logLines: [],
+      regConfig: {},
       connected: false,
       error: '',
+      logLines: [],  // image classification log
+      regLines: [],  // registration processing log
     }
-    this.fslTabIndex = 2
+    this.registrationTabIndex = 2
     this.webSocket = null
     this.onTabSelected = this.onTabSelected.bind(this);
     this.setConfig = this.setConfig.bind(this);
     this.getConfigItem = this.getConfigItem.bind(this);
     this.setConfigItem = this.setConfigItem.bind(this);
+    this.getRegConfigItem = this.getRegConfigItem.bind(this);
+    this.setRegConfigItem = this.setRegConfigItem.bind(this);
+    this.runRegistration = this.runRegistration.bind(this);
     this.requestDefaultConfig = this.requestDefaultConfig.bind(this)
+    this.createRegConfig = this.createRegConfig.bind(this)
     this.startRun = this.startRun.bind(this);
     this.stopRun = this.stopRun.bind(this);
     this.createWebSocket = this.createWebSocket.bind(this)
@@ -35,15 +44,38 @@ class RtAtten extends React.Component {
   }
 
   onTabSelected(index, lastIndex, event) {
-    if (index == this.fslTabIndex) {
+    if (index == this.registrationTabIndex) {
       // show the screen div
       var screenDiv = document.getElementById('screen')
       screenDiv.style.display = "initial";
-    } else if (lastIndex == this.fslTabIndex && index != lastIndex){
+      this.createRegConfig()
+    } else if (lastIndex == this.registrationTabIndex && index != lastIndex){
       // hide the screen div
       var screenDiv = document.getElementById('screen')
       screenDiv.style.display = "none";
     }
+  }
+
+  createRegConfig() {
+    var cfg = this.state.config;
+    // TODO - handle case where date string is 'now'
+    var scanDate = Date.parse(cfg.session.date)
+    var dateStrMDY = dateformat(scanDate, 'mmddyyyy')
+    var dateStrYMD = dateformat(scanDate, 'yyyymmdd')
+    var regGlobals = {}
+    regGlobals.subjectNum = cfg.session.subjectNum;
+    regGlobals.dayNum = cfg.session.subjectDay;
+    regGlobals.runNum = cfg.session.Runs[0]
+    regGlobals.highresScan = this.getRegConfigItem('highresScan')
+    regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
+    // TODO - make the next two items configurable
+    regGlobals.project_path = "/Data1/registration"
+    regGlobals.roi_name = "wholebrain_mask"
+    regGlobals.subjName = dateStrMDY + regGlobals.runNum + '_' + cfg.experiment.experimentName
+    var dicomFolder = dateStrYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
+    regGlobals.scanFolder = path.join(cfg.session.imgDir, dicomFolder)
+    console.log(regGlobals)
+    this.setState({regConfig: regGlobals})
   }
 
   setConfig(newConfig) {
@@ -67,17 +99,39 @@ class RtAtten extends React.Component {
         if (key == name) {
           var revSection = Object.assign({}, this.state.config[section], { [name]: value })
           var revConfig = Object.assign({}, this.state.config, { [section]: revSection })
-          return this.setState({config: revConfig})
+          this.setState({config: revConfig})
+          return
         }
       }
     }
-    return null
+  }
+
+  getRegConfigItem(name) {
+    if (name in this.state.regConfig) {
+      return this.state.regConfig[name]
+    }
+    return ''
+  }
+
+  setRegConfigItem(name, value) {
+    var regConfig = Object.assign({}, this.state.regConfig, { [name]: value })
+    this.setState({regConfig: regConfig})
   }
 
   requestDefaultConfig() {
     var cmd = {'cmd': 'getDefaultConfig'}
     var cmdStr = JSON.stringify(cmd)
     this.webSocket.send(cmdStr)
+  }
+
+  runRegistration() {
+    // clear previous log output
+    this.setState({regLines: []})
+    var request = {cmd: 'runReg',
+                   config: this.state.config,
+                   regConfig: this.state.regConfig,
+                  }
+    this.webSocket.send(JSON.stringify(request))
   }
 
   startRun() {
@@ -123,7 +177,7 @@ class RtAtten extends React.Component {
     webSocket.onopen = (openEvent) => {
       this.setState({connected: true})
       console.log("WebSocket OPEN: ");
-      this.requestDefaultConfig()
+      this.requestDefaultConfig();
     };
     webSocket.onclose = (closeEvent) => {
       this.setState({connected: false})
@@ -141,7 +195,9 @@ class RtAtten extends React.Component {
       var cmd = request['cmd']
       if (cmd == 'config') {
         var config = request['value']
+        console.log(config)
         this.setState({config: config})
+        this.createRegConfig();
       } else if (cmd == 'log') {
         var logItem = request['value'].trim()
         var itemPos = this.state.logLines.length + 1
@@ -149,9 +205,19 @@ class RtAtten extends React.Component {
         // Need to use concat() to create a new logLines object or React won't know to re-render
         var logLines = this.state.logLines.concat([newLine])
         this.setState({logLines: logLines})
+      } else if (cmd == 'regLog') {
+        var logItem = request['value'].trim()
+        var itemPos = this.state.regLines.length + 1
+        var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
+        var regLines = this.state.regLines.concat([newLine])
+        this.setState({regLines: regLines})
       } else if (cmd == 'error') {
         console.log("## Got Error" + request['error'])
         this.setState({error: request['error']})
+      } else {
+        errStr = "Unknown message type: " + cmd
+        console.log(errStr)
+        this.setState({error: errStr})
       }
     };
     this.webSocket = webSocket
@@ -163,7 +229,7 @@ class RtAtten extends React.Component {
        elem(TabList, {},
          elem(Tab, {}, 'Run'),
          elem(Tab, {}, 'Settings'),
-         elem(Tab, {}, 'FSL'),
+         elem(Tab, {}, 'Registration'),
        ),
        elem(TabPanel, {},
          elem(StatusPane,
@@ -188,7 +254,14 @@ class RtAtten extends React.Component {
          ),
        ),
        elem(TabPanel, {},
-         elem(VNCViewerPane, {}),
+         elem(RegistrationPane,
+           {error: this.state.error,
+            regLines: this.state.regLines,
+            runRegistration: this.runRegistration,
+            getRegConfigItem: this.getRegConfigItem,
+            setRegConfigItem: this.setRegConfigItem,
+           }
+         ),
        ),
      )
     return tp

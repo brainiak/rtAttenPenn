@@ -2,7 +2,10 @@
 """
 Top level routine for client side rtfMRI processing
 """
+import os
 import threading
+import subprocess
+import asyncio
 import logging
 import argparse
 import json
@@ -19,6 +22,8 @@ from rtfMRI.WebInterface import Web
 params = StructDict()
 webClient = None
 webClientThread = None
+registrationThread = None
+registrationDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'rtAtten/registration')
 
 
 def ClientMain(params):
@@ -48,12 +53,26 @@ def webUserCallback(client, message):
     global params
     global webClient
     global webClientThread
+    global registrationThread
     request = json.loads(message)
     cmd = request['cmd']
+    # Common code for any command that sends config information - integrate into params
+    if 'config' in request:
+        try:
+            cfg_struct = recurseCreateStructDict(request['config'])
+            params = checkAndMergeConfigs(params, cfg_struct)
+        except Exception as err:
+            params.webInterface.setUserError(str(err))
+            return
+
     logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
     if cmd == "getDefaultConfig":
         cfg = loadConfigFile(params.experiment)
-        params = checkAndMergeConfigs(params, cfg)
+        try:
+            params = checkAndMergeConfigs(params, cfg)
+        except Exception as err:
+            params.webInterface.setUserError("Loading default config: " + str(err))
+            return
         params.webInterface.sendUserConfig(cfg)
     elif cmd == "run":
         if webClientThread is not None:
@@ -63,12 +82,6 @@ def webUserCallback(client, message):
                 return
             webClientThread = None
             webClient = None
-        cfg_struct = recurseCreateStructDict(request['config'])
-        try:
-            params = checkAndMergeConfigs(params, cfg_struct)
-        except Exception as err:
-            params.webInterface.setUserError(str(err))
-            return
         webClientThread = threading.Thread(name='webClientThread', target=RunClient, args=(params,))
         webClientThread.setDaemon(True)
         webClientThread.start()
@@ -76,6 +89,15 @@ def webUserCallback(client, message):
         if webClientThread is not None:
             if webClient is not None:
                 webClient.doStopRun()
+    elif cmd == "runReg":
+        if registrationThread is not None:
+            registrationThread.join(timeout=1)
+            if registrationThread.is_alive():
+                params.webInterface.setUserError("Registraion thread already runnning, skipping new request")
+                return
+        registrationThread = threading.Thread(name='registrationThread', target=runRegistration, args=(params, request,))
+        registrationThread.setDaemon(True)
+        registrationThread.start()
     else:
         params.webInterface.setUserError("unknown command " + cmd)
 
@@ -102,6 +124,44 @@ def checkAndMergeConfigs(params, cfg):
         # Start up client logic for the specified model
         params.model = cfg.experiment.model
     return params
+
+
+def writeRegConfigFile(regGlobals, scriptPath):
+    globalsFilename = os.path.join(scriptPath, 'globals_gen.sh')
+    with open(globalsFilename, 'w') as fp:
+        fp.write('#!/bin/bash\n')
+        for key in regGlobals:
+            fp.write(key + '=' + str(regGlobals[key]) + '\n')
+
+
+def runRegistration(params, request, test=None):
+    global registrationDir
+    assert request['cmd'] == "runReg"
+    regConfig = request['regConfig']
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    # Create the globals.sh file in registration directory
+    writeRegConfigFile(regConfig, registrationDir)
+    # Start bash command and monitor output
+    if test is not None:
+        cmd = test
+    else:
+        # TODO put real command here
+        cmd = ['ping', 'www.google.com', '-c', '3']  # replace with real registration commands
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    outputLineCount = 0
+    line = 'start'
+    # subprocess poll returns None while subprocess is running
+    while(proc.poll() is None or line != ''):
+        line = proc.stdout.readline().decode('utf-8')
+        if line != '':
+            # send output to web interface
+            if test is None:
+                response = {'cmd': 'regLog', 'value': line}
+                params.webInterface.sendUserMessage(json.dumps(response))
+            else:
+                print(line, end='')
+            outputLineCount += 1
+    return outputLineCount
 
 
 def RunClient(params):
@@ -141,16 +201,16 @@ def stopLocalServer(params):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--addr', '-a', default='localhost', type=str, help='server ip address')
-    parser.add_argument('--port', '-p', default=5200, type=int, help='server port')
-    parser.add_argument('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
-    parser.add_argument('--model', '-m', default=None, type=str, help='model name')
-    parser.add_argument('--runs', '-r', default=None, type=str, help='Comma separated list of run numbers')
-    parser.add_argument('--scans', '-s', default=None, type=str, help='Comma separated list of scan number')
-    parser.add_argument('--run-local', '-l', default=False, action='store_true', help='run client and server together locally')
-    parser.add_argument('--use-web', '-w', default=False, action='store_true', help='Run client as a web portal')
-    args = parser.parse_args()
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument('--addr', '-a', default='localhost', type=str, help='server ip address')
+    argParser.add_argument('--port', '-p', default=5200, type=int, help='server port')
+    argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
+    argParser.add_argument('--model', '-m', default=None, type=str, help='model name')
+    argParser.add_argument('--runs', '-r', default=None, type=str, help='Comma separated list of run numbers')
+    argParser.add_argument('--scans', '-s', default=None, type=str, help='Comma separated list of scan number')
+    argParser.add_argument('--run-local', '-l', default=False, action='store_true', help='run client and server together locally')
+    argParser.add_argument('--use-web', '-w', default=False, action='store_true', help='Run client as a web portal')
+    args = argParser.parse_args()
     params = StructDict({'addr': args.addr, 'port': args.port, 'experiment': args.experiment,
                          'run_local': args.run_local, 'model': args.model, 'runs': args.runs,
                          'scans': args.scans, 'use_web': args.use_web})
