@@ -1,14 +1,19 @@
 import React from "react";
 import autoscroll from "autoscroll-react";
 
-const styles = {
-  overflowY: "scroll",
-  height: "600px"
-};
+// const styles = {
+//   overflowY: "scroll",
+//   height: "600px"
+// };
 
 class List extends React.Component {
   render() {
-    const { items } = this.props;
+    const { items, height, ...props } = this.props;
+
+    const styles = {
+      overflowY: "scroll",
+      height: height,
+    };
 
     return (
       <div style={styles} {...this.props}>
