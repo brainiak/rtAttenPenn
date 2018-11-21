@@ -19,7 +19,6 @@ import tests.rtfMRI.simfmri.generate_data as gd
 cfgFile = './syntheticDataCfg.toml'
 
 
-@pytest.fixture(scope="module")
 def getCfgFileFullPath():  # type: ignore
     """Get the directory of this test file"""
     frame = inspect.currentframe()
@@ -38,10 +37,11 @@ class TestDeadlines:
     TR_id = 0
 
     def setup_class(cls):
+        cfgFilePath = getCfgFileFullPath()
         print("## Init TestDeadlines ##")
         # generate data if needed
         print("## Generate Data if needed ##")
-        gd.generate_data(getCfgFileFullPath())
+        gd.generate_data(cfgFilePath)
 
         # Start Server
         cls.server = threading.Thread(name='server', target=ServerMain, args=(cls.serverPort,))
@@ -49,7 +49,7 @@ class TestDeadlines:
         cls.server.start()
 
         # Start client
-        cls.cfg = loadConfigFile(getCfgFileFullPath())
+        cls.cfg = loadConfigFile(cfgFilePath)
         cls.client = RtAttenClient()
         cls.client.connect('localhost', cls.serverPort)
         cls.client.initSession(cls.cfg)

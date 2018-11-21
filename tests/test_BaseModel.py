@@ -10,7 +10,7 @@ cfgFile = 'baseExpCfg.toml'
 
 
 @pytest.fixture(scope="module")
-def getCfgFileFullPath():  # type: ignore
+def cfgFilePath():  # type: ignore
     """Get the directory of this test file"""
     frame = inspect.currentframe()
     moduleFile = typing.cast(str, frame.f_code.co_filename)  # type: ignore
@@ -19,11 +19,11 @@ def getCfgFileFullPath():  # type: ignore
     return cfgFullPath
 
 
-def test_baseModel():
+def test_baseModel(cfgFilePath):
     print("test_baseModel")
     logging.error("###Test logging###")
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5210, getCfgFileFullPath(), True, None, None, None)
+    result = ClientMain.ClientMain("localhost", 5210, cfgFilePath, True, None, None, None)
     assert result is True
 
 

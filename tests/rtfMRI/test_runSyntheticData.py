@@ -11,13 +11,7 @@ cfgFile = './syntheticDataCfg.toml'
 
 
 @pytest.fixture(scope="module")
-def setupTest():  # type: ignore
-    """Generate synthetic image data for the test runs"""
-    gd.generate_data(getCfgFileFullPath())
-
-
-@pytest.fixture(scope="module")
-def getCfgFileFullPath():  # type: ignore
+def cfgFilePath():  # type: ignore
     """Get the directory of this test file"""
     frame = inspect.currentframe()
     moduleFile = typing.cast(str, frame.f_code.co_filename)  # type: ignore
@@ -26,11 +20,13 @@ def getCfgFileFullPath():  # type: ignore
     return cfgFullPath
 
 
-def test_runSyntheticData():
+def test_runSyntheticData(cfgFilePath):
     print("rtfMRI: test_runSyntheticData")
-    setupTest()
+    # Generate synthetic image data for the test runs if needed
+    gd.generate_data(cfgFilePath)
+
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5211, getCfgFileFullPath(), True, None, None, None)
+    result = ClientMain.ClientMain("localhost", 5211, cfgFilePath, True, None, None, None)
     assert result is True
 
 

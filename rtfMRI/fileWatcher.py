@@ -1,12 +1,12 @@
 import os
 import sys
 import time
-import json
 import logging
-import websocket
-from base64 import b64encode
+import threading
 from queue import Queue, Empty
-from rtfMRI.utils import DebugLevels, findNewestFile
+from rtfMRI.utils import DebugLevels
+from watchdog.events import PatternMatchingEventHandler  # type: ignore
+
 
 class FileWatcher():
     def __new__(cls):
@@ -38,9 +38,7 @@ class FileWatcher():
         logging.log(logging.ERROR, "FileWatcher is abstract class. waitForFile not implemented")
 
 
-
 if sys.platform in ("darwin", "win32"):
-    from watchdog.events import PatternMatchingEventHandler  # type: ignore
     from watchdog.observers import Observer  # type: ignore
 
 
@@ -142,8 +140,8 @@ class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
 
 # import libraries for Linux version
 if sys.platform in ("linux", "linux2"):
+    import inotify
     import inotify.adapters
-    import inotify.constant
 
 
 # Version of FileWatcher for Linux
@@ -209,19 +207,18 @@ class InotifyFileWatcher():
                 fileExists = os.path.exists(specificFileName)
                 timeToCheckForFile = time.time() + 1
         logging.log(DebugLevels.L6,
-                    "File avail: eventLoopCount %d, writeWaitTime %.3f, "
-                    "fileEventCaptured %s, fileName %s, eventTimeStamp %d",
-                    eventLoopCount, totalWriteWait,
+                    "File avail: eventLoopCount %d, fileEventCaptured %s, "
+                    "fileName %s, eventTimeStamp %d", eventLoopCount, 
                     exitWithFileEvent, specificFileName, eventTimeStamp)
         return specificFileName
 
     def notifyEventLoop(self):
         for event in self.notifier.event_gen():
-            if self.shouldExit:
+            if self.shouldExit is True:
                 break
             if event is not None:
                 # print(event)      # uncomment to see all events generated
-                if 'IN_CREATE' in event[1]:
+                if 'IN_CLOSE_WRITE' in event[1]:
                     fullpath = os.path.join(event[2], event[3])
                     self.fileNotifyQ.put((fullpath, time.time()))
                 else:
