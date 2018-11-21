@@ -5,7 +5,6 @@ from .Test_L2_RLR_realtime import Test_L2_RLR_realtime
 from .RealTimePunisherFileProcess import realTimePunisherProcess
 from .utils import compareArrays
 from .utils import areArraysClose
-from .logistic import logistic
 
 __all__ = [
     'findNewestFile',
@@ -15,5 +14,4 @@ __all__ = [
     'realTimePunisherProcess',
     'compareArrays',
     'areArraysClose'
-    'logistic'
 ]

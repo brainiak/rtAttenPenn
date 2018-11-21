@@ -1,44 +1,53 @@
 import pytest
 import os
 import time
-import re
-from queue import Queue, Empty
+import threading
 from glob import iglob
-from watchdog.observers import Observer
-from rtAtten.RtAttenClient import FileNotifyHandler
+from queue import Queue, Empty
+from rtfMRI.fileWatcher import FileWatcher
 
-testDir = '/tmp/'
+testDir = '/tmp/watchdog'
+
 
 def test_watchdog():
-    observer = Observer()
-    eventQueue = Queue()
-    fileHandler = FileNotifyHandler(eventQueue, ["*.watchdog"])
-    observer.schedule(fileHandler, testDir, recursive=False)
-    observer.start()
+    if not os.path.exists(testDir):
+        os.makedirs(testDir)
 
     # remove any existing testfiles
     for filename in iglob(testDir + "test*.watchdog"):
         # print("remove {}".format(filename))
         os.remove(filename)
 
+    watchQ = Queue()
+    foundQ = Queue()
+
+    watch_thread = threading.Thread(name='watchThread', target=watchThread, args=(watchQ, foundQ,))
+    watch_thread.setDaemon(True)
+    watch_thread.start()
+
     # create the new files
     for i in range(5):
-        filename = testDir + "test{}.watchdog".format(i)
-        # print("create {}".format(filename))
+        filename = os.path.join(testDir, "test{}.watchdog".format(i))
+        watchQ.put(filename)
+        time.sleep(0.25)
+        # print('writing file {}'.format(filename))
         with open(filename, "w") as f:
             f.write("hello {}".format(i))
-        time.sleep(0.25)  # without sleep the events can get out of order
+        foundFile = foundQ.get(block=True, timeout=0.5)
+        # print('found file {}'.format(filename))
+        assert foundFile == filename
+        # assert re.match(foundFile, filename)
 
-    # check that we got an event for each file
-    print("get events")
-    for i in range(5):
-        filename = testDir + "test{}.watchdog".format(i)
-        try:
-            event, ts = eventQueue.get(block=True, timeout=0.5)
-        except Empty as err:
-            assert False  # we don't expect an empty queue
-        # print("received event for {}, {}".format(event.src_path, event.event_type))
-        assert re.match(filename, event.src_path)
+    watchQ.put('end')
+    watch_thread.join(timeout=1)
 
-    assert eventQueue.empty()
-    observer.stop()
+
+def watchThread(watchQ, foundQ):
+    fileWatcher = FileWatcher()
+    fileWatcher.initFileNotifier(testDir, "*.watchdog", 1)
+
+    req = watchQ.get()
+    while req != 'end':
+        filename = fileWatcher.waitForFile(req)
+        foundQ.put(filename)
+        req = watchQ.get()

@@ -332,8 +332,8 @@ def realTimePunisherProcess(subjectNum, runNum, ValidationFile=None):
     # sklearn LogisticRegression takes on set of labels and returns one set of weights.
     # The version implemented in Matlab can take multple sets of labels and return multiple wieghts.
     # To reproduct that behavior here, we will use a LogisticRegression instance for each set of lables (2 in this case)
-    lrc1 = LogisticRegression(solver='sag')
-    lrc2 = LogisticRegression(solver='sag')
+    lrc1 = LogisticRegression(solver='sag', penalty='l2', max_iter=300)
+    lrc2 = LogisticRegression(solver='sag', penalty='l2', max_iter=300)
     lrc1.fit(trainPats, trainLabels[:, 0])
     lrc2.fit(trainPats, trainLabels[:, 1])
     newTrainedModel = utils.MatlabStructDict({}, 'trainedModel')

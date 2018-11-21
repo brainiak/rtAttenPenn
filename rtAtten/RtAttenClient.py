@@ -4,6 +4,7 @@ import time
 import numpy as np  # type: ignore
 import datetime
 import logging
+import pathlib
 from dateutil import parser
 import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
@@ -12,12 +13,10 @@ from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicom, applyMask
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
+from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError
 from .PatternsDesign2Config import createRunConfig, getRunIndex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
-from watchdog.events import PatternMatchingEventHandler  # type: ignore
-from watchdog.observers import Observer  # type: ignore
-from queue import Queue, Empty
 
 
 class RtAttenClient(RtfMRIClient):
@@ -25,19 +24,12 @@ class RtAttenClient(RtfMRIClient):
         super().__init__()
         self.dirs = StructDict()
         self.prevData = None
-        self.observer = None
-        self.fileNotifyHandler = None
-        self.fileNotifyQ = Queue()  # type: None
+        self.fileWatcher = FileWatcher()
         self.printFirstFilename = True
         self.ttlClient = TTLPulseClient()
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
-        if self.observer is not None:
-            try:
-                self.observer.stop()
-            except Exception as err:
-                logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
         if self.ttlClient is not None:
             self.ttlClient.close()
         super().__del__()
@@ -76,7 +68,10 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(self.dirs.imgDir):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        self.initFileNotifier(self.dirs.imgDir, cfg.session.watchFilePattern)
+        assert self.fileWatcher is not None
+        self.fileWatcher.initFileNotifier(self.dirs.imgDir,
+                                          cfg.session.watchFilePattern,
+                                          cfg.session.minExpectedDicomSize)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
@@ -222,11 +217,12 @@ class RtAttenClient(RtfMRIClient):
                         elapsedTRTime = time.time() - trStartTime
                     logStr = "TR:{}:{}:{:03}, fileNum {}, server_process_time {:.3f}s, " \
                              "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
-                             "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}" \
+                             "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}, " \
+                             "dicom_arrival {:.5f}" \
                              .format(runId, block.blockId, TR.trId, fileNum,
                                      serverProcessTime, elapsedTRTime,
                                      imageAcquisitionTime, pulseBroadcastTime,
-                                     gotTTLTime, missedDeadline)
+                                     gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile)
                 del self.id_fields.trId
@@ -296,53 +292,9 @@ class RtAttenClient(RtfMRIClient):
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        fileExists = os.path.exists(specificFileName)
-        if not fileExists:
-            if self.observer is None:
-                raise FileNotFoundError("No fileNotifier and dicom file not found %s" % (specificFileName))
-            else:
-                logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
-        eventLoopCount = 0
-        exitWithFileCreationEvent = False
-        timeToCheckForFile = time.time() + 1  # check if file exists at least every second
-        while not fileExists:
-            # look for file creation event
-            eventLoopCount += 1
-            try:
-                event, ts = self.fileNotifyQ.get(block=True, timeout=1.0)
-            except Empty as err:
-                # The timeout occured on fileNotifyQ.get()
-                fileExists = os.path.exists(specificFileName)
-                continue
-            assert event is not None
-            # We may have a stale event from a previous file if multiple events
-            #   are created per file or if the previous file eventloop
-            #   timed out and then the event arrived later.
-            if event.src_path == specificFileName:
-                fileExists = True
-                exitWithFileCreationEvent = True
-                continue
-            if time.time() > timeToCheckForFile:
-                # periodically check if file exists, can occur if we get
-                #   swamped with unrelated events
-                fileExists = os.path.exists(specificFileName)
-                timeToCheckForFile = time.time() + 1
-
-        # wait for the full file to be written, wait at most 200 ms
-        fileSize = 0
-        totalWriteWait = 0.0
-        waitIncrement = 0.01
-        while fileSize < self.cfg.session.minExpectedDicomSize and totalWriteWait <= 0.3:
-            time.sleep(waitIncrement)
-            totalWriteWait += waitIncrement
-            fileSize = os.path.getsize(specificFileName)
-        logging.log(DebugLevels.L6,
-                    "File avail: fileNum %d, eventLoopCount %d, "
-                    "writeWaitTime %.3f, fileEventCaptured %s",
-                    fileNum, eventLoopCount, totalWriteWait,
-                    exitWithFileCreationEvent)
-        _, file_extension = os.path.splitext(specificFileName)
-        if file_extension == '.mat':
+        self.fileWatcher.waitForFile(specificFileName)
+        fileExtension = pathlib.Path(specificFileName).suffix
+        if fileExtension == '.mat':
             data = utils.loadMatFile(specificFileName)
             trVol = data.vol
         else:
@@ -360,16 +312,6 @@ class RtAttenClient(RtfMRIClient):
         fullFileName = os.path.join(self.dirs.imgDir, fileName)
         return fullFileName
 
-    def initFileNotifier(self, imgDir, filePattern):
-        if self.observer is not None:
-            self.observer.stop()
-        self.observer = Observer()
-        if filePattern is None or filePattern == '':
-            filePattern = '*'
-        self.fileNotifyHandler = FileNotifyHandler(self.fileNotifyQ, [filePattern])
-        self.observer.schedule(self.fileNotifyHandler, imgDir, recursive=False)
-        self.observer.start()
-
     def deleteSessionData(self):
         filePattern = os.path.join(self.dirs.serverDataDir,
                                    "*" + self.id_fields.sessionId + "*.mat")
@@ -384,17 +326,6 @@ class RtAttenClient(RtfMRIClient):
         processingEndTime = time.time()
         print("RTT: {:.2f}ms".format(processingEndTime-processingStartTime))
 
-
-class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
-    def __init__(self, q, patterns):
-        super().__init__(patterns=patterns)
-        self.q = q
-
-    def on_created(self, event):
-        self.q.put((event, time.time()))
-
-    def on_modified(self, event):
-        self.q.put((event, time.time()))
 
 def outputReplyLines(lines, filehandle):
     if lines is not None:
