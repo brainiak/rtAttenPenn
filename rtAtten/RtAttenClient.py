@@ -12,7 +12,7 @@ import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
-from rtfMRI.ReadDicom import readDicomFromFile, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher
@@ -273,11 +273,11 @@ class RtAttenClient(RtfMRIClient):
                         elapsedTRTime = time.time() - trStartTime
                     logStr = "TR:{}:{}:{:03}, fileNum {}, server_process_time {:.3f}s, " \
                              "elapsedTR_time {:.3f}s, image_time {:.3f}s, " \
-                             "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}" \
+                             "pulse_time {:.3f}s, gotTTLPulse {}, missed_deadline {}, dicomArrival {}" \
                              .format(runId, block.blockId, TR.trId, fileNum,
                                      serverProcessTime, elapsedTRTime,
                                      imageAcquisitionTime, pulseBroadcastTime,
-                                     gotTTLTime, missedDeadline)
+                                     gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
                     if self.stopRun:

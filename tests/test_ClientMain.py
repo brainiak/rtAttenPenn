@@ -46,7 +46,8 @@ def test_runRegistration():
     params.cfg = getConfig()
     regGlobals = localCreateRegConfig(params.cfg)
     request = {'cmd': 'runReg',
-               'config': params.cfg,
-               'regConfig': regGlobals}
+               'regConfig': regGlobals,
+               'regType': 'test',
+               'dayNum': 1}
     lineCount = runRegistration(params, request, test=['ping', 'www.google.com', '-c', '3'])
     assert lineCount == 8

@@ -138,15 +138,30 @@ def runRegistration(params, request, test=None):
     global registrationDir
     assert request['cmd'] == "runReg"
     regConfig = request['regConfig']
+    regType = request['regType']
+    dayNum = regConfig['dayNum']
+    if None in (regConfig, regType, dayNum):
+        params.webInterface.setUserError("Registration missing a parameter")
+        return
     asyncio.set_event_loop(asyncio.new_event_loop())
     # Create the globals.sh file in registration directory
     writeRegConfigFile(regConfig, registrationDir)
     # Start bash command and monitor output
     if test is not None:
         cmd = test
+    elif regType == 'skullstrip':
+        if dayNum != 1:
+            params.webInterface.setUserError("Skullstrip can only be run for day1 data")
+            return
+        cmd = ['rtAtten/registration/skullstrip_t1.sh', '1']  # replace with real registration commands
+    elif regType == 'registration':
+        pass
+    elif regType == 'makemask':
+        pass
     else:
-        # TODO put real command here
-        cmd = ['ping', 'www.google.com', '-c', '3']  # replace with real registration commands
+        params.webInterface.setUserError("unknown registration type: " + regType)
+        return
+
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     outputLineCount = 0
     line = 'start'

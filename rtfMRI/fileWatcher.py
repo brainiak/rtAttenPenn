@@ -48,6 +48,7 @@ class FileWatcher():
                 logging.log(DebugLevels.L6, "Waiting for file: %s", specificFileName)
         eventLoopCount = 0
         exitWithFileEvent = False
+        eventTimeStamp = 0
         startTime = time.time()
         timeToCheckForFile = time.time() + 1  # check if file exists at least every second
         while not fileExists:
@@ -68,6 +69,7 @@ class FileWatcher():
             if event.src_path == specificFileName:
                 fileExists = True
                 exitWithFileEvent = True
+                eventTimeStamp = ts
                 continue
             if time.time() > timeToCheckForFile:
                 # periodically check if file exists, can occur if we get
@@ -85,9 +87,9 @@ class FileWatcher():
             fileSize = os.path.getsize(specificFileName)
         logging.log(DebugLevels.L6,
                     "File avail: eventLoopCount %d, writeWaitTime %.3f, "
-                    "fileEventCaptured %s, fileName %s",
+                    "fileEventCaptured %s, fileName %s, eventTimeStamp %d",
                     eventLoopCount, totalWriteWait,
-                    exitWithFileEvent, specificFileName)
+                    exitWithFileEvent, specificFileName, eventTimeStamp)
         return specificFileName
 
 
