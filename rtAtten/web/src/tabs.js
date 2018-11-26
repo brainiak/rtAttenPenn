@@ -124,10 +124,11 @@ class RtAtten extends React.Component {
     this.webSocket.send(cmdStr)
   }
 
-  runRegistration() {
+  runRegistration(regType) {
     // clear previous log output
     this.setState({regLines: []})
     var request = {cmd: 'runReg',
+                   regType: regType,
                    config: this.state.config,
                    regConfig: this.state.regConfig,
                   }

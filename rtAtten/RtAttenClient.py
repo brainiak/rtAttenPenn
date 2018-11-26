@@ -13,7 +13,7 @@ import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
-from rtfMRI.ReadDicom import readDicomFromFile, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher

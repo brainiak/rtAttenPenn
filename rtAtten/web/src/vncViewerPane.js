@@ -81,16 +81,6 @@ class VNCViewerPane extends React.Component {
   render() {
     return (
       <div>
-        <label>Dicom Pattern to Upload
-          <input type="text" />
-          <button>Upload Image</button>
-        </label>
-        <br />
-        <label>Mask Filename to Save
-          <input type="text" />
-          <button>Download Mask</button>
-        </label>
-        <hr />
         <div style={topBarStyle}>
             <div style={statusTextStyle}>{this.state.status}</div>
         </div>
