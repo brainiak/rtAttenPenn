@@ -55,6 +55,17 @@ class RtfMRIClient():
         msg.set(self.msg_id, msg_type, msg_event)
         return msg
 
+    def runSession(self, addr, port, cfg):
+        try:
+            if self.messaging is None:
+                self.connect(addr, port)
+            self.initSession(cfg)
+            self.doRuns()
+            self.endSession()
+        except Exception as err:
+            logging.log(logging.ERROR, "Client exception: %s", str(err))
+        self.close()
+
     def initSession(self, cfg):
         self.cfg = cfg
         validateSessionCfg(cfg)

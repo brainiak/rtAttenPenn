@@ -50,22 +50,46 @@ class RtAttenClient(RtfMRIClient):
 
     def cfgValidation(self, cfg):
         # some model specific validations
-        if type(cfg.session.Runs) is not list or type(cfg.session.ScanNums) is not list:
-            raise InvocationError("Runs and ScanNums must be a list of integers")
+        # Convert Runs to a list of integers if needed
+        if type(cfg.session.Runs) is str:
+            cfg.session.Runs = [int(s) for s in cfg.session.Runs.split(',')]
+        elif type(cfg.session.Runs) is list:
+            if len(cfg.session.Runs) == 0:
+                raise InvocationError("List of Run integers is empty")
+            elif type(cfg.session.Runs[0]) is str:
+                # convert to list of ints
+                if len(cfg.session.Runs) == 1:
+                    try:
+                        cfg.session.Runs = [int(s) for s in cfg.session.Runs[0].split(',')]
+                    except Exception as err:
+                        raise InvocationError("List of Run integers is malformed")
+                else:
+                    cfg.session.Runs = [int(s) for s in cfg.session.Runs]
+            elif type(cfg.session.Runs[0]) is not int:
+                raise InvocationError("List of Runs must be integers or strings")
+        else:
+            raise InvocationError("Runs must be a list of integers or string of integers")
 
-        if type(cfg.session.Runs[0]) is not int:
-            # convert to list of ints
-            try:
-                cfg.session.Runs = [int(s) for s in cfg.session.Runs[0].split(',')]
-            except Exception as err:
-                raise InvocationError("List of Run integers is malformed")
-
-        if type(cfg.session.ScanNums[0]) is not int:
-            # convert to list of ints
-            try:
-                cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums[0].split(',')]
-            except Exception as err:
-                raise InvocationError("List of ScanNum integers is malformed")
+        # Convert ScanNums to a list of integers if needed
+        if type(cfg.session.ScanNums) is str:
+            cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums.split(',')]
+        elif type(cfg.session.ScanNums) is list:
+            if len(cfg.session.ScanNums) == 0:
+                raise InvocationError("List of Run integers is empty")
+            elif type(cfg.session.ScanNums[0]) is str:
+                # convert to list of ints
+                if len(cfg.session.ScanNums) == 1:
+                    try:
+                        cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums[0].split(',')]
+                    except Exception as err:
+                        raise InvocationError("List of Run integers is malformed")
+                else:
+                    cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums]
+            elif type(cfg.session.ScanNums[0]) is not int:
+                raise InvocationError("List of ScanNums must be integers or strings")
+        else:
+            raise InvocationError("ScanNums must be a list of integers or string of integers")
+        return True
 
     def initSession(self, cfg):
         self.cfgValidation(cfg)
