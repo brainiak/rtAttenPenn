@@ -29,7 +29,7 @@ def test_runSyntheticData(cfgFilePath):
     # import pdb; pdb.set_trace()
     params = StructDict(
         {'addr': 'localhost', 'port': 5211,
-         'experiment': getCfgFileFullPath(),
+         'experiment': cfgFilePath,
          'run_local': True, 'use_web': False,
         })
     result = ClientMain.ClientMain(params)

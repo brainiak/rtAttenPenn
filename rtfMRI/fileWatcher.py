@@ -1,12 +1,14 @@
 import os
 import sys
 import time
+import json
 import logging
 import threading
+import websocket
+from base64 import b64encode
 from queue import Queue, Empty
-from rtfMRI.utils import DebugLevels, findNewestFile
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
-from watchdog.observers import Observer  # type: ignore
+from rtfMRI.utils import DebugLevels, findNewestFile
 
 
 class FileWatcher():

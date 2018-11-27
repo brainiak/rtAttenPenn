@@ -26,7 +26,7 @@ def test_baseModel(cfgFilePath):
     # import pdb; pdb.set_trace()
     params = StructDict(
         {'addr': 'localhost', 'port': 5210,
-         'experiment': getCfgFileFullPath(),
+         'experiment': cfgFilePath,
          'run_local': True, 'use_web': False,
         })
     result = ClientMain.ClientMain(params)
