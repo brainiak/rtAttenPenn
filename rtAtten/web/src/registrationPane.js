@@ -15,11 +15,11 @@ const hidden = { visibility:"hidden" }
 class RegistrationPane extends React.Component {
   constructor(props) {
     super(props)
-    this.state = {
-    }
+    this.state = {}
     this.inputOnChange = this.inputOnChange.bind(this)
     this.runBttnOnClick = this.runBttnOnClick.bind(this)
     this.stopBttnOnClick = this.stopBttnOnClick.bind(this)
+    this.uploadBttnOnClick = this.uploadBttnOnClick.bind(this)
   }
 
   inputOnChange(event) {
@@ -29,11 +29,26 @@ class RegistrationPane extends React.Component {
   }
 
   runBttnOnClick(event) {
-    this.props.runRegistration()
+    this.props.runRegistration(event.target.name)
   }
 
   stopBttnOnClick(event) {
     // this.props.stopRun()
+  }
+
+  uploadBttnOnClick(event) {
+    var uploadType = event.target.name
+    var scanNum = 0
+    var numDicoms = 0
+    var scanFolder = this.props.getRegConfigItem('scanFolder')
+    if (uploadType == 'highres') {
+      scanNum = this.props.getRegConfigItem('highresScan')
+      numDicoms = this.props.getRegConfigItem('NumHighresDicoms')
+    } else if (uploadType == 'functional') {
+      scanNum = this.props.getRegConfigItem('functionalScan')
+      numDicoms = this.props.getRegConfigItem('NumFuncDicoms')
+    }
+    this.props.uploadImages(uploadType, scanFolder, scanNum, numDicoms)
   }
 
   render() {
@@ -62,8 +77,10 @@ class RegistrationPane extends React.Component {
                 value={this.props.getRegConfigItem('NumHighresDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button style={cell5p}>Upload Highres Images</button>
-              <label style={cell5p}>in-progress</label>
+              <button style={cell5p}
+                name="highres"
+                onClick={this.uploadBttnOnClick}>Upload Highres Images</button>
+              <label style={cell5p}>{this.props.regInfo['highres']}</label>
           </p>
           <p style={row}>
             <label style={cell10p}>Functional</label>
@@ -79,8 +96,10 @@ class RegistrationPane extends React.Component {
                 value={this.props.getRegConfigItem('NumFuncDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button style={cell5p}>Upload Functional Images</button>
-              <label style={cell5p}>completed &#10004;</label>
+              <button style={cell5p}
+                name="functional"
+                onClick={this.uploadBttnOnClick}>Upload Functional Images</button>
+              <label style={cell5p}>{this.props.regInfo['functional']}</label>
           </p>
         </div>
         <hr />
@@ -93,22 +112,22 @@ class RegistrationPane extends React.Component {
               value={this.props.getRegConfigItem('fParam')}
               onChange={this.inputOnChange}
             />
-            <button style={cell5p} onClick={this.runBttnOnClick}>Run</button>
+            <button style={cell5p} name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
           </p>
           <p style={row}>
             <label style={cell10p}>Registartion</label>
             <label style={cell5p}></label>
             <input style={{...cell5p, ...hidden}} size="5" />
-            <button style={cell5p}>Run</button>
+            <button style={cell5p} name="registration" onClick={this.runBttnOnClick}>Run</button>
           </p>
           <p style={row}>
             <label style={cell10p}>Make Mask</label>
             <label style={cell5p}></label>
             <input style={{...cell5p, ...hidden}} size="5" />
-            <button style={cell5p}>Run</button>
+            <button style={cell5p} name="makemask" onClick={this.runBttnOnClick}>Run</button>
           </p>
-          <p style={row}> {errorStr} </p>
         </div>
+        <p> {errorStr} </p>
         <hr />
         <AutoscrolledList items={this.props.regLines} height="100px" />
         <hr />

@@ -114,23 +114,27 @@ class Web():
         return result
 
     @staticmethod
-    def getFile(filename):
+    def getFile(filename, asRawBytes=False):
         cmd = {'cmd': 'get', 'filename': filename}
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout=2)
         except Exception as err:
             # TODO set web interface error
             raise err
+        if asRawBytes is True:
+            return Web.fileData
         return Web.formatFileData(filename, Web.fileData)
 
     @staticmethod
-    def getNewestFile(filename):
+    def getNewestFile(filename, asRawBytes=False):
         cmd = {'cmd': 'getNewest', 'filename': filename}
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout=2)
         except Exception as err:
             # TODO set web interface error
             raise err
+        if asRawBytes is True:
+            return Web.fileData
         return Web.formatFileData(filename, Web.fileData)
 
     @staticmethod

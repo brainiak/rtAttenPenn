@@ -20,7 +20,8 @@ class RtAtten extends React.Component {
     super(props)
     this.state = {
       config: {},
-      regConfig: {},
+      regConfig: {fParam: '0.6'},
+      regInfo: {},
       connected: false,
       error: '',
       logLines: [],  // image classification log
@@ -39,6 +40,7 @@ class RtAtten extends React.Component {
     this.createRegConfig = this.createRegConfig.bind(this)
     this.startRun = this.startRun.bind(this);
     this.stopRun = this.stopRun.bind(this);
+    this.uploadImages = this.uploadImages.bind(this);
     this.createWebSocket = this.createWebSocket.bind(this)
     this.createWebSocket()
   }
@@ -60,19 +62,20 @@ class RtAtten extends React.Component {
     var cfg = this.state.config;
     // TODO - handle case where date string is 'now'
     var scanDate = Date.parse(cfg.session.date)
-    var dateStrMDY = dateformat(scanDate, 'mmddyyyy')
-    var dateStrYMD = dateformat(scanDate, 'yyyymmdd')
+    var dateStrMDY = dateformat(scanDate, 'mmddyy')
+    var dateStrYYMD = dateformat(scanDate, 'yyyymmdd')
     var regGlobals = {}
     regGlobals.subjectNum = cfg.session.subjectNum;
     regGlobals.dayNum = cfg.session.subjectDay;
     regGlobals.runNum = cfg.session.Runs[0]
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
-    // TODO - make the next two items configurable
-    regGlobals.project_path = "/Data1/registration"
+    regGlobals.fParam = this.getRegConfigItem('fParam')
+    regGlobals.project_path = cfg.session.regDir
+    regGlobals.dryrun = cfg.session.registrationDryRun.toString().toLowerCase()
     regGlobals.roi_name = "wholebrain_mask"
     regGlobals.subjName = dateStrMDY + regGlobals.runNum + '_' + cfg.experiment.experimentName
-    var dicomFolder = dateStrYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
+    var dicomFolder = dateStrYYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
     regGlobals.scanFolder = path.join(cfg.session.imgDir, dicomFolder)
     console.log(regGlobals)
     this.setState({regConfig: regGlobals})
@@ -124,20 +127,46 @@ class RtAtten extends React.Component {
     this.webSocket.send(cmdStr)
   }
 
+  uploadImages(uploadType, scanFolder, scanNum, numDicoms) {
+    var request = {cmd: 'uploadImages',
+                   type: uploadType,
+                   scanFolder: scanFolder,
+                   scanNum: scanNum,
+                   numDicoms: numDicoms,
+                  }
+    this.webSocket.send(JSON.stringify(request))
+  }
+
   runRegistration(regType) {
     // clear previous log output
     this.setState({regLines: []})
+    this.setState({error: ''})
+
+    if (this.state.regConfig.highresScan == '') {
+      this.setState({error: 'Must specify Highres Scan value'})
+      return
+    }
+    if (this.state.regConfig.functionalScan == '') {
+      this.setState({error: 'Must specify Functional Scan value'})
+      return
+    }
+    if (regType == 'skullstrip' && this.state.regConfig.fParam == '') {
+      this.setState({error: 'Must specify fParam value'})
+      return
+    }
     var request = {cmd: 'runReg',
                    regType: regType,
                    config: this.state.config,
                    regConfig: this.state.regConfig,
                   }
+    console.log('runRegistration ' + regType)
     this.webSocket.send(JSON.stringify(request))
   }
 
   startRun() {
     // clear previous log output
     this.setState({logLines: []})
+    this.setState({error: ''})
 
     var runs = this.getConfigItem('Runs')
     var scans = this.getConfigItem('ScanNums')
@@ -212,6 +241,11 @@ class RtAtten extends React.Component {
         var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
         var regLines = this.state.regLines.concat([newLine])
         this.setState({regLines: regLines})
+      } else if (cmd == 'uploadProgress') {
+        var uploadType = request['type']
+        var progress = request['progress']
+        var regInfo = Object.assign({}, this.state.regInfo, { [uploadType]: progress })
+        this.setState({regInfo: regInfo})
       } else if (cmd == 'error') {
         console.log("## Got Error" + request['error'])
         this.setState({error: request['error']})
@@ -258,6 +292,8 @@ class RtAtten extends React.Component {
          elem(RegistrationPane,
            {error: this.state.error,
             regLines: this.state.regLines,
+            regInfo: this.state.regInfo,
+            uploadImages: this.uploadImages,
             runRegistration: this.runRegistration,
             getRegConfigItem: this.getRegConfigItem,
             setRegConfigItem: this.setRegConfigItem,

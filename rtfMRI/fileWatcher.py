@@ -52,7 +52,7 @@ class WatchdogFileWatcher():
         self.fileNotifyHandler = None
         self.fileNotifyQ = Queue()  # type: None
         self.filePattern = None
-        self.dir = None
+        self.watchDir = None
         self.minFileSize = 0
 
     def __del__(self):
@@ -70,7 +70,7 @@ class WatchdogFileWatcher():
         if filePattern is None or filePattern == '':
             filePattern = '*'
         self.filePattern = filePattern
-        self.dir = dir
+        self.watchDir = dir
         self.fileNotifyHandler = FileNotifyHandler(self.fileNotifyQ, [filePattern])
         self.observer.schedule(self.fileNotifyHandler, dir, recursive=False)
         self.observer.start()
@@ -139,6 +139,7 @@ class FileNotifyHandler(PatternMatchingEventHandler):  # type: ignore
 
     def on_modified(self, event):
         self.q.put((event, time.time()))
+
 
 # import libraries for Linux version
 if sys.platform in ("linux", "linux2"):
@@ -227,6 +228,8 @@ class InotifyFileWatcher():
                     self.fileNotifyQ.put(('', time.time()))
 
 
+# TODO - restrict to certain directories or file types
+
 class WebSocketFileWatcher:
     ''' A server that watches for files on the scanner computer and replies to
         cloud service requests with the file data.
@@ -280,6 +283,9 @@ class WebSocketFileWatcher:
                 response = {'status': 200, 'data': b64StrData}
         elif cmd == "get":
             filename = request['filename']
+            if filename[0] not in ('/', '\''):
+                # relative path to the watch dir
+                filename = os.path.join(fileWatcher.watchDir, filename)
             logging.log(DebugLevels.L3, "get: %s", filename)
             if filename is None:
                 response = {'status': 400, 'error': 'missing filename'}
@@ -298,6 +304,9 @@ class WebSocketFileWatcher:
                 response = {'status': 400, 'error': 'missing filename'}
             else:
                 baseDir, filePattern = os.path.split(filename)
+                if baseDir[0] not in ('/', '\''):
+                    # relative path to the watch dir
+                    baseDir = os.path.join(fileWatcher.watchDir, baseDir)
                 filename = findNewestFile(baseDir, filePattern)
                 if filename is None or not os.path.exists(filename):
                     errStr = 'file not found: {}'.format(os.path.join(baseDir, filePattern))

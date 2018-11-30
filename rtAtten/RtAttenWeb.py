@@ -4,18 +4,19 @@ import subprocess
 import asyncio
 import logging
 import json
+import re
+from pathlib import Path
 from rtfMRI.utils import DebugLevels
 from rtfMRI.Errors import ValidationError
 from rtfMRI.StructDict import recurseCreateStructDict
 from rtfMRI.RtfMRIClient import loadConfigFile
-from rtAtten.RtAttenClient import RtAttenClient
+from rtAtten.RtAttenClient import RtAttenClient, writeFile
 from rtfMRI.WebInterface import Web
 
 
 moduleDir = os.path.dirname(os.path.realpath(__file__))
 registrationDir = os.path.join(moduleDir, 'registration/')
 htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
-
 
 class RtAttenWeb():
     webInterface = None
@@ -25,6 +26,7 @@ class RtAttenWeb():
     client = None
     webClientThread = None
     registrationThread = None
+    uploadImageThread = None
     initialized = False
 
     @staticmethod
@@ -78,16 +80,31 @@ class RtAttenWeb():
                                                              args=(request,))
             RtAttenWeb.registrationThread.setDaemon(True)
             RtAttenWeb.registrationThread.start()
+        elif cmd == "uploadImages":
+            if RtAttenWeb.uploadImageThread is not None:
+                RtAttenWeb.uploadImageThread.join(timeout=1)
+                if RtAttenWeb.uploadImageThread.is_alive():
+                    RtAttenWeb.webInterface.setUserError("Registraion thread already runnning, skipping new request")
+                    return
+            RtAttenWeb.uploadImageThread = threading.Thread(name='uploadImages',
+                                                             target=RtAttenWeb.uploadImages,
+                                                             args=(request,))
+            RtAttenWeb.uploadImageThread.setDaemon(True)
+            RtAttenWeb.uploadImageThread.start()
         else:
             RtAttenWeb.webInterface.setUserError("unknown command " + cmd)
 
     @staticmethod
     def writeRegConfigFile(regGlobals, scriptPath):
-        globalsFilename = os.path.join(scriptPath, 'globals_gen.sh')
+        globalsFilename = os.path.join(scriptPath, 'globals.sh')
         with open(globalsFilename, 'w') as fp:
             fp.write('#!/bin/bash\n')
-            for key in regGlobals:
-                fp.write(key + '=' + str(regGlobals[key]) + '\n')
+            for key, val in regGlobals.items():
+                if re.search('folder|dir|path', key, flags=re.IGNORECASE) is not None:
+                    # prepend common writable directory to value
+                    val = os.path.normpath('/data/' + val)
+                fp.write(key + '=' + str(val) + '\n')
+            fp.write('code_path=' + registrationDir)
 
     @staticmethod
     def runClient():
@@ -99,14 +116,15 @@ class RtAttenWeb():
 
     @staticmethod
     def runRegistration(request, test=None):
-        assert request['cmd'] == "runReg"
-        regConfig = request['regConfig']
-        regType = request['regType']
-        dayNum = regConfig['dayNum']
-        if None in (regConfig, regType, dayNum):
-            RtAttenWeb.webInterface.setUserError("Registration missing a parameter")
-            return
         asyncio.set_event_loop(asyncio.new_event_loop())
+        assert request['cmd'] == "runReg"
+        try:
+            regConfig = request['regConfig']
+            regType = request['regType']
+            dayNum = int(regConfig['dayNum'])
+        except KeyError as err:
+            RtAttenWeb.webInterface.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
+            return
         # Create the globals.sh file in registration directory
         RtAttenWeb.writeRegConfigFile(regConfig, registrationDir)
         # Start bash command and monitor output
@@ -116,16 +134,19 @@ class RtAttenWeb():
             if dayNum != 1:
                 RtAttenWeb.webInterface.setUserError("Skullstrip can only be run for day1 data")
                 return
-            cmd = ['rtAtten/registration/skullstrip_t1.sh', '1']  # replace with real registration commands
+            cmd = ['bash', 'skullstrip_t1.sh', '1']
         elif regType == 'registration':
-            pass
+            if dayNum == 1:
+                cmd = ['bash', 'reg_t1.sh']
+            else:
+                cmd = ['bash', 'reg_epi_day2.sh', '1', '1']
         elif regType == 'makemask':
-            pass
+            cmd = ['bash', 'run_makemask_nii.sh']
         else:
             RtAttenWeb.webInterface.setUserError("unknown registration type: " + regType)
             return
 
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(cmd, cwd=registrationDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         outputLineCount = 0
         line = 'start'
         # subprocess poll returns None while subprocess is running
@@ -140,6 +161,58 @@ class RtAttenWeb():
                     print(line, end='')
                 outputLineCount += 1
         return outputLineCount
+
+    @staticmethod
+    def uploadImages(request):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        assert request['cmd'] == "uploadImages"
+        assert RtAttenWeb.webInterface is not None
+        if len(RtAttenWeb.webInterface.wsDataConns) == 0:
+            # A remote fileWatcher hasn't connected yet
+            errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
+            RtAttenWeb.webInterface.setUserError(errStr)
+            return
+        try:
+            scanFolder = request['scanFolder']
+            scanNum = int(request['scanNum'])
+            numDicoms = int(request['numDicoms'])
+            uploadType = request['type']
+        except KeyError as err:
+            RtAttenWeb.webInterface.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
+            return
+        watchFilePattern = "001_000{:03d}_0*".format(scanNum)
+        RtAttenWeb.webInterface.initWatch(scanFolder, watchFilePattern, 1)
+        fileType = Path(RtAttenWeb.cfg.session.dicomNamePattern).suffix
+        outputFolder = os.path.normpath('/data/' + scanFolder)
+        if not os.path.exists(outputFolder):
+            os.makedirs(outputFolder)
+        # send periodic progress reports to front-end
+        dicomsInProgressInterval = numDicoms / 4
+        intervalCount = 1
+        response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'in-progress'}
+        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        for i in range(1, numDicoms+1):
+            filename = "001_{:06d}_{:06d}{}".format(scanNum, i, fileType)
+            # print("uploading {} {}".format(scanFolder, filename))
+            try:
+                data = RtAttenWeb.webInterface.getFile(filename, asRawBytes=True)
+            except Exception as err:
+                RtAttenWeb.webInterface.setUserError(
+                    "Error uploading file {}/{}: {}".format(scanFolder, filename, err))
+                return
+            # prepend with common '/data' path and write out file
+            # note: can't just use os.path.join() because if two or more elements
+            #   have an aboslute path it discards the earlier elements
+            outputFilename = os.path.join(outputFolder, filename)
+            writeFile(outputFilename, data)
+            if i > intervalCount * dicomsInProgressInterval:
+                val = 1/4 * intervalCount
+                val = "{:.0f}%".format(val*100)
+                response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': val}
+                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                intervalCount += 1
+        response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'complete \u2714'}
+        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
 
 
 # def checkConfig(self, cfg):

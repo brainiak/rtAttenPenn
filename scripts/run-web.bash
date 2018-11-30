@@ -4,7 +4,7 @@ pushd rtAtten/web
 browserify src/tabs.js -o build/tabsBundle.js -t [ babelify --presets [ @babel/preset-env @babel/preset-react ] ]
 popd
 
-python -s fileWatchServer.py -s localhost:8888 -i 5 &
+python fileWatchServer.py -s localhost:8888 -i 5 &
 PID=$!
 
 # check if experiment file is supplied with -e filename
