@@ -1,6 +1,7 @@
 import tornado.web
 import tornado.websocket
 import os
+import ssl
 import json
 import asyncio
 import threading
@@ -9,8 +10,14 @@ from pathlib import Path
 from base64 import b64decode
 import rtfMRI.utils as utils
 from rtfMRI.ReadDicom import readDicomFromBuffer
+from rtfMRI.Messaging import getCertPath, getKeyPath
 from rtfMRI.utils import DebugLevels
 from rtfMRI.Errors import RequestError
+
+
+certsDir = 'certs'
+sslCertFile = 'rtAtten.crt'
+sslPrivateKey = 'rtAtten_private.key'
 
 
 def defaultCallback(client, message):
@@ -86,8 +93,11 @@ class Web():
             # Start the event loop
             asyncio.set_event_loop(asyncio.new_event_loop())
 
+        ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_ctx.load_cert_chain(getCertPath(certsDir, sslCertFile),
+                                getKeyPath(certsDir, sslPrivateKey))
         print("Listening on: http://localhost:{}".format(port))
-        Web.httpServer = tornado.httpserver.HTTPServer(Web.app)
+        Web.httpServer = tornado.httpserver.HTTPServer(Web.app, ssl_options=ssl_ctx)
         Web.httpServer.listen(port)
         tornado.ioloop.IOLoop.current().start()
 

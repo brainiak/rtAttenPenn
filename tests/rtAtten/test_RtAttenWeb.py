@@ -38,7 +38,7 @@ def test_createRegConfig():
     cfg = getConfig()
     regGlobals = localCreateRegConfig(cfg)
     RtAttenWeb.writeRegConfigFile(regGlobals, '/tmp')
-    assert os.path.exists(os.path.join('/tmp', 'globals_gen.sh'))
+    assert os.path.exists(os.path.join('/tmp', 'globals.sh'))
 
 
 def test_runRegistration():

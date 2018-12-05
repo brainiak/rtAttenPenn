@@ -201,7 +201,7 @@ class RtAtten extends React.Component {
   }
 
   createWebSocket() {
-    var wsUserURL = 'ws://' + location.hostname + ':' + location.port + '/wsUser'
+    var wsUserURL = 'wss://' + location.hostname + ':' + location.port + '/wsUser'
     console.log(wsUserURL)
     var webSocket = new WebSocket(wsUserURL);
     webSocket.onopen = (openEvent) => {

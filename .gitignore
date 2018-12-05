@@ -135,3 +135,7 @@ logs/*
 node_modules/
 build/
 *.bak
+.key
+.crt
+globals.sh
+

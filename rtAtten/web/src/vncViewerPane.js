@@ -33,7 +33,7 @@ class VNCViewerPane extends React.Component {
       vncUrl: '',
     }
     // console.log(document.location.href)
-    this.state.vncUrl = 'ws://' + window.location.hostname + ':6080'
+    this.state.vncUrl = 'wss://' + window.location.hostname + ':6080'
     this.connectedToServer = this.connectedToServer.bind(this)
     this.disconnectedFromServer = this.disconnectedFromServer.bind(this)
     this.credentialsAreRequired = this.credentialsAreRequired.bind(this)
