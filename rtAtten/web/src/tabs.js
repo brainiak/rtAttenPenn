@@ -60,10 +60,20 @@ class RtAtten extends React.Component {
 
   createRegConfig() {
     var cfg = this.state.config;
-    // TODO - handle case where date string is 'now'
-    var scanDate = Date.parse(cfg.session.date)
-    var dateStrMDY = dateformat(scanDate, 'mmddyy')
-    var dateStrYYMD = dateformat(scanDate, 'yyyymmdd')
+    var dateStr = cfg.session.date
+    var dateStrMDY = ''
+    var dateStrYYMD = ''
+    if (dateStr == 'now') {
+      var dateNow = Date()
+      dateStrMDY = dateformat(dateNow, 'mmddyy')
+      dateStrYYMD = dateformat(dateNow, 'yyyymmdd')
+    } else {
+      // handle case where date string has '-' instead of '/'
+      dateStr = cfg.session.date.replace('-', '/')
+      var scanDate = Date.parse(dateStr)
+      dateStrMDY = dateformat(scanDate, 'mmddyy')
+      dateStrYYMD = dateformat(scanDate, 'yyyymmdd')
+    }
     var regGlobals = {}
     regGlobals.subjectNum = cfg.session.subjectNum;
     regGlobals.dayNum = cfg.session.subjectDay;
@@ -71,10 +81,19 @@ class RtAtten extends React.Component {
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
     regGlobals.fParam = this.getRegConfigItem('fParam')
-    regGlobals.project_path = cfg.session.regDir
+    regGlobals.project_path = cfg.session.dataDir
     regGlobals.dryrun = cfg.session.registrationDryRun.toString().toLowerCase()
     regGlobals.roi_name = "wholebrain_mask"
-    regGlobals.subjName = dateStrMDY + regGlobals.runNum + '_' + cfg.experiment.experimentName
+    if (cfg.session.subjectName == undefined) {
+      if (cfg.session.sessionNum == undefined) {
+        this.setState({error: 'Configurations must define either subjectName or sessionNum to build subjectName'})
+        return
+      } else {
+        regGlobals.subjName = dateStrMDY + cfg.session.sessionNum + '_' + cfg.experiment.experimentName
+      }
+    } else {
+      regGlobals.subjName = cfg.session.subjectName
+    }
     var dicomFolder = dateStrYYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
     regGlobals.scanFolder = path.join(cfg.session.imgDir, dicomFolder)
     console.log(regGlobals)
@@ -241,6 +260,18 @@ class RtAtten extends React.Component {
         var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
         var regLines = this.state.regLines.concat([newLine])
         this.setState({regLines: regLines})
+      } else if (cmd == 'regStatus') {
+        var regType = request['type']
+        var status = request['status']
+        var regInfo
+        if (status == undefined || status.length == 0) {
+          regInfo = this.state.regInfo
+          delete regInfo[regType]
+        } else {
+          // var msg = `Procs (${numProcs}): ${procNames}`
+          regInfo = Object.assign({}, this.state.regInfo, { [regType]: status })
+        }
+        this.setState({regInfo: regInfo})
       } else if (cmd == 'uploadProgress') {
         var uploadType = request['type']
         var progress = request['progress']

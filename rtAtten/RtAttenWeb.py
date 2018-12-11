@@ -1,7 +1,9 @@
 import os
 import threading
 import subprocess
+import psutil
 import asyncio
+import time
 import logging
 import json
 import re
@@ -17,6 +19,8 @@ from rtfMRI.WebInterface import Web
 moduleDir = os.path.dirname(os.path.realpath(__file__))
 registrationDir = os.path.join(moduleDir, 'registration/')
 htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
+outputDir = '/rtfmriData/'
+
 
 class RtAttenWeb():
     webInterface = None
@@ -102,7 +106,7 @@ class RtAttenWeb():
             for key, val in regGlobals.items():
                 if re.search('folder|dir|path', key, flags=re.IGNORECASE) is not None:
                     # prepend common writable directory to value
-                    val = os.path.normpath('/data/' + val)
+                    val = os.path.normpath(outputDir + val)
                 fp.write(key + '=' + str(val) + '\n')
             fp.write('code_path=' + registrationDir)
 
@@ -149,6 +153,8 @@ class RtAttenWeb():
         proc = subprocess.Popen(cmd, cwd=registrationDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         outputLineCount = 0
         line = 'start'
+        statusTime = time.time()
+        statusInterval = 5  # 5 second interval for sending status updates
         # subprocess poll returns None while subprocess is running
         while(proc.poll() is None or line != ''):
             line = proc.stdout.readline().decode('utf-8')
@@ -160,6 +166,16 @@ class RtAttenWeb():
                 else:
                     print(line, end='')
                 outputLineCount += 1
+            currTime = time.time()
+            if currTime > statusTime + statusInterval:
+                # send status every 5 seconds
+                statusTime = currTime
+                procNames = getSubprocessNames(proc.pid)
+                response = {'cmd': 'regStatus', 'type': regType, 'status': procNames}
+                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        # processing complete, clear status
+        response = {'cmd': 'regStatus', 'type': regType, 'status': []}
+        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
         return outputLineCount
 
     @staticmethod
@@ -181,9 +197,13 @@ class RtAttenWeb():
             RtAttenWeb.webInterface.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
             return
         watchFilePattern = "001_000{:03d}_0*".format(scanNum)
-        RtAttenWeb.webInterface.initWatch(scanFolder, watchFilePattern, 1)
+        try:
+            RtAttenWeb.webInterface.initWatch(scanFolder, watchFilePattern, 1)
+        except Exception as err:
+            RtAttenWeb.webInterface.setUserError("Error initWatch: {}".format(err))
+            return
         fileType = Path(RtAttenWeb.cfg.session.dicomNamePattern).suffix
-        outputFolder = os.path.normpath('/data/' + scanFolder)
+        outputFolder = os.path.normpath(outputDir + scanFolder)
         if not os.path.exists(outputFolder):
             os.makedirs(outputFolder)
         # send periodic progress reports to front-end
@@ -200,7 +220,7 @@ class RtAttenWeb():
                 RtAttenWeb.webInterface.setUserError(
                     "Error uploading file {}/{}: {}".format(scanFolder, filename, err))
                 return
-            # prepend with common '/data' path and write out file
+            # prepend with common path and write out file
             # note: can't just use os.path.join() because if two or more elements
             #   have an aboslute path it discards the earlier elements
             outputFilename = os.path.join(outputFolder, filename)
@@ -215,14 +235,16 @@ class RtAttenWeb():
         RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
 
 
-# def checkConfig(self, cfg):
-#     if 'experiment' not in cfg.keys():
-#         raise ValidationError("Experiment file must have \"experiment\" section")
-#     if 'session' not in cfg.keys():
-#         raise ValidationError("Experiment file must have \"session\" section")
-#
-#     if type(cfg.session.Runs) == str:
-#         cfg.session.Runs = [int(x) for x in params.runs.split(',')]
-#     if type(cfg.session.ScanNums) == str:
-#         cfg.session.ScanNums = [int(x) for x in params.scans.split(',')]
-#     return cfg
+def getSubprocessNames(pid):
+    try:
+        proc = psutil.Process(pid)
+        name = proc.name()
+        children = proc.children()
+        cpu = proc.cpu_percent()
+        statsStr = '#Procs({}), CPU({:.2f}%), {}: '.format(len(children), cpu, name)
+        names = [statsStr]
+        for child in children:
+            names.append(child.name())
+        return names
+    except psutil.ZombieProcess as err:
+        return []

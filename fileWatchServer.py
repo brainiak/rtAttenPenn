@@ -29,12 +29,19 @@ if __name__ == "__main__":
     if args.server is None:
         print("Usage: must specify a server address")
         parser.print_help()
-    if args.allowedDirs is None:
-        args.allowedDirs = defaultAllowedDirs
-    if args.allowedFileTypes is None:
-        args.allowedFileTypes = defaultAllowedTypes
+    if args.allowedDirs is not None:
+        allowedDirs = args.allowedDirs.split(',')
+    else:
+        allowedDirs = defaultAllowedDirs
+    if args.allowedFileTypes is not None:
+        allowedTypes = args.allowedFileTypes.split(',')
+    else:
+        allowedTypes = defaultAllowedTypes
+
+    print("allowed file types {}".format(allowedTypes))
+    print("allowed directories {}".format(allowedDirs))
 
     WebSocketFileWatcher.runFileWatcher(args.server,
                                         retryInterval=args.interval,
-                                        allowedDirs=args.allowedDirs,
-                                        allowedTypes=args.allowedFileTypes)
+                                        allowedDirs=allowedDirs,
+                                        allowedTypes=allowedTypes)

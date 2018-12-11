@@ -113,18 +113,21 @@ class RegistrationPane extends React.Component {
               onChange={this.inputOnChange}
             />
             <button style={cell5p} name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
+            <label style={cell5p}>{this.props.regInfo['skullstrip']}</label>
           </p>
           <p style={row}>
             <label style={cell10p}>Registartion</label>
             <label style={cell5p}></label>
             <input style={{...cell5p, ...hidden}} size="5" />
             <button style={cell5p} name="registration" onClick={this.runBttnOnClick}>Run</button>
+            <label style={cell5p}>{this.props.regInfo['registration']}</label>
           </p>
           <p style={row}>
             <label style={cell10p}>Make Mask</label>
             <label style={cell5p}></label>
             <input style={{...cell5p, ...hidden}} size="5" />
             <button style={cell5p} name="makemask" onClick={this.runBttnOnClick}>Run</button>
+            <label style={cell5p}>{this.props.regInfo['makemask']}</label>
           </p>
         </div>
         <p> {errorStr} </p>

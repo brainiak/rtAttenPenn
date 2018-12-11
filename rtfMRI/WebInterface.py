@@ -18,6 +18,8 @@ from rtfMRI.Errors import RequestError
 certsDir = 'certs'
 sslCertFile = 'rtAtten.crt'
 sslPrivateKey = 'rtAtten_private.key'
+# sslCertFile = 'bids_princeton_edu.crt'
+# sslPrivateKey = 'bids_private.key'
 
 
 def defaultCallback(client, message):
