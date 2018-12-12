@@ -8,6 +8,7 @@ and TRData funtions to handle data specific to the experiment
 """
 import os
 import time
+import re
 import glob
 import datetime
 import logging
@@ -408,8 +409,8 @@ class RtAttenModel(BaseModel):
         # sklearn LogisticRegression takes on set of labels and returns one set of weights.
         # The version implemented in Matlab can take multple sets of labels and return multiple weights.
         # To reproduct that behavior here, we will use a LogisticRegression instance for each set of lables (2 in this case)
-        lrc1 = LogisticRegression(solver='sag', penalty='l2', max_iter=300)
-        lrc2 = LogisticRegression(solver='sag', penalty='l2', max_iter=300)
+        lrc1 = LogisticRegression(solver='saga', penalty='l2', max_iter=300)
+        lrc2 = LogisticRegression(solver='saga', penalty='l2', max_iter=300)
         lrc1.fit(trainPats, trainLabels[:, 0])
         lrc2.fit(trainPats, trainLabels[:, 1])
         newTrainedModel = utils.MatlabStructDict({}, 'trainedModel')
@@ -462,9 +463,18 @@ class RtAttenModel(BaseModel):
         """
         fileInfo = msg.fields.cfg
         subjectDayDir = getSubjectDayDir(fileInfo.subjectNum, fileInfo.subjectDay)
-        fullFileName = os.path.join(self.session.serverDataDir, subjectDayDir, fileInfo.filename)
+        dataDir = os.path.join(self.session.serverDataDir, subjectDayDir)
+        fullFileName = os.path.join(dataDir, fileInfo.filename)
+        if fileInfo.findNewestPattern not in (None, ''):
+            try:
+                fullFileName = utils.findNewestFile(dataDir, fileInfo.findNewestPattern)
+            except Exception as err:
+                reply = self.createReplyMessage(msg, MsgResult.Error)
+                reply.data = "FindNewestFile failed: %s: %s" % (fullFileName, str(err))
+                return reply
         msg.fields.cfg = fullFileName
         reply = super().RetrieveData(msg)
+        reply.fields.filename = os.path.basename(fullFileName)
         return reply
 
     def DeleteData(self, msg):
@@ -496,6 +506,10 @@ class RtAttenModel(BaseModel):
             # load it from file
             logging.info("blkGrpCache miss on <runId, blkGrpId> %s", bgKey)
             fname = os.path.join(self.dirs.dataDir, getBlkGrpFilename(sessionId, runId, blkGrpId))
+            if self.session.useSessionTimestamp is True:
+                sessionWildcard = re.sub('T.*', 'T*', sessionId)
+                filePattern = getBlkGrpFilename(sessionWildcard, runId, blkGrpId)
+                fname = utils.findNewestFile(self.dirs.dataDir, filePattern)
             prev_bg = utils.loadMatFile(fname)
             # loadMatFile should either raise an exception or return a value
             assert prev_bg is not None, "Load blkGrp returned None: %s" % (fname)
@@ -512,6 +526,10 @@ class RtAttenModel(BaseModel):
             # load it from file
             logging.info("modelCache miss on runId %d", runId)
             fname = os.path.join(self.dirs.dataDir, getModelFilename(sessionId, runId))
+            if self.session.useSessionTimestamp is True:
+                sessionWildcard = re.sub('T.*', 'T*', sessionId)
+                filePattern = getModelFilename(sessionWildcard, runId)
+                fname = utils.findNewestFile(self.dirs.dataDir, filePattern)
             model = utils.loadMatFile(fname)
             # loadMatFile should either raise an exception or return a value
             assert model is not None, "Load model returned None: %s" % (fname)

@@ -1,5 +1,6 @@
 '''RtAttenClient - client logic for rtAtten experiment'''
 import os
+import re
 import time
 import numpy as np  # type: ignore
 import datetime
@@ -35,8 +36,11 @@ class RtAttenClient(RtfMRIClient):
         super().__del__()
 
     def initSession(self, cfg):
-        if cfg.session.sessionId is None or cfg.session.sessionId == '':
+        if cfg.session.sessionId in (None, '') or cfg.session.useSessionTimestamp is True:
+            cfg.session.useSessionTimestamp = True
             cfg.session.sessionId = dateStr30(time.localtime())
+        else:
+            cfg.session.useSessionTimestamp = False
 
         logging.log(DebugLevels.L1, "## Start Session: %s, subNum%d subDay%d",
                     cfg.session.sessionId, cfg.session.subjectNum, cfg.session.subjectDay)
@@ -270,17 +274,23 @@ class RtAttenClient(RtfMRIClient):
         self.retrieveFile(model_filename)
 
     def retrieveFile(self, filename):
-        print("Retrieving data for {}... ".format(filename), end='')
+
         fileInfo = StructDict()
         fileInfo.subjectNum = self.id_fields.subjectNum
         fileInfo.subjectDay = self.id_fields.subjectDay
         fileInfo.filename = filename
+        if self.cfg.session.useSessionTimestamp is True:
+            fileInfo.findNewestPattern = re.sub('T\d{6}', 'T*', filename)
+            print("Retrieving newest file for {}... ".format(fileInfo.findNewestPattern), end='')
+        else:
+            print("Retrieving file {}... ".format(filename), end='')
         stime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.RetrieveData, fileInfo)
+        retFilename = reply.fields.filename
         print("took {:.2f} secs".format(time.time() - stime))
-        clientFile = os.path.join(self.dirs.dataDir, filename)
+        clientFile = os.path.join(self.dirs.dataDir, retFilename)
         writeFile(clientFile, reply.data)
-        serverFile = os.path.join(self.dirs.serverDataDir, filename)
+        serverFile = os.path.join(self.dirs.serverDataDir, retFilename)
         if not os.path.exists(serverFile):
             try:
                 os.symlink(clientFile, serverFile)
@@ -313,8 +323,9 @@ class RtAttenClient(RtfMRIClient):
         return fullFileName
 
     def deleteSessionData(self):
+        sessionIdPattern = re.sub('T.*', 'T*', self.id_fields.sessionId)
         filePattern = os.path.join(self.dirs.serverDataDir,
-                                   "*" + self.id_fields.sessionId + "*.mat")
+                                   "*" + sessionIdPattern + "*.mat")
         fileInfo = StructDict()
         fileInfo.filePattern = filePattern
         reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)

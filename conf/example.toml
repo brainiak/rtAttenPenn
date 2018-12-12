@@ -18,6 +18,7 @@ findNewestPatterns = true
 watchFilePattern = "*.dcm"
 dicomNamePattern = "001_0000{}_000{}.dcm"
 minExpectedDicomSize = 300000
+useSessionTimestamp = false
 legacyRun1Phase2Mode = true
 retrieveServerFiles = false
 skipConfirmForReprocess = false
