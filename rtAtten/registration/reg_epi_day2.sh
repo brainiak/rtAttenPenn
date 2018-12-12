@@ -35,13 +35,13 @@ fi
 if [ $2 -eq 1 ]
 then
   if [ -z $dryrun ] || [ $dryrun != true ]; then
-    flirt -dof 6 -in $subject_day1_path/$functionalFN'.'nii.gz -ref $functional2FN'.'nii.gz -out func12func2 -omat func12func2.mat
-    flirt -in $subject_day1_path/wholebrain_mask_exfunc -ref $functional2FN'.'nii.gz -applyxfm -init func12func2.mat -interp nearestneighbour -out mask12func2
+    flirt -v -dof 6 -in $subject_day1_path/$functionalFN'.'nii.gz -ref $functional2FN'.'nii.gz -out func12func2 -omat func12func2.mat
+    flirt -v -in $subject_day1_path/wholebrain_mask_exfunc -ref $functional2FN'.'nii.gz -applyxfm -init func12func2.mat -interp nearestneighbour -out mask12func2
   fi
 fi
 
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  bet $functional2FN'.'nii.gz $functional2FN'_'brain -R -m
+  bet -v $functional2FN'.'nii.gz $functional2FN'_'brain -R -m
   export DISPLAY=localhost:1; fsleyes $functional2FN'.'nii.gz $functional2FN'_'brain.nii.gz &
 
   # now check on past mask again

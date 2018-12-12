@@ -19,12 +19,12 @@ echo "moving into folder: $subject_save_path"
 
 highresFN=highres
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  flirt -in $highresFN'_'brain.nii.gz -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -out highres2standard -omat highres2standard.mat -cost corratio -dof 12 -searchrx -30 30 -searchry -30 30 -searchrz -30 30 -interp trilinear
-  fnirt --iout=highres2standard_head --in=$highresFN'.'nii.gz --aff=highres2standard.mat --cout=highres2standard_warp --iout=highres2standard --jout=highres2highres_jac --config=T1_2_MNI152_2mm --ref=$FSLDIR/data/standard/MNI152_T1_2mm.nii.gz --refmask=$FSLDIR/data/standard/MNI152_T1_2mm_brain_mask_dil --warpres=10,10,10
-  applywarp -i $highresFN'_'brain.nii.gz -r $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -o highres2standard -w highres2standard_warp
+  flirt -v -in $highresFN'_'brain.nii.gz -ref $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -out highres2standard -omat highres2standard.mat -cost corratio -dof 12 -searchrx -30 30 -searchry -30 30 -searchrz -30 30 -interp trilinear
+  fnirt -v --iout=highres2standard_head --in=$highresFN'.'nii.gz --aff=highres2standard.mat --cout=highres2standard_warp --iout=highres2standard --jout=highres2highres_jac --config=T1_2_MNI152_2mm --ref=$FSLDIR/data/standard/MNI152_T1_2mm.nii.gz --refmask=$FSLDIR/data/standard/MNI152_T1_2mm_brain_mask_dil --warpres=10,10,10
+  applywarp -v -i $highresFN'_'brain.nii.gz -r $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz -o highres2standard -w highres2standard_warp
   #compute inverse transform (standard to highres)
   convert_xfm -inverse -omat standard2highres.mat highres2standard.mat
-  invwarp -w highres2standard_warp -o standard2highres_warp -r $highresFN'_'brain.nii.gz
+  invwarp -v -w highres2standard_warp -o standard2highres_warp -r $highresFN'_'brain.nii.gz
 fi
 
 # now run the exfunc when that finishes

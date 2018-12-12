@@ -36,7 +36,7 @@ then
 fi
 
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  bet $highresFN.nii.gz $highresFN'_'brain.nii.gz -R -m -f $fParam
+  bet -v $highresFN.nii.gz $highresFN'_'brain.nii.gz -R -m -f $fParam
 
   export DISPLAY=localhost:1; fsleyes $highresFN.nii.gz $highresFN'_'brain.nii.gz $highresFN'_'brain_mask.nii.gz &
 fi

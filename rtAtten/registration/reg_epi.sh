@@ -39,16 +39,16 @@ then
     # now register to highres!
     exfunc2highres_mat=example_func2highres
     highres2exfunc_mat=highres2example_func
-    epi_reg --epi=$functionalFN --t1=$highresFN --t1brain=$highresFN'_'brain --out=$exfunc2highres_mat
+    epi_reg -v --epi=$functionalFN --t1=$highresFN --t1brain=$highresFN'_'brain --out=$exfunc2highres_mat
     convert_xfm -inverse -omat $highres2exfunc_mat'.'mat $exfunc2highres_mat'.'mat
     # now register mask to all data
-    applywarp -i $code_path/$roi_name'.'nii.gz -r $functionalFN'.'nii.gz -o $roi_name'_'exfunc.nii.gz -w standard2highres_warp.nii.gz --postmat=$highres2exfunc_mat'.'mat 
+    applywarp -v -i $code_path/$roi_name'.'nii.gz -r $functionalFN'.'nii.gz -o $roi_name'_'exfunc.nii.gz -w standard2highres_warp.nii.gz --postmat=$highres2exfunc_mat'.'mat 
     # check after here that the applied warp is binary and in the right
     # orientation so we could just apply to nifti files afterwards
   fi
 fi
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  bet $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz -R -m
+  bet -v $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz -R -m
   export DISPLAY=localhost:1; fsleyes $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz $functionalFN'_'brain_mask.nii.gz &
 fi
 

@@ -2,6 +2,11 @@
 #Author: Anne
 #Purpose: register t1 to standard space
 # Things it does
+
+export LD_LIBRARY_PATH=.:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/runtime/glnxa64:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/bin/glnxa64:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/sys/os/glnxa64:$LD_LIBRARY_PATH
+
+export XAPPLRESDIR=/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/X11/app-defaults
+
 source globals.sh   
 if [ $dryrun = true ]; then
   echo "DRY RUN..."

@@ -153,10 +153,18 @@ class RtAttenWeb():
         proc = subprocess.Popen(cmd, cwd=registrationDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         outputLineCount = 0
         line = 'start'
-        statusTime = time.time()
-        statusInterval = 5  # 5 second interval for sending status updates
+        statusInterval = 0.5  # interval (sec) for sending status updates
+        statusTime = time.time() - statusInterval
         # subprocess poll returns None while subprocess is running
         while(proc.poll() is None or line != ''):
+            currTime = time.time()
+            if currTime >= statusTime + statusInterval:
+                # send status 
+                statusTime = currTime
+                # logging.log(logging.INFO, "psutil pid %d", proc.pid)
+                procInfo = getProcessInfo(proc.pid, str(cmd))
+                response = {'cmd': 'regStatus', 'type': regType, 'status': procInfo}
+                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
             line = proc.stdout.readline().decode('utf-8')
             if line != '':
                 # send output to web interface
@@ -166,13 +174,6 @@ class RtAttenWeb():
                 else:
                     print(line, end='')
                 outputLineCount += 1
-            currTime = time.time()
-            if currTime > statusTime + statusInterval:
-                # send status every 5 seconds
-                statusTime = currTime
-                procNames = getSubprocessNames(proc.pid)
-                response = {'cmd': 'regStatus', 'type': regType, 'status': procNames}
-                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
         # processing complete, clear status
         response = {'cmd': 'regStatus', 'type': regType, 'status': []}
         RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
@@ -235,16 +236,17 @@ class RtAttenWeb():
         RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
 
 
-def getSubprocessNames(pid):
+def getProcessInfo(pid, name):
     try:
         proc = psutil.Process(pid)
-        name = proc.name()
         children = proc.children()
-        cpu = proc.cpu_percent()
-        statsStr = '#Procs({}), CPU({:.2f}%), {}: '.format(len(children), cpu, name)
+        cpu = proc.cpu_times()
+        cpuTime = cpu.user + cpu.system + cpu.children_user + cpu.children_system
+        statsStr = '#Procs({}), CPU({:.2f}), {}: '.format(len(children)+1, cpuTime, name)
         names = [statsStr]
         for child in children:
             names.append(child.name())
         return names
-    except psutil.ZombieProcess as err:
+    except Exception as err:
+        logging.log(logging.INFO, "psutil error: %s", err)
         return []
