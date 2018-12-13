@@ -23,7 +23,7 @@ outputDir = '/rtfmriData/'
 
 
 class RtAttenWeb():
-    webInterface = None
+    webInterface = Web()
     serverAddr = 'localhost'
     serverPort = 5200
     cfg = None
@@ -39,7 +39,6 @@ class RtAttenWeb():
         RtAttenWeb.serverPort = serverPort
         RtAttenWeb.cfg = cfg
         RtAttenWeb.initialized = True
-        RtAttenWeb.webInterface = Web()
         RtAttenWeb.webInterface.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
 
     @staticmethod
@@ -159,7 +158,7 @@ class RtAttenWeb():
         while(proc.poll() is None or line != ''):
             currTime = time.time()
             if currTime >= statusTime + statusInterval:
-                # send status 
+                # send status
                 statusTime = currTime
                 # logging.log(logging.INFO, "psutil pid %d", proc.pid)
                 procInfo = getProcessInfo(proc.pid, str(cmd))

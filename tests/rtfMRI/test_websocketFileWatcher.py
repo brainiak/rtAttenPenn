@@ -16,7 +16,7 @@ def dicomTestFilename():  # type: ignore
     return os.path.join(testDir, 'test_input/001_000001_000001.dcm')
 
 
-class TestDeadlines:
+class TestFileWatcher:
     webThread = None
     fileThread = None
     pingCount = 0

@@ -96,7 +96,6 @@ class RtAtten extends React.Component {
     }
     var dicomFolder = dateStrYYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
     regGlobals.scanFolder = path.join(cfg.session.imgDir, dicomFolder)
-    console.log(regGlobals)
     this.setState({regConfig: regGlobals})
   }
 
@@ -178,7 +177,6 @@ class RtAtten extends React.Component {
                    config: this.state.config,
                    regConfig: this.state.regConfig,
                   }
-    console.log('runRegistration ' + regType)
     this.webSocket.send(JSON.stringify(request))
   }
 
@@ -244,7 +242,6 @@ class RtAtten extends React.Component {
       var cmd = request['cmd']
       if (cmd == 'config') {
         var config = request['value']
-        console.log(config)
         this.setState({config: config})
         this.createRegConfig();
       } else if (cmd == 'log') {
