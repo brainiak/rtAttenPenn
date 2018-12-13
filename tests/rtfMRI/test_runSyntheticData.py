@@ -3,7 +3,8 @@ import os
 import inspect
 import typing
 import logging
-import rtfMRI.scripts.ClientMain as ClientMain
+import ClientMain as ClientMain
+from rtfMRI.StructDict import StructDict
 import tests.rtfMRI.simfmri.generate_data as gd
 # import generate_fmri_data.generate_data as gd
 
@@ -26,7 +27,12 @@ def test_runSyntheticData(cfgFilePath):
     gd.generate_data(cfgFilePath)
 
     # import pdb; pdb.set_trace()
-    result = ClientMain.ClientMain("localhost", 5211, cfgFilePath, True, None, None, None)
+    params = StructDict(
+        {'addr': 'localhost', 'port': 5211,
+         'experiment': cfgFilePath,
+         'run_local': True, 'use_web': False,
+        })
+    result = ClientMain.ClientMain(params)
     assert result is True
 
 

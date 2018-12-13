@@ -5,14 +5,13 @@ except ModuleNotFoundError:
     import dicom  # type: ignore
 
 
-def readDicom(filename, sliceDim):
+def parseDicomVolume(dicomImg, sliceDim):
     '''The raw dicom file will be a 2D picture with multiple slices tiled together.
        We need to separate the slices and form a volume from them.
     '''
     sliceWidth = sliceDim
     sliceHeight = sliceDim
 
-    dicomImg = dicom.read_file(filename)
     image = dicomImg.pixel_array
 
     dicomHeight, dicomWidth = image.shape
@@ -31,7 +30,18 @@ def readDicom(filename, sliceDim):
             slice = image[rpos: rpos+sliceHeight, cpos: cpos+sliceWidth]
             volume[:, :, sliceNum] = slice
             sliceNum += 1
-    return volume, dicomImg
+    return volume
+
+
+def readDicomFromBuffer(data):
+    dataBytesIO = dicom.filebase.DicomBytesIO(data)
+    dicomImg = dicom.dcmread(dataBytesIO)
+    return dicomImg
+
+
+def readDicomFromFile(filename):
+    dicomImg = dicom.read_file(filename)
+    return dicomImg
 
 
 def applyMask(volume, roiInds):

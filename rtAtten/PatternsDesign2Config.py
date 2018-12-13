@@ -2,26 +2,17 @@
 import os
 import numpy as np  # type: ignore
 from rtfMRI.StructDict import StructDict
+from .RtAttenModel import getSubjectDayDir
 from rtfMRI.utils import loadMatFile, findNewestFile
 from rtfMRI.Errors import ValidationError
 
 
-def createRunConfig(session, runId, scanNum=-1):
-    run = StructDict()
-    run.runId = runId
-    idx = getRunIndex(session, runId)
-    if scanNum >= 0:
-        run.scanNum = scanNum
-    elif session.ScanNums is not None and idx >= 0 and len(session.ScanNums) > idx:
-        run.scanNum = session.ScanNums[idx]
-    else:
-        run.scanNum = -1
-    dataDir = getSubjectDayDir(session, session.dataDir)
-
+def getLocalPatternsFile(session, runId):
     if session.findNewestPatterns:
         # load the newest file patterns
-        patternsFilename = findPatternsDesignFile(dataDir, runId)
+        patternsFilename = findPatternsDesignFile(session, runId)
     else:
+        idx = getRunIndex(session, runId)
         if idx >= 0 and len(session.patternsDesignFiles) > idx:
             patternsFilename = session.patternsDesignFiles[idx]
             patternsFilename = os.path.join(session.dataDir, os.path.basename(patternsFilename))
@@ -33,9 +24,21 @@ def createRunConfig(session, runId, scanNum=-1):
             else:
                 raise ValidationError("Insufficient patternsDesignFiles specified in "
                                       "config file session for run {}".format(runId))
-
     # load and parse the pattensDesign file
     patterns = loadMatFile(patternsFilename)
+    return patterns
+
+
+def createRunConfig(session, patterns, runId, scanNum=-1):
+    run = StructDict()
+    run.runId = runId
+    idx = getRunIndex(session, runId)
+    if scanNum >= 0:
+        run.scanNum = scanNum
+    elif session.ScanNums is not None and idx >= 0 and len(session.ScanNums) > idx:
+        run.scanNum = session.ScanNums[idx]
+    else:
+        run.scanNum = -1
 
     run.disdaqs = int(patterns.disdaqs)
     run.nBlocksPerPhase = int(patterns.nBlocksPerPhase)
@@ -109,21 +112,26 @@ def createBlockGroupConfig(tr_range, patterns):
     return blkGrp
 
 
-def findPatternsDesignFile(inputDir, runNum):
-    filePattern = 'patternsdesign_' + str(runNum) + '*.mat'
-    pdesignFile = findNewestFile(inputDir, filePattern)
+def getPatternsFileRegex(session, runId, addRunDir=False):
+    filePattern = 'patternsdesign_' + str(runId) + '*.mat'
+    subjectDayDir = getSubjectDayDir(session.subjectNum, session.subjectDay)
+    if addRunDir:
+        return os.path.join(session.dataDir, subjectDayDir, 'run'+str(runId), filePattern)
+    else:
+        return os.path.join(session.dataDir, subjectDayDir, filePattern)
+
+
+def findPatternsDesignFile(session, runId):
+    fullPathRegex = getPatternsFileRegex(session, runId)
+    baseDir, filePattern = os.path.split(fullPathRegex)
+    pdesignFile = findNewestFile(baseDir, filePattern)
     if pdesignFile is not None and pdesignFile != '':
         return pdesignFile
-    inputDir = os.path.join(inputDir, 'run'+str(runNum))
-    pdesignFile = findNewestFile(inputDir, filePattern)
+    fullPathRegex = getPatternsFileRegex(session, runId, addRunDir=True)
+    pdesignFile = findNewestFile('', fullPathRegex)
     if pdesignFile is None or pdesignFile == '':
         raise FileNotFoundError("No files found matching {}".format(filePattern))
     return pdesignFile
-
-
-def getSubjectDayDir(session, dataDir):
-    subjectDayDir = "subject{}/day{}".format(session.subjectNum, session.subjectDay)
-    return os.path.join(dataDir, subjectDayDir)
 
 
 def getRunIndex(session, runId):

@@ -5,7 +5,7 @@ import shutil
 import sys
 sys.path.append(os.getcwd())
 from rtfMRI.RtfMRIClient import loadConfigFile, validateRunCfg
-from rtAtten.PatternsDesign2Config import createRunConfig
+from rtAtten.PatternsDesign2Config import createRunConfig, getLocalPatternsFile
 
 # parse experiment file
 # copy run images every 2 seconds
@@ -21,7 +21,8 @@ if not os.path.exists(dstDir):
     os.makedirs(dstDir)
 
 for runId in cfg.session.Runs:
-    run = createRunConfig(cfg.session, runId)
+    patterns = getLocalPatternsFile(cfg.session, runId)
+    run = createRunConfig(cfg.session, patterns, runId)
     validateRunCfg(run)
     scanNumStr = str(run.scanNum).zfill(2)
     for blockGroup in run.blockGroups:

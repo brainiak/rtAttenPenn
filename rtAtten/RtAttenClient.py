@@ -2,21 +2,24 @@
 import os
 import re
 import time
+import json
+import asyncio
 import numpy as np  # type: ignore
 import datetime
 import logging
 import pathlib
 from dateutil import parser
+from pathlib import Path
 import rtfMRI.utils as utils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
-from rtfMRI.ReadDicom import readDicom, applyMask
+from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels
 from rtfMRI.fileWatcher import FileWatcher
-from rtfMRI.Errors import InvocationError, ValidationError
-from .PatternsDesign2Config import createRunConfig, getRunIndex
+from rtfMRI.Errors import InvocationError, ValidationError, StateError
+from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 
 
@@ -25,17 +28,73 @@ class RtAttenClient(RtfMRIClient):
         super().__init__()
         self.dirs = StructDict()
         self.prevData = None
-        self.fileWatcher = FileWatcher()
         self.printFirstFilename = True
-        self.ttlClient = TTLPulseClient()
+        self.ttlPulseClient = TTLPulseClient()
+        self.fileWatcher = FileWatcher()
+        self.useWeb = False
+        self.webInterface = None
+        self.stopRun = False
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
-        if self.ttlClient is not None:
-            self.ttlClient.close()
+        if self.ttlPulseClient is not None:
+            self.ttlPulseClient.close()
         super().__del__()
 
+    def setWebInterface(self, web):
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        self.webInterface = web
+        self.useWeb = True
+        self.fileWatcher = None
+
+    def doStopRun(self):
+        self.stopRun = True
+
+    def cfgValidation(self, cfg):
+        # some model specific validations
+        # Convert Runs to a list of integers if needed
+        if type(cfg.session.Runs) is str:
+            cfg.session.Runs = [int(s) for s in cfg.session.Runs.split(',')]
+        elif type(cfg.session.Runs) is list:
+            if len(cfg.session.Runs) == 0:
+                raise InvocationError("List of Run integers is empty")
+            elif type(cfg.session.Runs[0]) is str:
+                # convert to list of ints
+                if len(cfg.session.Runs) == 1:
+                    try:
+                        cfg.session.Runs = [int(s) for s in cfg.session.Runs[0].split(',')]
+                    except Exception as err:
+                        raise InvocationError("List of Run integers is malformed")
+                else:
+                    cfg.session.Runs = [int(s) for s in cfg.session.Runs]
+            elif type(cfg.session.Runs[0]) is not int:
+                raise InvocationError("List of Runs must be integers or strings")
+        else:
+            raise InvocationError("Runs must be a list of integers or string of integers")
+
+        # Convert ScanNums to a list of integers if needed
+        if type(cfg.session.ScanNums) is str:
+            cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums.split(',')]
+        elif type(cfg.session.ScanNums) is list:
+            if len(cfg.session.ScanNums) == 0:
+                raise InvocationError("List of Run integers is empty")
+            elif type(cfg.session.ScanNums[0]) is str:
+                # convert to list of ints
+                if len(cfg.session.ScanNums) == 1:
+                    try:
+                        cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums[0].split(',')]
+                    except Exception as err:
+                        raise InvocationError("List of Run integers is malformed")
+                else:
+                    cfg.session.ScanNums = [int(s) for s in cfg.session.ScanNums]
+            elif type(cfg.session.ScanNums[0]) is not int:
+                raise InvocationError("List of ScanNums must be integers or strings")
+        else:
+            raise InvocationError("ScanNums must be a list of integers or string of integers")
+        return True
+
     def initSession(self, cfg):
+        self.cfgValidation(cfg)
         if cfg.session.sessionId in (None, '') or cfg.session.useSessionTimestamp is True:
             cfg.session.useSessionTimestamp = True
             cfg.session.sessionId = dateStr30(time.localtime())
@@ -72,15 +131,31 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(self.dirs.imgDir):
             os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        assert self.fileWatcher is not None
-        self.fileWatcher.initFileNotifier(self.dirs.imgDir,
-                                          cfg.session.watchFilePattern,
-                                          cfg.session.minExpectedDicomSize)
+        if self.useWeb:
+            assert self.webInterface is not None
+            if len(self.webInterface.wsDataConns) == 0:
+                # A remote fileWatcher hasn't connected yet
+                errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
+                self.webInterface.setUserError(errStr)
+                raise StateError(errStr)
+            self.webInterface.initWatch(self.dirs.imgDir,
+                                        cfg.session.watchFilePattern,
+                                        cfg.session.minExpectedDicomSize)
+        else:
+            assert self.fileWatcher is not None
+            self.fileWatcher.initFileNotifier(self.dirs.imgDir,
+                                              cfg.session.watchFilePattern,
+                                              cfg.session.minExpectedDicomSize)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
         maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
-        temp = utils.loadMatFile(maskFileName)
+        if self.useWeb and cfg.session.getMasksPatternsFromCR:
+            # get the mask from remote site
+            temp = self.webInterface.getFile(maskFileName)
+        else:
+            # read mask locally
+            temp = utils.loadMatFile(maskFileName)
         roi = temp.mask
         assert type(roi) == np.ndarray
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
@@ -95,14 +170,19 @@ class RtAttenClient(RtfMRIClient):
         # Process each run
         for runId in self.cfg.session.Runs:
             self.runRun(runId)
+            if self.stopRun:
+                return
 
     def runRun(self, runId, scanNum=-1):
-        run = createRunConfig(self.cfg.session, runId, scanNum)
+        if self.useWeb and self.cfg.session.getMasksPatternsFromCR:
+            fileRegex = getPatternsFileRegex(self.cfg.session, runId, addRunDir=True)
+            patterns = self.webInterface.getNewestFile(fileRegex)
+        else:
+            patterns = getLocalPatternsFile(self.cfg.session, runId)
+        run = createRunConfig(self.cfg.session, patterns, runId, scanNum)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
-
         logging.log(DebugLevels.L4, "Run: %d, scanNum %d", runId, run.scanNum)
-
         if self.cfg.session.rtData:
             # Check if images already exist and warn and ask to continue
             firstFileName = self.getDicomFileName(run.scanNum, 1)
@@ -146,7 +226,7 @@ class RtAttenClient(RtfMRIClient):
 
         runCfg = copy_toplevel(run)
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
 
         if self.cfg.session.replayMatFileMode and not self.cfg.session.rtData:
             # load previous patterns data for this run
@@ -159,13 +239,13 @@ class RtAttenClient(RtfMRIClient):
             blockGroupCfg = copy_toplevel(blockGroup)
             logging.log(DebugLevels.L4, "BlkGrp: %d", blockGroup.blkGrpId)
             reply = self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile)
+            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             for block in blockGroup.blocks:
                 self.id_fields.blockId = block.blockId
                 blockCfg = copy_toplevel(block)
                 logging.log(DebugLevels.L4, "Blk: %d", block.blockId)
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile)
+                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
                     fileNum = TR.vol + run.disdaqs // run.TRTime
@@ -178,14 +258,14 @@ class RtAttenClient(RtfMRIClient):
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
                         TR.data = run.replay_data[TR.vol-1]
                     processingStartTime = time.time()
-                    imageAcquisitionTime = 0
-                    pulseBroadcastTime = 0
-                    trStartTime = 0
+                    imageAcquisitionTime = 0.0
+                    pulseBroadcastTime = 0.0
+                    trStartTime = 0.0
                     gotTTLTime = False
                     if (self.cfg.session.enforceDeadlines is not None and
                             self.cfg.session.enforceDeadlines is True):
                         # capture TTL pulse from scanner to calculate next deadline
-                        trStartTime = self.ttlClient.getTimestamp()
+                        trStartTime = self.ttlPulseClient.getTimestamp()
                         if trStartTime == 0 or imageAcquisitionTime > run.TRTime:
                             # Either no TTL Pulse time signal or stale time signal
                             #   Approximate trStart as current time minus 500ms
@@ -196,7 +276,7 @@ class RtAttenClient(RtfMRIClient):
                         else:
                             gotTTLTime = True
                             imageAcquisitionTime = time.time() - trStartTime
-                            pulseBroadcastTime = trStartTime - self.ttlClient.getServerTimestamp()
+                            pulseBroadcastTime = trStartTime - self.ttlPulseClient.getServerTimestamp()
                             # logging.info("TTL TR deadline: {}".format(trStartTime))
                         # Deadline is TR_Start_Time + time between TRs +
                         #  clockSkew adjustment - 1/2 Max Net Round_Trip_Time -
@@ -216,7 +296,7 @@ class RtAttenClient(RtfMRIClient):
                         outputPredictionFile(reply.fields.predict, classOutputDir)
                     # log the TR processing time
                     serverProcessTime = processingEndTime - processingStartTime
-                    elapsedTRTime = 0
+                    elapsedTRTime = 0.0
                     if gotTTLTime is True:
                         elapsedTRTime = time.time() - trStartTime
                     logStr = "TR:{}:{}:{:03}, fileNum {}, server_process_time {:.3f}s, " \
@@ -228,13 +308,15 @@ class RtAttenClient(RtfMRIClient):
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
-                    outputReplyLines(reply.fields.outputlns, outputFile)
+                    outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+                    if self.stopRun:
+                        return
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile)
+                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             del self.id_fields.blockId
             reply = self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile)
+            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
             # self.retrieveBlkGrp(self.id_fields.sessionId, self.id_fields.runId, self.id_fields.blkGrpId)
         del self.id_fields.blkGrpId
         # Train the model for this Run
@@ -248,16 +330,16 @@ class RtAttenClient(RtfMRIClient):
         outlns = []
         outlns.append('*********************************************')
         outlns.append("Train Model {} {}".format(trainCfg.blkGrpRefs[0], trainCfg.blkGrpRefs[1]))
-        outputReplyLines(outlns, outputFile)
+        outputReplyLines(outlns, outputFile, self.webInterface)
         processingStartTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
         processingEndTime = time.time()
         # log the model generation time
         logStr = "Model:{} training time {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
         logging.log(DebugLevels.L3, logStr)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile)
+        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
         if self.cfg.session.retrieveServerFiles:
             self.retrieveRunFiles(runId)
         del self.id_fields.runId
@@ -299,17 +381,34 @@ class RtAttenClient(RtfMRIClient):
 
     def getNextTRData(self, run, fileNum):
         specificFileName = self.getDicomFileName(run.scanNum, fileNum)
+        data = None
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        self.fileWatcher.waitForFile(specificFileName)
-        fileExtension = pathlib.Path(specificFileName).suffix
-        if fileExtension == '.mat':
-            data = utils.loadMatFile(specificFileName)
-            trVol = data.vol
+        if self.useWeb:
+            assert self.webInterface is not None
+            data = self.webInterface.watchFile(specificFileName)
         else:
-            trVol, _ = readDicom(specificFileName, self.cfg.session.sliceDim)
+            self.fileWatcher.waitForFile(specificFileName)
+            data = self.loadImageData(specificFileName)
+        fileExtension = Path(specificFileName).suffix
+        if fileExtension == '.mat':
+            trVol = data.vol
+        elif fileExtension == '.dcm':
+            trVol = parseDicomVolume(data, self.cfg.session.sliceDim)
+        else:
+            raise ValidationError('Only filenames of type .mat or .dcm supported')
         return trVol
+
+    def loadImageData(self, filename):
+        fileExtension = Path(filename).suffix
+        if fileExtension == '.mat':
+            data = utils.loadMatFile(filename)
+        else:
+            # Dicom file:
+            assert fileExtension == '.dcm'
+            data = readDicomFromFile(filename)
+        return data
 
     def getDicomFileName(self, scanNum, fileNum):
         if scanNum < 0:
@@ -329,7 +428,7 @@ class RtAttenClient(RtfMRIClient):
         fileInfo = StructDict()
         fileInfo.filePattern = filePattern
         reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)
-        outputReplyLines(reply.fields.outputlns, None)
+        outputReplyLines(reply.fields.outputlns, None, self.webInterface)
 
     def ping(self):
         processingStartTime = time.time()
@@ -338,12 +437,15 @@ class RtAttenClient(RtfMRIClient):
         print("RTT: {:.2f}ms".format(processingEndTime-processingStartTime))
 
 
-def outputReplyLines(lines, filehandle):
+def outputReplyLines(lines, filehandle, web):
     if lines is not None:
         for line in lines:
             print(line)
             if filehandle is not None:
                 filehandle.write(line + '\n')
+            if web is not None:
+                cmd = {'cmd': 'log', 'value': line}
+                web.sendUserMessage(json.dumps(cmd))
 
 
 def outputPredictionFile(predict, classOutputDir):

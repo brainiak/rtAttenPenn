@@ -9,6 +9,8 @@ from rtfMRI.fileWatcher import FileWatcher
 testDir = '/tmp/watchdog'
 
 
+
+
 def test_watchdog():
     if not os.path.exists(testDir):
         os.makedirs(testDir)

@@ -104,7 +104,7 @@ class RtMessagingClient:
         self.port = serverPort
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if useSSL:
-            certfile = getCertPath()
+            certfile = getCertPath(certsDir, sslCertFile)
             self.sslContext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=certfile)
             self.socket = self.sslContext.wrap_socket(self.socket, server_hostname='rtAtten')
         self.socket.connect((self.addr, self.port))
@@ -140,8 +140,8 @@ class RtMessagingServer:
         self.socket.bind(('', port))
         self.socket.listen(0)
         if useSSL:
-            certfile = getCertPath()
-            key = getKeyPath()
+            certfile = getCertPath(certsDir, sslCertFile)
+            key = getKeyPath(certsDir, sslPrivateKey)
             self.sslContext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
             self.sslContext.load_cert_chain(certfile=certfile, keyfile=key)
         self.conn = None
@@ -248,7 +248,7 @@ def recvall(conn, count):
     return buf
 
 
-def getCertPath():
+def getCertPath(certsDir, sslCertFile):
     cwd = os.getcwd()
     certfile = os.path.join(cwd, certsDir, sslCertFile)
     if os.path.exists(certfile):
@@ -261,7 +261,7 @@ def getCertPath():
     return certfile
 
 
-def getKeyPath():
+def getKeyPath(certsDir, sslPrivateKey):
     cwd = os.getcwd()
     keyfile = os.path.join(cwd, certsDir, sslPrivateKey)
     if os.path.exists(keyfile):
