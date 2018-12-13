@@ -151,7 +151,7 @@ class TTLPulseClient():
             try:
                 data, addr = self.sock.recvfrom(256)
             except OSError as err:
-                print("ListenTTLThread drop connection")
+                # print("ListenTTLThread drop connection")
                 return
             msg = MsgFormat.unpack(data)
             self.serverTimestamp = msg[0]
