@@ -11,7 +11,7 @@ from rtAtten.RtAttenWeb import RtAttenWeb
 
 
 @pytest.fixture(scope="module")
-def getConfig():
+def configData():
     currentDir = os.path.dirname(os.path.realpath(__file__))
     cfg = loadConfigFile(os.path.join(currentDir, '../rtfMRI/syntheticDataCfg.toml'))
     return cfg
@@ -34,16 +34,15 @@ def localCreateRegConfig(cfg):
     return regGlobals
 
 
-def test_createRegConfig():
-    cfg = getConfig()
-    regGlobals = localCreateRegConfig(cfg)
+def test_createRegConfig(configData):
+    regGlobals = localCreateRegConfig(configData)
     RtAttenWeb.writeRegConfigFile(regGlobals, '/tmp')
     assert os.path.exists(os.path.join('/tmp', 'globals.sh'))
 
 
-def test_runRegistration():
+def test_runRegistration(configData):
     params = StructDict()
-    params.cfg = getConfig()
+    params.cfg = configData
     regGlobals = localCreateRegConfig(params.cfg)
     request = {'cmd': 'runReg',
                'regConfig': regGlobals,

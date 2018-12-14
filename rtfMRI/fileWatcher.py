@@ -272,107 +272,93 @@ class WebSocketFileWatcher:
     @staticmethod
     def on_message(client, message):
         fileWatcher = WebSocketFileWatcher.fileWatcher
-        request = json.loads(message)
-        cmd = request['cmd']
-        if cmd == "initWatch":
-            dir = request['dir']
-            filePattern = request['filePattern']
-            minFileSize = request['minFileSize']
-            logging.log(DebugLevels.L3, "init: %s, %s, %d", dir, filePattern, minFileSize)
-            if dir is None or filePattern is None or minFileSize is None:
-                response = {'status': 400, 'error': 'missing file information'}
-                logging.log(logging.WARNING, "InitWatch: Missing file information: %s %s", dir, filePattern)
-            elif WebSocketFileWatcher.validateRequestedFile(dir, None) is False:
-                response = {'status': 400, 'error': 'Non-allowed directory {}'.format(dir)}
-                logging.log(logging.WARNING, "InitWatch: Non-allowed directory %s", dir)
-            else:
-                try:
-                    fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
-                except Exception as err:
-                    response = {'status': 400, 'error': err}
-                    logging.log(logging.WARNING, "InitWatch: Error %s", err)
+        try:
+            request = json.loads(message)
+            cmd = request['cmd']
+            if cmd == "initWatch":
+                dir = request['dir']
+                filePattern = request['filePattern']
+                minFileSize = request['minFileSize']
+                logging.log(DebugLevels.L3, "init: %s, %s, %d", dir, filePattern, minFileSize)
+                if dir is None or filePattern is None or minFileSize is None:
+                    response = {'status': 400, 'error': 'missing file information'}
+                    logging.log(logging.WARNING, "InitWatch: Missing file information: %s %s", dir, filePattern)
+                elif WebSocketFileWatcher.validateRequestedFile(dir, None) is False:
+                    response = {'status': 400, 'error': 'Non-allowed directory {}'.format(dir)}
+                    logging.log(logging.WARNING, "InitWatch: Non-allowed directory %s", dir)
                 else:
+                    fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
                     response = {'status': 200}
-        elif cmd == "watch":
-            filename = request['filename']
-            logging.log(DebugLevels.L3, "watch: %s", filename)
-            if filename is None:
-                response = {'status': 400, 'error': 'missing filename'}
-                logging.log(logging.WARNING, "Watch: Missing filename")
-            elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
-                response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
-                logging.log(logging.WARNING, "Watch: Non-allowed file %s", filename)
-            else:
-                try:
+            elif cmd == "watch":
+                filename = request['filename']
+                logging.log(DebugLevels.L3, "watch: %s", filename)
+                if filename is None:
+                    response = {'status': 400, 'error': 'missing filename'}
+                    logging.log(logging.WARNING, "Watch: Missing filename")
+                elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
+                    response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
+                    logging.log(logging.WARNING, "Watch: Non-allowed file %s", filename)
+                else:
                     fileWatcher.waitForFile(filename)
                     with open(filename, 'rb') as fp:
                         data = fp.read()
                     b64Data = b64encode(data)
                     b64StrData = b64Data.decode('utf-8')
-                except Exception as err:
-                    response = {'status': 400, 'error': err}
-                else:
                     response = {'status': 200, 'data': b64StrData}
-        elif cmd == "get":
-            filename = request['filename']
-            if not os.path.isabs(filename):
-                # relative path to the watch dir
-                filename = os.path.join(fileWatcher.watchDir, filename)
-            logging.log(DebugLevels.L3, "get: %s", filename)
-            if filename is None:
-                response = {'status': 400, 'error': 'missing filename'}
-                logging.log(logging.WARNING, "Get: Missing filename")
-            elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
-                response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
-                logging.log(logging.WARNING, "Get: Non-allowed file %s", filename)
-            elif not os.path.exists(filename):
-                response = {'status': 400, 'error': 'file not found'}
-                logging.log(logging.WARNING, "Get: File not found %s", filename)
-            else:
-                try:
+            elif cmd == "get":
+                filename = request['filename']
+                if not os.path.isabs(filename):
+                    # relative path to the watch dir
+                    filename = os.path.join(fileWatcher.watchDir, filename)
+                logging.log(DebugLevels.L3, "get: %s", filename)
+                if filename is None:
+                    response = {'status': 400, 'error': 'missing filename'}
+                    logging.log(logging.WARNING, "Get: Missing filename")
+                elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
+                    response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
+                    logging.log(logging.WARNING, "Get: Non-allowed file %s", filename)
+                elif not os.path.exists(filename):
+                    response = {'status': 400, 'error': 'file not found'}
+                    logging.log(logging.WARNING, "Get: File not found %s", filename)
+                else:
                     with open(filename, 'rb') as fp:
                         data = fp.read()
                     b64Data = b64encode(data)
                     b64StrData = b64Data.decode('utf-8')
-                except Exception as err:
-                    response = {'status': 400, 'error': err}
-                else:
                     response = {'status': 200, 'data': b64StrData}
-        elif cmd == "getNewest":
-            filename = request['filename']
-            logging.log(DebugLevels.L3, "getNewest: %s", filename)
-            if filename is None:
-                response = {'status': 400, 'error': 'missing filename'}
-                logging.log(logging.WARNING, "GetNewest: Missing filename")
-            elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
-                response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
-                logging.log(logging.WARNING, "GetNewest: Non-allowed file %s", filename)
-            else:
-                baseDir, filePattern = os.path.split(filename)
-                if not os.path.isabs(baseDir):
-                    # relative path to the watch dir
-                    baseDir = os.path.join(fileWatcher.watchDir, baseDir)
-                filename = findNewestFile(baseDir, filePattern)
-                if filename is None or not os.path.exists(filename):
-                    errStr = 'file not found: {}'.format(os.path.join(baseDir, filePattern))
-                    response = {'status': 400, 'error': errStr}
-                    logging.log(logging.WARNING, "GetNewest: %s", errStr)
+            elif cmd == "getNewest":
+                filename = request['filename']
+                logging.log(DebugLevels.L3, "getNewest: %s", filename)
+                if filename is None:
+                    response = {'status': 400, 'error': 'missing filename'}
+                    logging.log(logging.WARNING, "GetNewest: Missing filename")
+                elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
+                    response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
+                    logging.log(logging.WARNING, "GetNewest: Non-allowed file %s", filename)
                 else:
-                    try:
+                    baseDir, filePattern = os.path.split(filename)
+                    if not os.path.isabs(baseDir):
+                        # relative path to the watch dir
+                        baseDir = os.path.join(fileWatcher.watchDir, baseDir)
+                    filename = findNewestFile(baseDir, filePattern)
+                    if filename is None or not os.path.exists(filename):
+                        errStr = 'file not found: {}'.format(os.path.join(baseDir, filePattern))
+                        response = {'status': 400, 'error': errStr}
+                        logging.log(logging.WARNING, "GetNewest: %s", errStr)
+                    else:
                         with open(filename, 'rb') as fp:
                             data = fp.read()
                         b64Data = b64encode(data)
                         b64StrData = b64Data.decode('utf-8')
-                    except Exception as err:
-                        response = {'status': 400, 'error': err}
-                        logging.log(logging.WARNING, "GetNewest: %s", err)
-                    else:
                         response = {'status': 200, 'data': b64StrData}
-        elif cmd == "ping":
-            response = {'status': 200}
-        else:
-            response = {'status': 400, 'error': 'Unrecognized command {}'.format(cmd)}
-            logging.log(logging.WARNING, "OnMessage: Unrecognized command %s", cmd)
+            elif cmd == "ping":
+                response = {'status': 200}
+            else:
+                response = {'status': 400, 'error': 'Unrecognized command {}'.format(cmd)}
+                logging.log(logging.WARNING, "OnMessage: Unrecognized command %s", cmd)
+        except Exception as err:
+            logging.log(logging.WARNING, "%s: %s" % (cmd, err))
+            response = {'status': 400, 'error': err}
         # merge request into the response dictionary
         response.update(request)
         client.send(json.dumps(response))
