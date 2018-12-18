@@ -24,6 +24,7 @@ class SettingsPane extends React.Component {
         elem('legend', {}, 'Select Toml Configuration File:'),
         elem('input', {
           type: 'file',
+          className: 'inputfile',
           onChange: (event) => {
             let reader = new FileReader()
             reader.onload = this.loadTomlFile

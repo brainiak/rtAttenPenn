@@ -48,5 +48,5 @@ def test_runRegistration(configData):
                'regConfig': regGlobals,
                'regType': 'test',
                'dayNum': 1}
-    lineCount = RtAttenWeb.runRegistration(request, test=['ping', 'www.google.com', '-c', '3'])
+    lineCount = RtAttenWeb.runRegistration(request, test=['ping', 'localhost', '-c', '3'])
     assert lineCount == 8

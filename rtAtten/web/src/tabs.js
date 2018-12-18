@@ -19,7 +19,7 @@ class RtAtten extends React.Component {
   constructor(props) {
     super(props)
     this.state = {
-      config: {},
+      config: {session: {}},
       regConfig: {fParam: '0.6'},
       regInfo: {},
       connected: false,
@@ -63,7 +63,7 @@ class RtAtten extends React.Component {
     var dateStr = cfg.session.date
     var dateStrMDY = ''
     var dateStrYYMD = ''
-    if (dateStr == 'now') {
+    if ([undefined, '', 'now'].indexOf(dateStr) != -1) {
       var dateNow = Date()
       dateStrMDY = dateformat(dateNow, 'mmddyy')
       dateStrYYMD = dateformat(dateNow, 'yyyymmdd')
@@ -77,7 +77,10 @@ class RtAtten extends React.Component {
     var regGlobals = {}
     regGlobals.subjectNum = cfg.session.subjectNum;
     regGlobals.dayNum = cfg.session.subjectDay;
-    regGlobals.runNum = cfg.session.Runs[0]
+    regGlobals.runNum = -1
+    if (cfg.session.Runs != undefined) {
+      regGlobals.runNum = cfg.session.Runs[0]
+    }
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
     regGlobals.fParam = this.getRegConfigItem('fParam')

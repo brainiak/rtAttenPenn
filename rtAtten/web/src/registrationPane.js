@@ -4,13 +4,6 @@ const VNCViewerPane = require('./vncViewerPane.js')
 
 const elem = React.createElement;
 
-// CSS Styles
-const table = { display: "table", }
-const row = { display: "table-row", }
-const cell5p = { display: "table-cell", marginRight:"5px", paddingRight:"5px" }
-const cell10p = { display: "table-cell", marginRight:"10px", paddingRight:"10px" }
-const hidden = { visibility:"hidden" }
-
 
 class RegistrationPane extends React.Component {
   constructor(props) {
@@ -62,72 +55,72 @@ class RegistrationPane extends React.Component {
         <p>
           Image Directory: {this.props.getRegConfigItem('scanFolder')}
         </p>
-        <div style={table}>
-          <p style={row}>
-            <label style={cell10p}>Highres</label>
-              <label style={cell5p}>Scan#:</label>
-              <input style={cell5p} size="5"
+        <div className="table">
+          <p className="row">
+            <label className="cell10p">Highres</label>
+              <label className="cell5p">Scan#:</label>
+              <input className="cell5p" size="5"
                 name='highresScan'
                 value={this.props.getRegConfigItem('highresScan')}
                 onChange={this.inputOnChange}
               />
-              <label style={cell5p}>Num Dicoms:</label>
-              <input style={cell5p} size="5"
+              <label className="cell5p">Num Dicoms:</label>
+              <input className="cell5p" size="5"
                 name='NumHighresDicoms'
                 value={this.props.getRegConfigItem('NumHighresDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button style={cell5p}
+              <button className="cell5p"
                 name="highres"
                 onClick={this.uploadBttnOnClick}>Upload Highres Images</button>
-              <label style={cell5p}>{this.props.regInfo['highres']}</label>
+              <label className="cell5p">{this.props.regInfo['highres']}</label>
           </p>
-          <p style={row}>
-            <label style={cell10p}>Functional</label>
-              <label style={cell5p}>Scan#:</label>
-              <input style={cell5p} size="5"
+          <p className="row">
+            <label className="cell10p">Functional</label>
+              <label className="cell5p">Scan#:</label>
+              <input className="cell5p" size="5"
                 name='functionalScan'
                 value={this.props.getRegConfigItem('functionalScan')}
                 onChange={this.inputOnChange}
               />
-              <label style={cell5p}>Num Dicoms: </label>
-              <input style={cell5p} size="5"
+              <label className="cell5p">Num Dicoms: </label>
+              <input className="cell5p" size="5"
                 name='NumFuncDicoms'
                 value={this.props.getRegConfigItem('NumFuncDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button style={cell5p}
+              <button className="cell5p"
                 name="functional"
                 onClick={this.uploadBttnOnClick}>Upload Functional Images</button>
-              <label style={cell5p}>{this.props.regInfo['functional']}</label>
+              <label className="cell5p">{this.props.regInfo['functional']}</label>
           </p>
         </div>
         <hr />
-        <div style={table}>
-          <p style={row}>
-            <label style={cell10p}>SkullStrip</label>
-            <label style={cell5p}>f param:</label>
-            <input style={cell5p} size="5"
+        <div className="table">
+          <p className="row">
+            <label className="cell10p">SkullStrip</label>
+            <label className="cell5p">f param:</label>
+            <input className="cell5p" size="5"
               name='fParam'
               value={this.props.getRegConfigItem('fParam')}
               onChange={this.inputOnChange}
             />
-            <button style={cell5p} name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
-            <label style={cell5p}>{this.props.regInfo['skullstrip']}</label>
+            <button className="cell5p" name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
+            <label className="cell5p">{this.props.regInfo['skullstrip']}</label>
           </p>
-          <p style={row}>
-            <label style={cell10p}>Registartion</label>
-            <label style={cell5p}></label>
-            <input style={{...cell5p, ...hidden}} size="5" />
-            <button style={cell5p} name="registration" onClick={this.runBttnOnClick}>Run</button>
-            <label style={cell5p}>{this.props.regInfo['registration']}</label>
+          <p className="row">
+            <label className="cell10p">Registartion</label>
+            <label className="cell5p"></label>
+            <input className="cell5p hidden" size="5" />
+            <button className="cell5p" name="registration" onClick={this.runBttnOnClick}>Run</button>
+            <label className="cell5p">{this.props.regInfo['registration']}</label>
           </p>
-          <p style={row}>
-            <label style={cell10p}>Make Mask</label>
-            <label style={cell5p}></label>
-            <input style={{...cell5p, ...hidden}} size="5" />
-            <button style={cell5p} name="makemask" onClick={this.runBttnOnClick}>Run</button>
-            <label style={cell5p}>{this.props.regInfo['makemask']}</label>
+          <p className="row">
+            <label className="cell10p">Make Mask</label>
+            <label className="cell5p"></label>
+            <input className="cell5p hidden" size="5" />
+            <button className="cell5p" name="makemask" onClick={this.runBttnOnClick}>Run</button>
+            <label className="cell5p">{this.props.regInfo['makemask']}</label>
           </p>
         </div>
         <p> {errorStr} </p>
@@ -139,31 +132,5 @@ class RegistrationPane extends React.Component {
     );
   }
 }
-
-{/*
-//   elem('div', {},
-//   elem('p', {}, `Image Directory: ${this.props.getRegConfigItem('scanFolder')}`),
-//   elem('hr'),
-//   elem('p', {}, 'Highres Scan #: ',
-//     elem('input', { value: this.props.getRegConfigItem('highresScan'), onChange: this.highresScanOnChange }),
-//   ),
-//   elem('p', {}, 'Functional Scan #: ',
-//     elem('input', { value: this.props.getRegConfigItem('functionalScan'), onChange: this.funcScanOnChange }),
-//   ),
-//   elem('button', { onClick: this.runBttnOnClick }, 'Run Registration'),
-//   elem('button', { onClick: this.stopBttnOnClick }, 'Stop'),
-//   elem('div', {}, errorStr),
-//   elem('hr'),
-//   elem(AutoscrolledList, {items: this.props.regLines, height: "100px"}),
-//   elem('hr'),
-//   elem(VNCViewerPane, {}),
-//   // TODO: for future conversion to JSX format
-//   // <div>
-//   //   <button onClick={this.runBttnOnClick}>Run</button>
-//   //   <button onClick={this.stopBttnOnClick}>Stop</button>
-//   //   <AutoscrolledList items={this.props.logLines} />
-//   // </div>
-// )
-*/};
 
 module.exports = RegistrationPane;

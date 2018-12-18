@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import logging
 import argparse
 currPath = os.path.dirname(os.path.realpath(__file__))
@@ -17,31 +18,31 @@ if __name__ == "__main__":
     installLoggers(logging.INFO, logging.DEBUG+1, filename='logs/fileWatcher.log')
     # do arg parse for server to connect to
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', action="store", dest="server",
+    parser.add_argument('-s', action="store", dest="server", default="localhost:8888",
                         help="Server Address")
-    parser.add_argument('-i', action="store", dest="interval", type=int,
+    parser.add_argument('-i', action="store", dest="interval", type=int, default=5,
                         help="Retry connection interval (seconds)")
-    parser.add_argument('-d', action="store", dest="allowedDirs",
+    parser.add_argument('-d', action="store", dest="allowedDirs", default=defaultAllowedDirs,
                         help="Allowed directories to server files from - comma separated list")
-    parser.add_argument('-f', action="store", dest="allowedFileTypes",
+    parser.add_argument('-f', action="store", dest="allowedFileTypes", default=defaultAllowedTypes,
                         help="Allowed file types - comma separated list")
     args = parser.parse_args()
-    if args.server is None:
-        print("Usage: must specify a server address")
-        parser.print_help()
-    if args.allowedDirs is not None:
-        allowedDirs = args.allowedDirs.split(',')
-    else:
-        allowedDirs = defaultAllowedDirs
-    if args.allowedFileTypes is not None:
-        allowedTypes = args.allowedFileTypes.split(',')
-    else:
-        allowedTypes = defaultAllowedTypes
 
-    print("allowed file types {}".format(allowedTypes))
-    print("allowed directories {}".format(allowedDirs))
+    if not re.match(".*:\d+", args.server):
+        print("Usage: Expecting server address in the form <servername:port>")
+        parser.print_help()
+
+    if type(args.allowedDirs) is str:
+        args.allowedDirs = args.allowedDirs.split(',')
+
+    if type(args.allowedFileTypes) is str:
+        args.allowedFileTypes = args.allowedFileTypes.split(',')
+
+    print("Server: {}, interval {}".format(args.server, args.interval))
+    print("Allowed file types {}".format(args.allowedFileTypes))
+    print("Allowed directories {}".format(args.allowedDirs))
 
     WebSocketFileWatcher.runFileWatcher(args.server,
                                         retryInterval=args.interval,
-                                        allowedDirs=allowedDirs,
-                                        allowedTypes=allowedTypes)
+                                        allowedDirs=args.allowedDirs,
+                                        allowedTypes=args.allowedFileTypes)

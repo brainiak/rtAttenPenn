@@ -45,28 +45,30 @@ class StatusPane extends React.Component {
       errorStr = "Error: " + this.props.error
     }
     return (
-      elem('div', {},
-      elem('p', {}, `MRI Scans Directory: ${this.props.getConfigItem('imgDir')}`),
-      elem('hr'),
-      elem('p', {}, 'Run #: ',
-        elem('input', { value: this.props.getConfigItem('Runs'), onChange: this.runNumOnChange }),
-      ),
-      elem('p', {}, 'Scan #: ',
-        elem('input', { value: this.props.getConfigItem('ScanNums'), onChange: this.scanNumOnChange }),
-      ),
-      elem('button', { onClick: this.runBttnOnClick }, 'Run'),
-      elem('button', { onClick: this.stopBttnOnClick }, 'Stop'),
-      elem('div', {}, errorStr),
-      elem('hr'),
-      elem(AutoscrolledList, {items: this.props.logLines, height: "600px"}),
-      // TODO: for future conversion to JSX format
-      // <div>
-      //   <button onClick={this.runBttnOnClick}>Run</button>
-      //   <button onClick={this.stopBttnOnClick}>Stop</button>
-      //   <AutoscrolledList items={this.props.logLines} />
-      // </div>
-    )
-  )
+      <div>
+        <p>MRI Scans Directory: {this.props.getConfigItem('imgDir')}</p>
+        <hr />
+        <div className="table">
+          <p className="row">
+            <label className="cell10p">Run #:</label>
+            <input className="cell5p" size="20"
+              value={this.props.getConfigItem('Runs')}
+              onChange={this.runNumOnChange} />
+          </p>
+          <p className="row">
+            <label className="cell10p">Scan #:</label>
+            <input className="cell5p" size="20"
+              value={this.props.getConfigItem('ScanNums')}
+              onChange={this.scanNumOnChange} />
+          </p>
+        </div>
+        <button onClick={this.runBttnOnClick}>Run</button>
+        <button onClick={this.stopBttnOnClick}>Stop</button>
+        <p>{errorStr}</p>
+        <hr />
+        <AutoscrolledList items={this.props.logLines} height="600px" />
+      </div>
+    );
   }
 }
 

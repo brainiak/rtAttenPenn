@@ -77,6 +77,7 @@ class Web():
         webDir = Path(os.path.dirname(index)).parent
         src_root = os.path.join(webDir, 'src')
         css_root = os.path.join(webDir, 'css')
+        img_root = os.path.join(webDir, 'img')
         build_root = os.path.join(webDir, 'build')
         Web.app = tornado.web.Application([
             (r'/', Web.UserHttp),
@@ -85,6 +86,7 @@ class Web():
             (r'/wsData', Web.DataWebSocket),
             (r'/src/(.*)', tornado.web.StaticFileHandler, {'path': src_root}),
             (r'/css/(.*)', tornado.web.StaticFileHandler, {'path': css_root}),
+            (r'/img/(.*)', tornado.web.StaticFileHandler, {'path': img_root}),
             (r'/build/(.*)', tornado.web.StaticFileHandler, {'path': build_root}),
         ])
         # start event loop if needed
