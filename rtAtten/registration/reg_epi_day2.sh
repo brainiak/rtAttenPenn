@@ -41,7 +41,7 @@ then
 fi
 
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  bet -v $functional2FN'.'nii.gz $functional2FN'_'brain -R -m
+  bet $functional2FN'.'nii.gz $functional2FN'_'brain -R -m -v
   export DISPLAY=localhost:1; fsleyes $functional2FN'.'nii.gz $functional2FN'_'brain.nii.gz &
 
   # now check on past mask again

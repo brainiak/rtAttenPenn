@@ -20,18 +20,18 @@ if [ $dayNum -gt 1 ]
 then
   if [ -z $dryrun ] || [ $dryrun != true ]; then
     functional2FN=exfunc2
-    if [ -f $functional2FN'_'brain.nii.gz ]; then echo "ungzipping epi"; gunzip $functional2FN'_'brain.nii.gz ; fi
+    if [ -f $functional2FN'_'brain.nii.gz ]; then echo "ungzipping epi"; gunzip -f $functional2FN'_'brain.nii.gz ; fi
 
-    if [ -f mask12func2.nii.gz ]; then echo "ungzipping mask"; gunzip mask12func2.nii.gz ; fi
+    if [ -f mask12func2.nii.gz ]; then echo "ungzipping mask"; gunzip -f mask12func2.nii.gz ; fi
   fi
 fi
 if [ $dayNum -eq 1 ]
 then
   if [ -z $dryrun ] || [ $dryrun != true ]; then
     functionalFN=exfunc
-    if [ -f $functionalFN'_'brain.nii.gz ]; then echo "ungzipping epi"; gunzip $functionalFN'_'brain.nii.gz ; fi
+    if [ -f $functionalFN'_'brain.nii.gz ]; then echo "ungzipping epi"; gunzip -f $functionalFN'_'brain.nii.gz ; fi
 
-    if [ -f $roi_name'_'exfunc.nii.gz ]; then echo "ungzipping mask"; gunzip $roi_name'_'exfunc.nii.gz ; fi
+    if [ -f $roi_name'_'exfunc.nii.gz ]; then echo "ungzipping mask"; gunzip -f $roi_name'_'exfunc.nii.gz ; fi
   fi
 fi
 echo "running matlab script to make mask"
