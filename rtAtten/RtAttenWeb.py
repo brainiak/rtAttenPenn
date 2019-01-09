@@ -9,9 +9,7 @@ import json
 import re
 from pathlib import Path
 from rtfMRI.utils import DebugLevels
-from rtfMRI.Errors import ValidationError
 from rtfMRI.StructDict import recurseCreateStructDict
-from rtfMRI.RtfMRIClient import loadConfigFile
 from rtAtten.RtAttenClient import RtAttenClient, writeFile
 from rtfMRI.WebInterface import Web
 
@@ -38,6 +36,7 @@ class RtAttenWeb():
         RtAttenWeb.serverAddr = serverAddr
         RtAttenWeb.serverPort = serverPort
         RtAttenWeb.cfg = cfg
+        RtAttenWeb.webInterface.outputDir = outputDir
         RtAttenWeb.initialized = True
         RtAttenWeb.webInterface.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
 
@@ -48,7 +47,8 @@ class RtAttenWeb():
         if 'config' in request:
             # Common code for any command that sends config information - retrieve the config info
             try:
-                RtAttenWeb.cfg = recurseCreateStructDict(request['config'])
+                newCfg = recurseCreateStructDict(request['config'])
+                RtAttenWeb.cfg = newCfg
             except Exception as err:
                 RtAttenWeb.webInterface.setUserError(str(err))
                 return
@@ -63,8 +63,8 @@ class RtAttenWeb():
                 if RtAttenWeb.webClientThread.is_alive():
                     RtAttenWeb.webInterface.setUserError("Client thread already runnning, skipping new request")
                     return
-                RtAttenWeb.webClientThread = None
                 RtAttenWeb.client = None
+                RtAttenWeb.webClientThread = None
             RtAttenWeb.webClientThread = threading.Thread(name='webClientThread', target=RtAttenWeb.runClient)
             RtAttenWeb.webClientThread.setDaemon(True)
             RtAttenWeb.webClientThread.start()
@@ -72,6 +72,10 @@ class RtAttenWeb():
             if RtAttenWeb.webClientThread is not None:
                 if RtAttenWeb.client is not None:
                     RtAttenWeb.client.doStopRun()
+                RtAttenWeb.webClientThread.join(timeout=1)
+                if not RtAttenWeb.webClientThread.is_alive():
+                    RtAttenWeb.client = None
+                    RtAttenWeb.webClientThread = None
         elif cmd == "runReg":
             if RtAttenWeb.registrationThread is not None:
                 RtAttenWeb.registrationThread.join(timeout=1)
@@ -90,8 +94,8 @@ class RtAttenWeb():
                     RtAttenWeb.webInterface.setUserError("Registraion thread already runnning, skipping new request")
                     return
             RtAttenWeb.uploadImageThread = threading.Thread(name='uploadImages',
-                                                             target=RtAttenWeb.uploadImages,
-                                                             args=(request,))
+                                                            target=RtAttenWeb.uploadImages,
+                                                            args=(request,))
             RtAttenWeb.uploadImageThread.setDaemon(True)
             RtAttenWeb.uploadImageThread.start()
         else:
@@ -114,7 +118,19 @@ class RtAttenWeb():
         assert RtAttenWeb.client is None
         RtAttenWeb.client = RtAttenClient()
         RtAttenWeb.client.setWebInterface(RtAttenWeb.webInterface)
-        RtAttenWeb.client.runSession(RtAttenWeb.serverAddr, RtAttenWeb.serverPort, RtAttenWeb.cfg)
+        try:
+            response = {'cmd': 'runStatus', 'status': 'running'}
+            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+            RtAttenWeb.client.runSession(RtAttenWeb.serverAddr, RtAttenWeb.serverPort, RtAttenWeb.cfg)
+            if RtAttenWeb.client.stopRun is True:
+                response = {'cmd': 'runStatus', 'status': 'interrupted'}
+            else:
+                response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
+            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        except Exception as err:
+            response = {'cmd': 'runStatus', 'status': 'error'}
+            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+            RtAttenWeb.webInterface.setUserError("RunClient: {}".format(err))
         RtAttenWeb.client = None
 
     @staticmethod
@@ -174,7 +190,7 @@ class RtAttenWeb():
                     print(line, end='')
                 outputLineCount += 1
         # processing complete, clear status
-        response = {'cmd': 'regStatus', 'type': regType, 'status': []}
+        response = {'cmd': 'regStatus', 'type': regType, 'status': 'complete \u2714'}
         RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
         return outputLineCount
 
@@ -214,11 +230,10 @@ class RtAttenWeb():
         for i in range(1, numDicoms+1):
             filename = "001_{:06d}_{:06d}{}".format(scanNum, i, fileType)
             # print("uploading {} {}".format(scanFolder, filename))
-            try:
-                data = RtAttenWeb.webInterface.getFile(filename, asRawBytes=True)
-            except Exception as err:
+            data, errVal = RtAttenWeb.webInterface.getFile(filename, asRawBytes=True)
+            if errVal is not None:
                 RtAttenWeb.webInterface.setUserError(
-                    "Error uploading file {}/{}: {}".format(scanFolder, filename, err))
+                    "Error uploading file {}/{}: {}".format(scanFolder, filename, errVal))
                 return
             # prepend with common path and write out file
             # note: can't just use os.path.join() because if two or more elements

@@ -19,14 +19,17 @@ class StatusPane extends React.Component {
 
   runNumOnChange(event) {
     this.props.setConfigItem('Runs', [event.target.value])
+    this.props.clearRunStatus()
   }
 
   scanNumOnChange(event) {
     this.props.setConfigItem('ScanNums', [event.target.value])
+    this.props.clearRunStatus()
   }
 
   runBttnOnClick(event) {
     this.props.startRun()
+    this.props.clearRunStatus()
   }
 
   stopBttnOnClick(event) {
@@ -46,6 +49,7 @@ class StatusPane extends React.Component {
     }
     return (
       <div>
+        <p>Web Status: {(this.props.connected) ? 'connected' : 'disconnected'}</p>
         <p>MRI Scans Directory: {this.props.getConfigItem('imgDir')}</p>
         <hr />
         <div className="table">
@@ -62,6 +66,7 @@ class StatusPane extends React.Component {
               onChange={this.scanNumOnChange} />
           </p>
         </div>
+        <p>Run Status: {this.props.runStatus}</p>
         <button onClick={this.runBttnOnClick}>Run</button>
         <button onClick={this.stopBttnOnClick}>Stop</button>
         <p>{errorStr}</p>

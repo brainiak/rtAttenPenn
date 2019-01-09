@@ -8,7 +8,6 @@ class SettingsPane extends React.Component {
   constructor(props) {
     super(props)
     this.state = {
-      tomlFile: '',
       tomlErrorMsg: '',
     }
     this.tomlInputForm = this.tomlInputForm.bind(this)
@@ -19,20 +18,21 @@ class SettingsPane extends React.Component {
   }
 
   tomlInputForm(props) {
-    const form =
-      elem('fieldset', {},
-        elem('legend', {}, 'Select Toml Configuration File:'),
-        elem('input', {
-          type: 'file',
-          className: 'inputfile',
-          onChange: (event) => {
-            let reader = new FileReader()
-            reader.onload = this.loadTomlFile
-            reader.readAsText(event.target.files[0])
-          },
-        }),
-        elem('p', {}, this.state.tomlErrorMsg)
-      )
+    const form = (
+        <fieldset>
+          <legend>Select Toml Configuration File:</legend>
+          <p>Current Config: {this.props.configFileName}</p>
+          <input type='file' className='inputfile' title='My Title'
+            onChange={(event) => {
+              this.props.setConfigFileName(event.target.files[0].name)
+              let reader = new FileReader()
+              reader.onload = this.loadTomlFile
+              reader.readAsText(event.target.files[0])
+            }}
+          />
+          <p>{this.state.tomlErrorMsg}</p>
+        </fieldset>
+      );
     return form
   }
 

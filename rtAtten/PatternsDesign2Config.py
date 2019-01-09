@@ -1,5 +1,6 @@
 """Convert a Matlab patternsDesign file to a config file for rtfMRI"""
 import os
+import logging
 import numpy as np  # type: ignore
 from rtfMRI.StructDict import StructDict
 from .RtAttenModel import getSubjectDayDir
@@ -8,14 +9,16 @@ from rtfMRI.Errors import ValidationError
 
 
 def getLocalPatternsFile(session, runId):
+    subjectDayDir = getSubjectDayDir(session.subjectNum, session.subjectDay)
+    dataDir = os.path.join(session.dataDir, subjectDayDir)
     if session.findNewestPatterns:
         # load the newest file patterns
-        patternsFilename = findPatternsDesignFile(session, runId)
+        patternsFilename = findPatternsDesignFile(session, dataDir, runId)
     else:
         idx = getRunIndex(session, runId)
         if idx >= 0 and len(session.patternsDesignFiles) > idx:
             patternsFilename = session.patternsDesignFiles[idx]
-            patternsFilename = os.path.join(session.dataDir, os.path.basename(patternsFilename))
+            patternsFilename = os.path.join(dataDir, os.path.basename(patternsFilename))
         else:
             # either not enough runs specified or not enough patternsDesignFiles specified
             if idx < 0:
@@ -25,6 +28,7 @@ def getLocalPatternsFile(session, runId):
                 raise ValidationError("Insufficient patternsDesignFiles specified in "
                                       "config file session for run {}".format(runId))
     # load and parse the pattensDesign file
+    logging.info("Using Local Patterns file: %s", patternsFilename)
     patterns = loadMatFile(patternsFilename)
     return patterns
 
@@ -112,25 +116,25 @@ def createBlockGroupConfig(tr_range, patterns):
     return blkGrp
 
 
-def getPatternsFileRegex(session, runId, addRunDir=False):
+def getPatternsFileRegex(session, dataDir, runId, addRunDir=False):
     filePattern = 'patternsdesign_' + str(runId) + '*.mat'
-    subjectDayDir = getSubjectDayDir(session.subjectNum, session.subjectDay)
     if addRunDir:
-        return os.path.join(session.dataDir, subjectDayDir, 'run'+str(runId), filePattern)
+        patternsFilename = os.path.join(dataDir, 'run'+str(runId), filePattern)
     else:
-        return os.path.join(session.dataDir, subjectDayDir, filePattern)
+        patternsFilename = os.path.join(dataDir, filePattern)
+    return patternsFilename
 
 
-def findPatternsDesignFile(session, runId):
-    fullPathRegex = getPatternsFileRegex(session, runId)
+def findPatternsDesignFile(session, dataDir, runId):
+    fullPathRegex = getPatternsFileRegex(session, dataDir, runId, addRunDir=True)
     baseDir, filePattern = os.path.split(fullPathRegex)
     pdesignFile = findNewestFile(baseDir, filePattern)
     if pdesignFile is not None and pdesignFile != '':
         return pdesignFile
-    fullPathRegex = getPatternsFileRegex(session, runId, addRunDir=True)
+    fullPathRegex = getPatternsFileRegex(session, dataDir, runId)
     pdesignFile = findNewestFile('', fullPathRegex)
     if pdesignFile is None or pdesignFile == '':
-        raise FileNotFoundError("No files found matching {}".format(filePattern))
+        raise FileNotFoundError("No files found matching {}".format(fullPathRegex))
     return pdesignFile
 
 

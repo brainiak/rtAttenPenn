@@ -11,7 +11,7 @@ if [ $dryrun = true ]; then
   echo "DRY RUN..."
 fi
 echo "subject number is $subjectNum, day $dayNum, run $runNum"
-subject_save_path=$project_path/data/subject$subjectNum/day$dayNum/reg
+subject_save_path=$data_path/subject$subjectNum/day$dayNum/reg
 # move into subjects directory
 mkdir -pv $subject_save_path
 cd $subject_save_path

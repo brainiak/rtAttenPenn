@@ -46,8 +46,12 @@ class RegistrationPane extends React.Component {
 
   render() {
     var errorStr
+    var day1Input
     if (this.props.error != '') {
       errorStr = "Error: " + this.props.error
+    }
+    if (this.props.getRegConfigItem('dayNum') != 1) {
+      day1Input = "disabled"
     }
 
     return (
@@ -56,7 +60,7 @@ class RegistrationPane extends React.Component {
           Image Directory: {this.props.getRegConfigItem('scanFolder')}
         </p>
         <div className="table">
-          <p className="row">
+          <p className={`row ${day1Input}`}>
             <label className="cell10p">Highres</label>
               <label className="cell5p">Scan#:</label>
               <input className="cell5p" size="5"
@@ -97,7 +101,7 @@ class RegistrationPane extends React.Component {
         </div>
         <hr />
         <div className="table">
-          <p className="row">
+          <p className={`row ${day1Input}`}>
             <label className="cell10p">SkullStrip</label>
             <label className="cell5p">f param:</label>
             <input className="cell5p" size="5"

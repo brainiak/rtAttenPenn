@@ -64,7 +64,9 @@ class RtfMRIClient():
             self.endSession()
         except Exception as err:
             logging.log(logging.ERROR, "Client exception: %s", str(err))
-        self.close()
+            raise err
+        finally:
+            self.close()
 
     def initSession(self, cfg):
         self.cfg = cfg

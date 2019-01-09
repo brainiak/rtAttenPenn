@@ -272,6 +272,7 @@ class WebSocketFileWatcher:
     @staticmethod
     def on_message(client, message):
         fileWatcher = WebSocketFileWatcher.fileWatcher
+        response = {'status': 400, 'error': 'unhandled request'}
         try:
             request = json.loads(message)
             cmd = request['cmd']
@@ -291,6 +292,7 @@ class WebSocketFileWatcher:
                     response = {'status': 200}
             elif cmd == "watch":
                 filename = request['filename']
+                timeout = request['timeout']
                 logging.log(DebugLevels.L3, "watch: %s", filename)
                 if filename is None:
                     response = {'status': 400, 'error': 'missing filename'}
@@ -299,12 +301,16 @@ class WebSocketFileWatcher:
                     response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
                     logging.log(logging.WARNING, "Watch: Non-allowed file %s", filename)
                 else:
-                    fileWatcher.waitForFile(filename)
-                    with open(filename, 'rb') as fp:
-                        data = fp.read()
-                    b64Data = b64encode(data)
-                    b64StrData = b64Data.decode('utf-8')
-                    response = {'status': 200, 'data': b64StrData}
+                    retVal = fileWatcher.waitForFile(filename, timeout=timeout)
+                    if retVal is None:
+                        response = {'status': 400, 'error': 'Timeout waiting for file {}'.format(filename)}
+                        logging.log(logging.WARNING, "Timeout waiting for file {}".format(filename))
+                    else:
+                        with open(filename, 'rb') as fp:
+                            data = fp.read()
+                        b64Data = b64encode(data)
+                        b64StrData = b64Data.decode('utf-8')
+                        response = {'status': 200, 'data': b64StrData}
             elif cmd == "get":
                 filename = request['filename']
                 if not os.path.isabs(filename):

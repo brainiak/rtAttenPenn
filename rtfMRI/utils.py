@@ -6,6 +6,7 @@ import os
 import io
 import time
 import glob
+import shutil
 import subprocess
 import logging
 import numpy as np  # type: ignore
@@ -96,6 +97,16 @@ def dateStr30(timeval):
     return time.strftime("%Y%m%dT%H%M%S", timeval)
 
 
+def copyFileWildcard(src, dst):
+    count = 0
+    for filename in glob.glob(src):
+        count += 1
+        shutil.copy(filename, dst)
+    if count == 0:
+        raise FileNotFoundError("No files matching pattern {}".format(src))
+    return
+
+
 class DebugLevels:
     L1  = 19 # most verbose
     L2  = 18
@@ -120,7 +131,7 @@ def installLoggers(consoleLevel, fileLevel, filename=None):
         if dir not in (None, ''):
             if not os.path.exists(dir):
                 os.makedirs(dir)
-                
+
     for handler in list(logger.handlers):
         if isinstance(handler, logging.FileHandler):
             # print("Has FileHandler")

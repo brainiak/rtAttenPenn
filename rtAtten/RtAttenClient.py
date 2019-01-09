@@ -7,7 +7,6 @@ import asyncio
 import numpy as np  # type: ignore
 import datetime
 import logging
-import pathlib
 from dateutil import parser
 from pathlib import Path
 import rtfMRI.utils as utils
@@ -16,11 +15,15 @@ from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
-from rtfMRI.utils import dateStr30, DebugLevels
+from rtfMRI.utils import dateStr30, DebugLevels, copyFileWildcard, loadMatFile
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError, StateError
-from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex
+from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex, findPatternsDesignFile
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
+
+
+moduleDir = os.path.dirname(os.path.realpath(__file__))
+patternsDir = os.path.join(moduleDir, 'patterns')
 
 
 class RtAttenClient(RtfMRIClient):
@@ -109,7 +112,15 @@ class RtAttenClient(RtfMRIClient):
         subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
         self.dirs.dataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
         print("Mask and patterns files being read from: {}".format(self.dirs.dataDir))
+        if self.useWeb:
+            # Remote fileWatcher dataDir will be the same, but locally we want
+            # the data directory to be a subset of a predefined output directory.
+            self.dirs.remoteDataDir = self.dirs.dataDir
+            self.dirs.dataDir = os.path.normpath(self.webInterface.outputDir + self.dirs.dataDir)
         self.dirs.serverDataDir = os.path.join(cfg.session.serverDataDir, subjectDayDir)
+        if os.path.abspath(self.dirs.serverDataDir):
+            # strip the leading separator to make it a relative path
+            self.dirs.serverDataDir = self.dirs.serverDataDir.lstrip(os.sep)
         if not os.path.exists(self.dirs.serverDataDir):
             os.makedirs(self.dirs.serverDataDir)
         if cfg.session.buildImgPath:
@@ -128,8 +139,6 @@ class RtAttenClient(RtfMRIClient):
             self.dirs.imgDir = os.path.join(cfg.session.imgDir, imgDirName)
         else:
             self.dirs.imgDir = cfg.session.imgDir
-        if not os.path.exists(self.dirs.imgDir):
-            os.makedirs(self.dirs.imgDir)
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
         if self.useWeb:
             assert self.webInterface is not None
@@ -142,6 +151,8 @@ class RtAttenClient(RtfMRIClient):
                                         cfg.session.watchFilePattern,
                                         cfg.session.minExpectedDicomSize)
         else:
+            if not os.path.exists(self.dirs.imgDir):
+                os.makedirs(self.dirs.imgDir)
             assert self.fileWatcher is not None
             self.fileWatcher.initFileNotifier(self.dirs.imgDir,
                                               cfg.session.watchFilePattern,
@@ -149,21 +160,26 @@ class RtAttenClient(RtfMRIClient):
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
-        maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
-        if self.useWeb and cfg.session.getMasksPatternsFromCR:
+        if self.useWeb and cfg.session.getMasksFromControlRoom:
             # get the mask from remote site
-            temp = self.webInterface.getFile(maskFileName)
+            maskFileName = os.path.join(self.dirs.remoteDataDir, maskFileName)
+            logging.info("Getting Remote Mask file: %s", maskFileName)
+            maskData, errVal = self.webInterface.getFile(maskFileName)
+            if errVal is not None:
+                self.webInterface.setUserError("Get Remote Mask file {}: {}".format(maskFileName, errVal))
+                raise errVal
         else:
             # read mask locally
-            temp = utils.loadMatFile(maskFileName)
-        roi = temp.mask
+            maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
+            logging.info("Getting Local Mask file: %s", maskFileName)
+            maskData = utils.loadMatFile(maskFileName)
+        roi = maskData.mask
         assert type(roi) == np.ndarray
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
         cfg.session.roiInds = utils.find(roi)
         cfg.session.roiDims = roi.shape
         cfg.session.nVoxels = cfg.session.roiInds.size
         print("Using mask {}".format(maskFileName))
-
         super().initSession(cfg)
 
     def doRuns(self):
@@ -174,9 +190,35 @@ class RtAttenClient(RtfMRIClient):
                 return
 
     def runRun(self, runId, scanNum=-1):
-        if self.useWeb and self.cfg.session.getMasksPatternsFromCR:
-            fileRegex = getPatternsFileRegex(self.cfg.session, runId, addRunDir=True)
-            patterns = self.webInterface.getNewestFile(fileRegex)
+        # Setup output directory and output file
+        runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(runId))
+        if not os.path.exists(runDataDir):
+            os.makedirs(runDataDir)
+        classOutputDir = os.path.join(runDataDir, 'classoutput')
+        if not os.path.exists(classOutputDir):
+            os.makedirs(classOutputDir)
+        outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
+
+        # Get patterns design file for this run
+        if self.useWeb:
+            if self.cfg.session.getPatternsFromControlRoom:
+                fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId, addRunDir=True)
+                logging.info("Getting Remote Patterns file: %s", fileRegex)
+                patterns, errVal = self.webInterface.getNewestFile(fileRegex)
+                if errVal is not None:
+                    fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId)
+                    logging.info("Getting Remote Patterns file: %s", fileRegex)
+                    patterns, errVal = self.webInterface.getNewestFile(fileRegex)
+                    if errVal is not None:
+                        self.webInterface.setUserError("Get Remote Patterns Design file {}: {}".format(fileRegex, errVal))
+                        raise errVal
+            else:
+                # Using pre-configured patterns file, and copy them to the directory
+                patternsSource = os.path.join(patternsDir, 'patternsdesign_'+str(runId)+'*')
+                copyFileWildcard(patternsSource, runDataDir)
+                patternsFilename = findPatternsDesignFile(self.cfg.session, self.dirs.dataDir, runId)
+                logging.info("Using Local Patterns file: %s", patternsFilename)
+                patterns = loadMatFile(patternsFilename)
         else:
             patterns = getLocalPatternsFile(self.cfg.session, runId)
         run = createRunConfig(self.cfg.session, patterns, runId, scanNum)
@@ -208,14 +250,6 @@ class RtAttenClient(RtfMRIClient):
                 raise ValidationError("Insufficient config runs or validationDataFiles specified: "
                                       "runId {}, validationData idx {}", runId, idx)
 
-        # Setup output directory and output file
-        runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(run.runId))
-        if not os.path.exists(runDataDir):
-            os.makedirs(runDataDir)
-        classOutputDir = os.path.join(runDataDir, 'classoutput')
-        if not os.path.exists(classOutputDir):
-            os.makedirs(classOutputDir)
-        outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
 
         # ** Experimental Parameters ** #
         run.seed = time.time()
@@ -387,7 +421,10 @@ class RtAttenClient(RtfMRIClient):
             self.printFirstFilename = False
         if self.useWeb:
             assert self.webInterface is not None
-            data = self.webInterface.watchFile(specificFileName)
+            data, errVal = self.webInterface.watchFile(specificFileName)
+            if errVal is not None:
+                self.webInterface.setUserError("getNextTR {}: {}".format(specificFileName, errVal))
+                raise errVal
         else:
             self.fileWatcher.waitForFile(specificFileName)
             data = self.loadImageData(specificFileName)

@@ -24,7 +24,7 @@ def localCreateRegConfig(cfg):
     regGlobals.runNum = cfg.session.Runs[0]
     regGlobals.highresScan = 5  # TODO load from request
     regGlobals.functionalScan = 7  # TODO load from request
-    regGlobals.project_path = "/tmp/registration"
+    regGlobals.data_path = "/tmp/registration"
     regGlobals.roi_name = "wholebrain_mask"
     scanDate = dateutil.parser.parse(cfg.session.date)
     regGlobals.subjName = scanDate.strftime("%m%d%Y") + str(regGlobals.runNum) + \

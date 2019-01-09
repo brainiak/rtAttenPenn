@@ -1,4 +1,4 @@
-function makemask_day1(subjectNum,dayNum, project_dir)
+function makemask_day1(subjectNum,dayNum, data_dir)
 %%
 projectName = 'rtAttenPenn';
 
@@ -11,10 +11,10 @@ if strcmp(class(dayNum), 'char')
 end
 
 current_dir = pwd
-save_dir = fullfile(project_dir, ['/data/subject' num2str(subjectNum), '/day' num2str(dayNum)]);
+save_dir = fullfile(data_dir, ['/subject' num2str(subjectNum), '/day' num2str(dayNum)]);
 process_dir = [save_dir '/' 'reg' '/'];
 roi_name = 'wholebrain_mask';
-addpath(genpath(project_dir));
+addpath(genpath(data_dir));
 
 cd(process_dir);
 %% create mask file for real-time dicom files
@@ -55,14 +55,14 @@ end
 
 checkMask = 0;
 if checkMask
-    plot3Dbrain(mask,[], 'mask')    
+    plot3Dbrain(mask,[], 'mask')
     plot3Dbrain(mask_brain, [], 'mask_brain')
 end
 % use the mask that has been checked there's nothing outside the functional
 % brain
 mask=mask_brain;
 %save anatomical mask
-save([project_dir '/data/subject' num2str(subjectNum) '/day' num2str(dayNum) '/mask_' num2str(subjectNum) '_' num2str(dayNum) '_nii'],'mask');
+save([data_dir '/subject' num2str(subjectNum) '/day' num2str(dayNum) '/mask_' num2str(subjectNum) '_' num2str(dayNum)],'mask');
 fprintf('Done with mask creation\n');
 % if cd into the directory, cd out of it back to the general exp folder
 cd(current_dir);

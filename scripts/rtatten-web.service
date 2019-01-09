@@ -1,0 +1,15 @@
+# copy to /usr/lib/systemd/system
+# systemctl enable rtatten-server
+[Unit]
+Description=rtAttenPenn Web Interface
+After=network.target
+
+[Service]
+User=gwallace
+Group=gwallace
+WorkingDirectory=/home/gwallace/src/github/rtAttenPenn
+ExecStart=/home/gwallace/src/github/rtAttenPenn/scripts/start-web.sh
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

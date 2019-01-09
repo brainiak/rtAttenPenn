@@ -11,8 +11,8 @@ if [ $dryrun = true ]; then
   echo "DRY RUN..."
 fi
 echo "subject number is $subjectNum, day $dayNum, run $runNum"
-subject_save_path=$project_path/data/subject$subjectNum/day$dayNum/reg
-subject_day1_path=$project_path/data/subject$subjectNum/day1/reg
+subject_save_path=$data_path/subject$subjectNum/day$dayNum/reg
+subject_day1_path=$data_path/subject$subjectNum/day1/reg
 # move into subjects directory
 mkdir -pv $subject_save_path
 cd $subject_save_path
@@ -49,7 +49,7 @@ if [ -z $dryrun ] || [ $dryrun != true ]; then
 fi
 
 echo="copying this version for safe keeping!"
-cp $code_path/reg_epi_day2.sh $project_path/data/subject$subjectNum/usedscripts/reg_epi_day2_$dayNum'.'sh
+cp $code_path/reg_epi_day2.sh $data_path/subject$subjectNum/usedscripts/reg_epi_day2_$dayNum'.'sh
 
 
-cd $project_path
+cd $data_path

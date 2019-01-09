@@ -55,7 +55,8 @@ button {
 }
 .inputfile {
   font-size: 1em;
-  background-color: #BBC8D5;
+  background-color: transparent;
+  color: transparent;
   margin: 2px 8px 4px 4px;
 }
 #screen {
@@ -82,4 +83,8 @@ button {
 }
 .hidden {
   visibility: hidden;
+}
+.disabled {
+  pointer-events:none;
+  opacity: 0.5;
 }

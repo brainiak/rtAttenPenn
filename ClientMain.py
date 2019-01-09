@@ -42,7 +42,10 @@ def ClientMain(params):
             client = RtAttenClient()
         else:
             raise InvocationError("Unsupported model %s" % (params.cfg.experiment.model))
-        client.runSession(params.addr, params.port, params.cfg)
+        try:
+            client.runSession(params.addr, params.port, params.cfg)
+        except Exception as err:
+            print(err)
 
     if params.run_local is True:
         stopLocalServer(params)

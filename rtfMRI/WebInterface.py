@@ -50,6 +50,7 @@ class Web():
     ''' Cloud service web-interface that is the front-end to the data processing. '''
     app = None
     httpServer = None
+    outputDir = ''
     # Arrays of WebSocket connections that have been established from client windows
     wsSubjConns = []  # type: ignore
     wsUserConns = []  # type: ignore
@@ -134,10 +135,10 @@ class Web():
             Web.sendDataMessage(json.dumps(cmd), timeout=2)
         except Exception as err:
             # TODO set web interface error
-            raise err
+            return None, err
         if asRawBytes is True:
-            return Web.fileData
-        return Web.formatFileData(filename, Web.fileData)
+            return Web.fileData, None
+        return Web.formatFileData(filename, Web.fileData), None
 
     @staticmethod
     def getNewestFile(filename, asRawBytes=False):
@@ -146,21 +147,23 @@ class Web():
             Web.sendDataMessage(json.dumps(cmd), timeout=2)
         except Exception as err:
             # TODO set web interface error
-            raise err
+            return None, err
         if asRawBytes is True:
-            return Web.fileData
-        return Web.formatFileData(filename, Web.fileData)
+            return Web.fileData, None
+        return Web.formatFileData(filename, Web.fileData), None
 
     @staticmethod
-    def watchFile(filename, timeout=3):
-        cmd = {'cmd': 'watch', 'filename': filename}
+    def watchFile(filename,  asRawBytes=False, timeout=3):
+        cmd = {'cmd': 'watch', 'filename': filename, 'timeout': timeout}
         # Note: sendDataMessage waits for reply and sets results in Web.fileData
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout)
         except Exception as err:
             # TODO set web interface error
-            raise err
-        return Web.formatFileData(filename, Web.fileData)
+            return None, err
+        if asRawBytes is True:
+            return Web.fileData, None
+        return Web.formatFileData(filename, Web.fileData), None
 
     @staticmethod
     def initWatch(dir, filePattern, minFileSize):

@@ -6,12 +6,12 @@
 # 2. register to standard space
 # 3. invert transformation
 
-source globals.sh   
+source globals.sh
 if [ $dryrun = true ]; then
   echo "DRY RUN..."
 fi
 echo "subject number is $subjectNum, day $dayNum, run $runNum"
-subject_save_path=$project_path/data/subject$subjectNum/day$dayNum/reg
+subject_save_path=$data_path/subject$subjectNum/day$dayNum/reg
 # move into subjects directory
 mkdir -pv $subject_save_path
 cd $subject_save_path
@@ -57,7 +57,7 @@ if [ -z $dryrun ] || [ $dryrun != true ]; then
 fi
 
 echo "copying this version of file into subject folder for safe keeping!"
-mkdir -pv $project_path/data/subject$subjectNum/usedscripts/
-cp $code_path/reg_epi.sh $project_path/data/subject$subjectNum/usedscripts/reg_epi.sh
+mkdir -pv $data_path/subject$subjectNum/usedscripts/
+cp $code_path/reg_epi.sh $data_path/subject$subjectNum/usedscripts/reg_epi.sh
 cd $code_path
 echo "done!, moving into project path"

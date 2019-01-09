@@ -12,7 +12,7 @@ if [ $dryrun = true ]; then
   echo "DRY RUN..."
 fi
 echo "subject number is $subjectNum, day $dayNum, run $runNum"
-subject_save_path=$project_path/data/subject$subjectNum/day$dayNum/reg
+subject_save_path=$data_path/subject$subjectNum/day$dayNum/reg
 # move into subjects directory
 cd $subject_save_path
 echo "moving into folder: $subject_save_path"
@@ -37,7 +37,7 @@ fi
 echo "running matlab script to make mask"
 cd $code_path
 if [ -z $dryrun ] || [ $dryrun != true ]; then
-  ./makemask_nii $subjectNum $dayNum $project_path
+  ./makemask_nii $subjectNum $dayNum $data_path
   #matlab -nodesktop -nodisplay -r "try; makemask_day_nii($subjectNum,$dayNum); catch me; fprintf('%s / %s\n', me.identifier, me.message); end;exit"
 fi
 echo "done!"

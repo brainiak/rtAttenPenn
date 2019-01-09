@@ -84,7 +84,7 @@ class TestFileWatcher:
         # Try to initialize file watcher with non-allowed directory
         try:
             Web.initWatch('/', '*', 0)
-        except RequestError as err:
+        except RequestError as error:
             # we expect an error because '/' directory not allowed
             assert True
         else:
@@ -93,33 +93,23 @@ class TestFileWatcher:
         # Initialize with allowed directory
         try:
             Web.initWatch(testDir, '*', 0)
-        except RequestError as err:
+        except RequestError as error:
             # we expect an error because '/' directory not allowed
             assert False
 
         with open(dicomTestFilename, 'rb') as fp:
             data = fp.read()
-        Web.watchFile(dicomTestFilename)
-        assert data == Web.fileData
-        Web.getFile(dicomTestFilename)
-        assert data == Web.fileData
-        Web.getNewestFile(dicomTestFilename)
-        assert data == Web.fileData
+        webData, err = Web.watchFile(dicomTestFilename, asRawBytes=True)
+        assert(data == webData and err is None)
+        webData, err = Web.getFile(dicomTestFilename, asRawBytes=True)
+        assert(data == webData and err is None)
+        webData, err = Web.getNewestFile(dicomTestFilename, asRawBytes=True)
+        assert(data == webData and err is None)
 
         # Try to get a non-allowed file
-        try:
-            Web.getFile('/tmp/file.nope')
-        except RequestError as err:
-            # we expect an error because *.nope files are not allowed
-            assert True
-        else:
-            assert False
+        webData, err = Web.getFile('/tmp/file.nope')
+        assert(err is not None and webData is None)
 
         # try from a non-allowed directory
-        try:
-            Web.getFile('/nope/file.dcm')
-        except RequestError as err:
-            # we expect an error because /nope directory not allowed
-            assert True
-        else:
-            assert False
+        webData, err = Web.getFile('/nope/file.dcm')
+        assert(err is not None and webData is None)

@@ -20,8 +20,10 @@ class RtAtten extends React.Component {
     super(props)
     this.state = {
       config: {session: {}},
+      configFileName: 'Default',
       regConfig: {fParam: '0.6'},
       regInfo: {},
+      runStatus: '',
       connected: false,
       error: '',
       logLines: [],  // image classification log
@@ -30,6 +32,7 @@ class RtAtten extends React.Component {
     this.registrationTabIndex = 2
     this.webSocket = null
     this.onTabSelected = this.onTabSelected.bind(this);
+    this.setConfigFileName = this.setConfigFileName.bind(this);
     this.setConfig = this.setConfig.bind(this);
     this.getConfigItem = this.getConfigItem.bind(this);
     this.setConfigItem = this.setConfigItem.bind(this);
@@ -42,6 +45,7 @@ class RtAtten extends React.Component {
     this.stopRun = this.stopRun.bind(this);
     this.uploadImages = this.uploadImages.bind(this);
     this.createWebSocket = this.createWebSocket.bind(this)
+    this.formatConfigValues = this.formatConfigValues.bind(this)
     this.createWebSocket()
   }
 
@@ -84,7 +88,7 @@ class RtAtten extends React.Component {
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
     regGlobals.fParam = this.getRegConfigItem('fParam')
-    regGlobals.project_path = cfg.session.dataDir
+    regGlobals.data_path = cfg.session.dataDir
     regGlobals.dryrun = cfg.session.registrationDryRun.toString().toLowerCase()
     regGlobals.roi_name = "wholebrain_mask"
     if (cfg.session.subjectName == undefined) {
@@ -99,7 +103,24 @@ class RtAtten extends React.Component {
     }
     var dicomFolder = dateStrYYMD + '.' + regGlobals.subjName + '.' + regGlobals.subjName
     regGlobals.scanFolder = path.join(cfg.session.imgDir, dicomFolder)
+    // Set tag line after day 1 only settings
+    if (regGlobals.dayNum != 1) {
+      var info = { highres: "(Day 1 only)",
+                   skullstrip: "(Day 1 only)" }
+      var regInfo = Object.assign({}, this.state.regInfo, info)
+      this.setState({regInfo: regInfo})
+    } else if (this.state.regConfig.dayNum != regGlobals.dayNum && regGlobals.dayNum == 1) {
+      // switched back to day 1
+      var info = { highres: "", skullstrip: "" }
+      var regInfo = Object.assign({}, this.state.regInfo, info)
+      this.setState({regInfo: regInfo})
+    }
     this.setState({regConfig: regGlobals})
+
+  }
+
+  setConfigFileName(filename) {
+    this.setState({configFileName: filename})
   }
 
   setConfig(newConfig) {
@@ -128,6 +149,10 @@ class RtAtten extends React.Component {
         }
       }
     }
+  }
+
+  clearRunStatus(){
+    this.setState({runStatus: ''})
   }
 
   getRegConfigItem(name) {
@@ -163,7 +188,7 @@ class RtAtten extends React.Component {
     this.setState({regLines: []})
     this.setState({error: ''})
 
-    if (this.state.regConfig.highresScan == '') {
+    if (this.state.regConfig.dayNum == 1 && this.state.regConfig.highresScan == '') {
       this.setState({error: 'Must specify Highres Scan value'})
       return
     }
@@ -188,6 +213,17 @@ class RtAtten extends React.Component {
     this.setState({logLines: []})
     this.setState({error: ''})
 
+    this.formatConfigValues()
+    this.webSocket.send(JSON.stringify({cmd: 'run', config: this.state.config}))
+  }
+
+  stopRun() {
+    this.webSocket.send(JSON.stringify({cmd: 'stop'}))
+  }
+
+  formatConfigValues() {
+    // After user changes on the web page we need to convert some values from strings
+    // First format Runs and ScanNums to be numbers not strings
     var runs = this.getConfigItem('Runs')
     var scans = this.getConfigItem('ScanNums')
     if (! Array.isArray(runs) || ! Array.isArray(scans)) {
@@ -213,11 +249,43 @@ class RtAtten extends React.Component {
     this.setConfigItem('Runs', runs)
     this.setConfigItem('ScanNums', scans)
 
-    this.webSocket.send(JSON.stringify({cmd: 'run', config: this.state.config}))
-  }
-
-  stopRun() {
-    this.webSocket.send(JSON.stringify({cmd: 'stop'}))
+    // Next change all true/false strings to booleans
+    // and change all number strings to numbers
+    for (let sectionName in this.state.config) {
+      var section = this.state.config[sectionName]
+      for (let key in section) {
+        var modified = false
+        if (typeof section[key] === 'string') {
+          var value = section[key]
+          // check if the string should be a boolean
+          switch(value.toLowerCase()) {
+            case 'false':
+            case 'flase':
+            case 'fales':
+            case 'flsae':
+              section[key] = false
+              modified = true
+              break;
+            case 'true':
+            case 'ture':
+            case 'treu':
+              section[key] = true
+              modified = true
+              break;
+          }
+          // check if the string should be a number
+          var regex = /^\d+$/;
+          if (regex.test(value) == true) {
+            section[key] = parseInt(value, 10)
+            modified = true
+          }
+        }
+      }
+      if (modified) {
+        var revConfig = Object.assign({}, this.state.config, { [sectionName]: section })
+        this.setState({config: revConfig})
+      }
+    }
   }
 
   createWebSocket() {
@@ -260,6 +328,12 @@ class RtAtten extends React.Component {
         var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
         var regLines = this.state.regLines.concat([newLine])
         this.setState({regLines: regLines})
+      } else if (cmd == 'runStatus') {
+        var status = request['status']
+        if (status == undefined || status.length == 0) {
+          status = ''
+        }
+        this.setState({runStatus: status})
       } else if (cmd == 'regStatus') {
         var regType = request['type']
         var status = request['status']
@@ -301,21 +375,26 @@ class RtAtten extends React.Component {
          elem(StatusPane,
            {logLines: this.state.logLines,
             config: this.state.config,
+            connected: this.state.connected,
+            runStatus: this.state.runStatus,
             error: this.state.error,
             startRun: this.startRun,
             stopRun: this.stopRun,
             setConfig: this.setConfig,
             getConfigItem: this.getConfigItem,
             setConfigItem: this.setConfigItem,
+            clearRunStatus: this.clearRunStatus,
            }
          ),
        ),
        elem(TabPanel, {},
          elem(SettingsPane,
            {config: this.state.config,
+            configFileName: this.state.configFileName,
             setConfig: this.setConfig,
             getConfigItem: this.getConfigItem,
             setConfigItem: this.setConfigItem,
+            setConfigFileName: this.setConfigFileName,
            }
          ),
        ),
