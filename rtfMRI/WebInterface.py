@@ -132,7 +132,7 @@ class Web():
     def getFile(filename, asRawBytes=False):
         cmd = {'cmd': 'get', 'filename': filename}
         try:
-            Web.sendDataMessage(json.dumps(cmd), timeout=2)
+            Web.sendDataMessage(json.dumps(cmd), timeout=5)
         except Exception as err:
             # TODO set web interface error
             return None, err
@@ -144,7 +144,7 @@ class Web():
     def getNewestFile(filename, asRawBytes=False):
         cmd = {'cmd': 'getNewest', 'filename': filename}
         try:
-            Web.sendDataMessage(json.dumps(cmd), timeout=2)
+            Web.sendDataMessage(json.dumps(cmd), timeout=5)
         except Exception as err:
             # TODO set web interface error
             return None, err
@@ -153,7 +153,7 @@ class Web():
         return Web.formatFileData(filename, Web.fileData), None
 
     @staticmethod
-    def watchFile(filename,  asRawBytes=False, timeout=3):
+    def watchFile(filename,  asRawBytes=False, timeout=5):
         cmd = {'cmd': 'watch', 'filename': filename, 'timeout': timeout}
         # Note: sendDataMessage waits for reply and sets results in Web.fileData
         try:

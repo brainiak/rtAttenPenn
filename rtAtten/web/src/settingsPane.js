@@ -53,10 +53,15 @@ class SettingsPane extends React.Component {
   }
 
   textInputField(props) {
-    return elem('p', { key: props.name },
-      props.name + ': ',
-      elem('input', Object.assign(props, { value: this.props.config[props.section][props.name], onChange: this.inputOnChange })),
-    )
+    return (
+      <div key={props.name} className="row">
+        <label className="cell10p">{props.name}:</label>
+        <input className="cell5p" size="20"
+          {...props}
+          value={this.props.config[props.section][props.name]}
+          onChange={this.inputOnChange} />
+      </div>
+    );
   }
 
   settingsInputForm(props) {
@@ -66,17 +71,18 @@ class SettingsPane extends React.Component {
         this.textInputField({ name: k, section: section })
       )
       formSections.push(
-        elem('fieldset', { key: section },
-          elem('legend', {}, section),
-          subform,
-        )
-      )
+        <fieldset key={section}>
+          <legend>{section}</legend>
+          <div className="table">{subform}</div>
+        </fieldset>
+      );
     }
-    const form =
-      elem('fieldset', {},
-        elem('legend', {}, 'Configurations'),
-        formSections,
-      )
+    const form = (
+      <fieldset>
+        <legend>Configurations</legend>
+        <div>{formSections}</div>
+      </fieldset>
+    );
     return form
   }
 

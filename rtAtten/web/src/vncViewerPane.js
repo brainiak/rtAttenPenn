@@ -38,6 +38,7 @@ class VNCViewerPane extends React.Component {
     this.disconnectedFromServer = this.disconnectedFromServer.bind(this)
     this.credentialsAreRequired = this.credentialsAreRequired.bind(this)
     this.updateDesktopName = this.updateDesktopName.bind(this)
+    this.reconnectToVnc = this.reconnectToVnc.bind(this)
     if (rfb == null) {
       initVncConnection(this.state.vncUrl)
     }
@@ -47,6 +48,11 @@ class VNCViewerPane extends React.Component {
     this.rfb.addEventListener("disconnect", this.disconnectedFromServer);
     this.rfb.addEventListener("credentialsrequired", this.credentialsAreRequired);
     this.rfb.addEventListener("desktopname", this.updateDesktopName);
+  }
+
+  reconnectToVnc() {
+    initVncConnection(this.state.vncUrl)
+    this.rfb = rfb
   }
 
   // When this function is called we have
@@ -82,7 +88,14 @@ class VNCViewerPane extends React.Component {
     return (
       <div>
         <div style={topBarStyle}>
-            <div style={statusTextStyle}>{this.state.status}</div>
+          <div style={statusTextStyle}>
+            {this.state.status}
+            <button
+              style={{float: "right", margin: "0px 0px 0px 0px", fontSize: "0.75em"}}
+              onClick={this.reconnectToVnc}>
+            Reconnnect
+            </button>
+          </div>
         </div>
       </div>
     )

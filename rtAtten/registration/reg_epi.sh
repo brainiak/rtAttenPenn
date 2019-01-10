@@ -7,6 +7,8 @@
 # 3. invert transformation
 
 source globals.sh
+source movewindow.sh
+
 if [ $dryrun = true ]; then
   echo "DRY RUN..."
 fi
@@ -53,7 +55,8 @@ then
 fi
 if [ -z $dryrun ] || [ $dryrun != true ]; then
   bet $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz -R -m -v
-  export DISPLAY=localhost:1; fsleyes $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz $functionalFN'_'brain_mask.nii.gz &
+  export DISPLAY=localhost:1; $VIEWCMD $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz $functionalFN'_'brain_mask.nii.gz &
+  move_window $VIEWCMD
 fi
 
 echo "copying this version of file into subject folder for safe keeping!"
