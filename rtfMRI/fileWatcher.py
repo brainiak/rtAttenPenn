@@ -276,7 +276,7 @@ class WebSocketFileWatcher:
         try:
             request = json.loads(message)
             cmd = request['cmd']
-            if cmd == "initWatch":
+            if cmd == 'initWatch':
                 dir = request['dir']
                 filePattern = request['filePattern']
                 minFileSize = request['minFileSize']
@@ -290,7 +290,7 @@ class WebSocketFileWatcher:
                 else:
                     fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
                     response = {'status': 200}
-            elif cmd == "watch":
+            elif cmd == 'watchFile':
                 filename = request['filename']
                 timeout = request['timeout']
                 logging.log(DebugLevels.L3, "watch: %s", filename)
@@ -311,7 +311,7 @@ class WebSocketFileWatcher:
                         b64Data = b64encode(data)
                         b64StrData = b64Data.decode('utf-8')
                         response = {'status': 200, 'data': b64StrData}
-            elif cmd == "get":
+            elif cmd == 'getFile':
                 filename = request['filename']
                 if not os.path.isabs(filename):
                     # relative path to the watch dir
@@ -332,15 +332,15 @@ class WebSocketFileWatcher:
                     b64Data = b64encode(data)
                     b64StrData = b64Data.decode('utf-8')
                     response = {'status': 200, 'data': b64StrData}
-            elif cmd == "getNewest":
+            elif cmd == 'getNewestFile':
                 filename = request['filename']
-                logging.log(DebugLevels.L3, "getNewest: %s", filename)
+                logging.log(DebugLevels.L3, "getNewestFile: %s", filename)
                 if filename is None:
                     response = {'status': 400, 'error': 'missing filename'}
-                    logging.log(logging.WARNING, "GetNewest: Missing filename")
+                    logging.log(logging.WARNING, "getNewestFile: Missing filename")
                 elif WebSocketFileWatcher.validateRequestedFile(None, filename) is False:
                     response = {'status': 400, 'error': 'Non-allowed file {}'.format(filename)}
-                    logging.log(logging.WARNING, "GetNewest: Non-allowed file %s", filename)
+                    logging.log(logging.WARNING, "getNewestFile: Non-allowed file %s", filename)
                 else:
                     baseDir, filePattern = os.path.split(filename)
                     if not os.path.isabs(baseDir):
@@ -350,15 +350,46 @@ class WebSocketFileWatcher:
                     if filename is None or not os.path.exists(filename):
                         errStr = 'file not found: {}'.format(os.path.join(baseDir, filePattern))
                         response = {'status': 400, 'error': errStr}
-                        logging.log(logging.WARNING, "GetNewest: %s", errStr)
+                        logging.log(logging.WARNING, "getNewestFile: %s", errStr)
                     else:
                         with open(filename, 'rb') as fp:
                             data = fp.read()
                         b64Data = b64encode(data)
                         b64StrData = b64Data.decode('utf-8')
                         response = {'status': 200, 'data': b64StrData}
-            elif cmd == "ping":
+            elif cmd == 'ping':
                 response = {'status': 200}
+            elif cmd == 'putTextFile':
+                filename = request['filename']
+                text = request['data']
+                if filename is None:
+                    response = {'status': 400, 'error': 'missing filename field'}
+                elif text is None:
+                    response = {'status': 400, 'error': 'missing data field'}
+                elif WebSocketFileWatcher.validateRequestedFile(None, filename, textFileTypeOnly=True) is False:
+                    response = {'status': 400, 'error': 'PutTextFile: Non-allowed file {}'.format(filename)}
+                    logging.log(logging.WARNING, 'PutTextFile: Non-allowed file {}'.format(filename))
+                elif type(text) is not str:
+                    response = {'status': 400, 'error': 'Only text data allowed'}
+                    logging.log(logging.WARNING, "PutTextFile: Only text data allowed")
+                else:
+                    with open(filename, 'w+') as volFile:
+                        volFile.write(text)
+                    response = {'status': 200}
+            elif cmd == 'dataLog':
+                    filename = request['filename']
+                    logLine = request['logLine']
+                    if filename is None:
+                        response = {'status': 400, 'error': 'missing filename field'}
+                    elif logLine is None:
+                        response = {'status': 400, 'error': 'missing logLine field'}
+                    elif WebSocketFileWatcher.validateRequestedFile(None, filename, textFileTypeOnly=True) is False:
+                        response = {'status': 400, 'error': 'dataLog: Non-allowed file {}'.format(filename)}
+                        logging.log(logging.WARNING, 'dataLog: Non-allowed file {}'.format(filename))
+                    else:
+                        with open(filename, 'a+') as logFile:
+                            logFile.write(logLine + '\n')
+                        response = {'status': 200}
             else:
                 response = {'status': 400, 'error': 'Unrecognized command {}'.format(cmd)}
                 logging.log(logging.WARNING, "OnMessage: Unrecognized command %s", cmd)
@@ -370,14 +401,17 @@ class WebSocketFileWatcher:
         client.send(json.dumps(response))
 
     @staticmethod
-    def validateRequestedFile(dir, file):
+    def validateRequestedFile(dir, file, textFileTypeOnly=False):
         # Restrict requests to certain directories and file types
         if WebSocketFileWatcher.allowedDirs is None or WebSocketFileWatcher.allowedTypes is None:
             raise StateError('Allowed Directories or File Types is not set')
         if file is not None and file != '':
             fileDir, filename = os.path.split(file)
             fileExtension = Path(filename).suffix
-            if fileExtension not in WebSocketFileWatcher.allowedTypes:
+            if textFileTypeOnly:
+                if fileExtension != '.txt':
+                    return False
+            elif fileExtension not in WebSocketFileWatcher.allowedTypes:
                 return False
             if fileDir is not None and fileDir != '' and os.path.isabs(fileDir):
                 dirMatch = False

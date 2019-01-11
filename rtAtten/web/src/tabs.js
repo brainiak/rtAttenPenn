@@ -46,6 +46,7 @@ class RtAtten extends React.Component {
     this.uploadImages = this.uploadImages.bind(this);
     this.createWebSocket = this.createWebSocket.bind(this)
     this.formatConfigValues = this.formatConfigValues.bind(this)
+    this.clearRunStatus = this.clearRunStatus.bind(this)
     this.createWebSocket()
   }
 
@@ -315,7 +316,7 @@ class RtAtten extends React.Component {
         var config = request['value']
         this.setState({config: config})
         this.createRegConfig();
-      } else if (cmd == 'log') {
+      } else if (cmd == 'userLog') {
         var logItem = request['value'].trim()
         var itemPos = this.state.logLines.length + 1
         var newLine = elem('pre', { style: logLineStyle,  key: itemPos }, logItem)
@@ -352,7 +353,7 @@ class RtAtten extends React.Component {
         var regInfo = Object.assign({}, this.state.regInfo, { [uploadType]: progress })
         this.setState({regInfo: regInfo})
       } else if (cmd == 'error') {
-        console.log("## Got Error" + request['error'])
+        console.log("## Got Error: " + request['error'])
         this.setState({error: request['error']})
       } else {
         errStr = "Unknown message type: " + cmd

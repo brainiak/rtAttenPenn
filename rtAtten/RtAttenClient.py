@@ -194,10 +194,17 @@ class RtAttenClient(RtfMRIClient):
         runDataDir = os.path.join(self.dirs.dataDir, 'run' + str(runId))
         if not os.path.exists(runDataDir):
             os.makedirs(runDataDir)
-        classOutputDir = os.path.join(runDataDir, 'classoutput')
-        if not os.path.exists(classOutputDir):
-            os.makedirs(classOutputDir)
-        outputFile = open(os.path.join(runDataDir, 'fileprocessing_py.txt'), 'w+')
+        outputInfo = StructDict()
+        outputInfo.classOutputDir = os.path.join(runDataDir, 'classoutput')
+        if not os.path.exists(outputInfo.classOutputDir):
+            os.makedirs(outputInfo.classOutputDir)
+        outputInfo.logFilename = os.path.join(runDataDir, 'fileprocessing_py.txt')
+        outputInfo.logFileHandle = open(outputInfo.logFilename, 'w+')
+        outputInfo.webInterface = self.webInterface
+        if self.webInterface is not None:
+            remoteRunDataDir = os.path.join(self.dirs.remoteDataDir, 'run' + str(runId))
+            outputInfo.remoteClassOutputDir = os.path.join(remoteRunDataDir, 'classoutput')
+            outputInfo.remoteLogFilename = os.path.join(remoteRunDataDir, 'fileprocessing_py.txt')
 
         # Get patterns design file for this run
         if self.useWeb:
@@ -234,6 +241,7 @@ class RtAttenClient(RtfMRIClient):
                 if skipCheck is None or skipCheck is False:
                     resp = input('Files with this scan number already exist. Do you want to continue? Y/N [N]: ')
                     if resp.upper() != 'Y':
+                        outputInfo.logFileHandle.close()
                         return
             else:
                 logging.log(DebugLevels.L3, "Dicoms - waiting for")
@@ -250,7 +258,6 @@ class RtAttenClient(RtfMRIClient):
                 raise ValidationError("Insufficient config runs or validationDataFiles specified: "
                                       "runId {}, validationData idx {}", runId, idx)
 
-
         # ** Experimental Parameters ** #
         run.seed = time.time()
         if run.runId > 1:
@@ -260,7 +267,7 @@ class RtAttenClient(RtfMRIClient):
 
         runCfg = copy_toplevel(run)
         reply = self.sendCmdExpectSuccess(MsgEvent.StartRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+        outputReplyLines(reply.fields.outputlns, outputInfo)
 
         if self.cfg.session.replayMatFileMode and not self.cfg.session.rtData:
             # load previous patterns data for this run
@@ -273,13 +280,13 @@ class RtAttenClient(RtfMRIClient):
             blockGroupCfg = copy_toplevel(blockGroup)
             logging.log(DebugLevels.L4, "BlkGrp: %d", blockGroup.blkGrpId)
             reply = self.sendCmdExpectSuccess(MsgEvent.StartBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+            outputReplyLines(reply.fields.outputlns, outputInfo)
             for block in blockGroup.blocks:
                 self.id_fields.blockId = block.blockId
                 blockCfg = copy_toplevel(block)
                 logging.log(DebugLevels.L4, "Blk: %d", block.blockId)
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+                outputReplyLines(reply.fields.outputlns, outputInfo)
                 for TR in block.TRs:
                     self.id_fields.trId = TR.trId
                     fileNum = TR.vol + run.disdaqs // run.TRTime
@@ -327,7 +334,8 @@ class RtAttenClient(RtfMRIClient):
                         # TODO - add a message type that retrieves previous thread results
                         missedDeadline = True
                     else:
-                        outputPredictionFile(reply.fields.predict, classOutputDir)
+                        outputPredictionFile(reply.fields.predict, outputInfo)
+
                     # log the TR processing time
                     serverProcessTime = processingEndTime - processingStartTime
                     elapsedTRTime = 0.0
@@ -342,15 +350,16 @@ class RtAttenClient(RtfMRIClient):
                                      imageAcquisitionTime, pulseBroadcastTime,
                                      gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
-                    outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+                    outputReplyLines(reply.fields.outputlns, outputInfo)
                     if self.stopRun:
+                        outputInfo.logFileHandle.close()
                         return
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
-                outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+                outputReplyLines(reply.fields.outputlns, outputInfo)
             del self.id_fields.blockId
             reply = self.sendCmdExpectSuccess(MsgEvent.EndBlockGroup, blockGroupCfg)
-            outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+            outputReplyLines(reply.fields.outputlns, outputInfo)
             # self.retrieveBlkGrp(self.id_fields.sessionId, self.id_fields.runId, self.id_fields.blkGrpId)
         del self.id_fields.blkGrpId
         # Train the model for this Run
@@ -364,19 +373,20 @@ class RtAttenClient(RtfMRIClient):
         outlns = []
         outlns.append('*********************************************')
         outlns.append("Train Model {} {}".format(trainCfg.blkGrpRefs[0], trainCfg.blkGrpRefs[1]))
-        outputReplyLines(outlns, outputFile, self.webInterface)
+        outputReplyLines(outlns, outputInfo)
         processingStartTime = time.time()
         reply = self.sendCmdExpectSuccess(MsgEvent.TrainModel, trainCfg)
         processingEndTime = time.time()
         # log the model generation time
         logStr = "Model:{} training time {:.3f}s\n".format(runId, processingEndTime - processingStartTime)
         logging.log(DebugLevels.L3, logStr)
-        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+        outputReplyLines(reply.fields.outputlns, outputInfo)
         reply = self.sendCmdExpectSuccess(MsgEvent.EndRun, runCfg)
-        outputReplyLines(reply.fields.outputlns, outputFile, self.webInterface)
+        outputReplyLines(reply.fields.outputlns, outputInfo)
         if self.cfg.session.retrieveServerFiles:
             self.retrieveRunFiles(runId)
         del self.id_fields.runId
+        outputInfo.logFileHandle.close()
 
     def retrieveRunFiles(self, runId):
         if self.messaging.addr == 'localhost':
@@ -390,7 +400,6 @@ class RtAttenClient(RtfMRIClient):
         self.retrieveFile(model_filename)
 
     def retrieveFile(self, filename):
-
         fileInfo = StructDict()
         fileInfo.subjectNum = self.id_fields.subjectNum
         fileInfo.subjectDay = self.id_fields.subjectDay
@@ -465,7 +474,7 @@ class RtAttenClient(RtfMRIClient):
         fileInfo = StructDict()
         fileInfo.filePattern = filePattern
         reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)
-        outputReplyLines(reply.fields.outputlns, None, self.webInterface)
+        self.webInterface.userLog(reply.fields.outputlns)
 
     def ping(self):
         processingStartTime = time.time()
@@ -474,21 +483,26 @@ class RtAttenClient(RtfMRIClient):
         print("RTT: {:.2f}ms".format(processingEndTime-processingStartTime))
 
 
-def outputReplyLines(lines, filehandle, web):
+def outputReplyLines(lines, outputInfo):
     if lines is not None:
+        concatedLines = ''
         for line in lines:
             print(line)
-            if filehandle is not None:
-                filehandle.write(line + '\n')
-            if web is not None:
-                cmd = {'cmd': 'log', 'value': line}
-                web.sendUserMessage(json.dumps(cmd))
+            concatedLines += line + '\n'
+        if outputInfo.logFileHandle is not None:
+            outputInfo.logFileHandle.write(concatedLines)
+        if outputInfo.webInterface is not None:
+            outputInfo.webInterface.userLog(concatedLines)
+            # outputInfo.webInterface.dataLog(outputInfo.remoteLogFilename, concatedLines)
 
 
-def outputPredictionFile(predict, classOutputDir):
+def outputPredictionFile(predict, outputInfo):
     if predict is None or predict.vol is None:
         return
-    filename = os.path.join(classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
+    if outputInfo.webInterface is not None:
+        remoteFilename = os.path.join(outputInfo.remoteClassOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
+        outputInfo.webInterface.putTextFile(remoteFilename, str(predict.catsep))
+    filename = os.path.join(outputInfo.classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
     with open(filename, 'w+') as volFile:
         volFile.write(str(predict.catsep))
 

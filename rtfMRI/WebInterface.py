@@ -34,9 +34,9 @@ def fileDataCallback(client, message):
     Web.dataError = response.get('error')
     Web.fileData = b''
     if Web.dataStatus == 200:
-        if origCmd in ('ping', 'initWatch'):
+        if origCmd in ('ping', 'initWatch', 'putTextFile', 'dataLog'):
             pass
-        elif origCmd in ('get', 'getNewest', 'watch'):
+        elif origCmd in ('getFile', 'getNewestFile', 'watchFile'):
             assert 'data' in response
             Web.fileData = b64decode(response['data'])
         else:
@@ -130,7 +130,7 @@ class Web():
 
     @staticmethod
     def getFile(filename, asRawBytes=False):
-        cmd = {'cmd': 'get', 'filename': filename}
+        cmd = {'cmd': 'getFile', 'filename': filename}
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout=5)
         except Exception as err:
@@ -142,7 +142,7 @@ class Web():
 
     @staticmethod
     def getNewestFile(filename, asRawBytes=False):
-        cmd = {'cmd': 'getNewest', 'filename': filename}
+        cmd = {'cmd': 'getNewestFile', 'filename': filename}
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout=5)
         except Exception as err:
@@ -154,7 +154,7 @@ class Web():
 
     @staticmethod
     def watchFile(filename,  asRawBytes=False, timeout=5):
-        cmd = {'cmd': 'watch', 'filename': filename, 'timeout': timeout}
+        cmd = {'cmd': 'watchFile', 'filename': filename, 'timeout': timeout}
         # Note: sendDataMessage waits for reply and sets results in Web.fileData
         try:
             Web.sendDataMessage(json.dumps(cmd), timeout)
@@ -174,6 +174,29 @@ class Web():
             'minFileSize': minFileSize
         }
         Web.sendDataMessage(json.dumps(cmd), timeout=30)
+
+    @staticmethod
+    def putTextFile(filename, str):
+        cmd = {
+            'cmd': 'putTextFile',
+            'filename': filename,
+            'data': str,
+        }
+        Web.sendDataMessage(json.dumps(cmd), timeout=5)
+
+    @staticmethod
+    def dataLog(filename, logStr):
+        cmd = {
+            'cmd': 'dataLog',
+            'logLine': logStr,
+            'filename': filename,
+        }
+        Web.sendDataMessage(json.dumps(cmd), timeout=5)
+
+    @staticmethod
+    def userLog(logStr):
+        cmd = {'cmd': 'userLog', 'value': logStr}
+        Web.sendUserMessage(json.dumps(cmd))
 
     @staticmethod
     def setUserError(errStr):

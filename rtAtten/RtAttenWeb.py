@@ -7,6 +7,7 @@ import time
 import logging
 import json
 import re
+import traceback
 from pathlib import Path
 from rtfMRI.utils import DebugLevels
 from rtfMRI.StructDict import recurseCreateStructDict
@@ -131,6 +132,8 @@ class RtAttenWeb():
             response = {'cmd': 'runStatus', 'status': 'error'}
             RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
             RtAttenWeb.webInterface.setUserError("RunClient: {}".format(err))
+            traceback_str = ''.join(traceback.format_tb(err.__traceback__))
+            print(traceback_str)
         RtAttenWeb.client = None
 
     @staticmethod
