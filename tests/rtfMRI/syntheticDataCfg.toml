@@ -1,20 +1,21 @@
 [experiment]
 experimentName = "rtAttenPenn"
-experimentId = 2
 model = "rtAtten"
+experimentId = 1
 
 [session]
-rtData = true
 date = "01/01/2018"  # or "2018-03-01" or "03/01/2018" etc.
 sessionId = "20180101T000000"
 subjectName = "0101181_rtAttenPenn"
 subjectNum = 2
 subjectDay = 3
 sessionNum = 1
+advancedOptionDemarcation = 0
 dataDir = "/tmp/data/"
 imgDir = "/tmp/data/img/"
 buildImgPath = true
 serverDataDir = "data/server"
+rtData = true
 findNewestPatterns = true
 watchFilePattern = "*.mat"
 dicomNamePattern = "001_0000{}_000{}.mat"

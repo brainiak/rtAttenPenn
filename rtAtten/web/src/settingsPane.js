@@ -3,18 +3,29 @@ const toml = require('toml')
 
 const elem = React.createElement;
 
+const AdvancedBarStyle = {
+    backgroundColor: '#6e84a3',
+    color: 'white',
+    font: 'bold 12px Helvetica',
+    padding: '6px 5px 4px 5px',
+    borderBottom: '1px outset',
+    cursor: 'pointer',
+    textAlign: 'center',
+}
 
 class SettingsPane extends React.Component {
   constructor(props) {
     super(props)
     this.state = {
       tomlErrorMsg: '',
+      showAdvancedOptions: false,
     }
     this.tomlInputForm = this.tomlInputForm.bind(this)
     this.loadTomlFile = this.loadTomlFile.bind(this)
     this.inputOnChange = this.inputOnChange.bind(this)
     this.textInputField = this.textInputField.bind(this)
     this.settingsInputForm = this.settingsInputForm.bind(this)
+    this.toggleAdvancedOptions = this.toggleAdvancedOptions.bind(this)
   }
 
   tomlInputForm(props) {
@@ -66,10 +77,38 @@ class SettingsPane extends React.Component {
 
   settingsInputForm(props) {
     var formSections = []
+    var optionBar =
+      (
+        <div style={AdvancedBarStyle}
+          onClick={this.toggleAdvancedOptions}
+          key='optionBar' value=''>
+            {(this.state.showAdvancedOptions) ? 'hide' : 'show'} advanced options
+        </div>
+    );
+
     for (let section in this.props.config) {
-      let subform = Object.keys(this.props.config[section]).map(k =>
-        this.textInputField({ name: k, section: section })
-      )
+      // let subform = Object.keys(this.props.config[section]).map(k =>
+      //   this.textInputField({ name: k, section: section })
+      // )
+      var subform = []
+      var addEndBar = false
+      for (var key in this.props.config[section]) {
+        if (key == 'advancedOptionDemarcation') {
+          if (this.state.showAdvancedOptions == false) {
+            subform.push(optionBar)
+            break
+          } else {
+            addEndBar = true
+            continue
+          }
+        }
+        subform.push(this.textInputField({ name: key, section: section }))
+      }
+
+      if (addEndBar) {
+        subform.push(optionBar)
+      }
+
       formSections.push(
         <fieldset key={section}>
           <legend>{section}</legend>
@@ -84,6 +123,11 @@ class SettingsPane extends React.Component {
       </fieldset>
     );
     return form
+  }
+
+  toggleAdvancedOptions(event) {
+    var showAdvOptions = this.state.showAdvancedOptions ? false : true;
+    this.setState({showAdvancedOptions: showAdvOptions})
   }
 
   render() {

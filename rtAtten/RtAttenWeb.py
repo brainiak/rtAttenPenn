@@ -65,8 +65,10 @@ class RtAttenWeb():
         cmd = request['cmd']
         logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
         if cmd == "getDefaultConfig":
-            # TODO - this is a hack to remove the ndarray, but remove this once StructDict deepcopy is implemented
-            RtAttenWeb.cfg.session.roiInds = None
+            # TODO - this is a hack to remove the roiInds ndarray because it can't be Jsonified.
+            # Remove this line once StructDict deepcopy is implemented and make a copy
+            # of RtAttenWeb.cfg before passing to runSession()
+            del RtAttenWeb.cfg.session.roiInds
             RtAttenWeb.webInterface.sendUserConfig(RtAttenWeb.cfg)
         elif cmd == "run":
             if RtAttenWeb.webClientThread is not None:
