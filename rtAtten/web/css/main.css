@@ -41,7 +41,7 @@ button {
   position: absolute;
   font-size:  calc(7px + 2vw);
   top: 30%;
-  right: 10%;
+  right: 5%;
   font-weight: bold;
   text-align: center;
 }

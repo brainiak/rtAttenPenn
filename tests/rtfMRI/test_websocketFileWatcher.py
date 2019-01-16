@@ -53,8 +53,7 @@ class TestFileWatcher:
         # Send a ping request from webInterface to fileWatcher
         assert len(Web.wsDataConns) > 0
         cmd = {'cmd': 'ping'}
-        msg = json.dumps(cmd)
-        Web.sendDataMessage(msg, timeout=2)
+        Web.sendDataMessage(cmd, timeout=2)
 
     def test_validateRequestedFile(cls):
         print("test_validateRequestedFile")

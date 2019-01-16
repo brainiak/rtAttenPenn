@@ -1,0 +1,24 @@
+name: websockify
+channels:
+  - defaults
+dependencies:
+  - ca-certificates
+  - certifi
+  - libedit
+  - libffi
+  - libgcc-ng
+  - libstdcxx-ng
+  - ncurses
+  - openssl
+  - pip
+  - python
+  - readline
+  - setuptools
+  - sqlite
+  - tk
+  - wheel
+  - xz
+  - zlib
+  - pip:
+    - numpy
+    - websockify

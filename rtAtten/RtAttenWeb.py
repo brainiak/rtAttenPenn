@@ -47,16 +47,26 @@ class RtAttenWeb():
         request = json.loads(message)
         if 'config' in request:
             # Common code for any command that sends config information - retrieve the config info
-            try:
-                newCfg = recurseCreateStructDict(request['config'])
+            cfgData = request['config']
+            newCfg = recurseCreateStructDict(cfgData)
+            if newCfg is not None:
                 RtAttenWeb.cfg = newCfg
-            except Exception as err:
-                RtAttenWeb.webInterface.setUserError(str(err))
+            else:
+                errStr = 'Unable to parse config'
+                if cfgData is None:
+                    errStr = 'webUserCallback: Config field is None'
+                elif type(cfgData) not in (dict, list):
+                    errStr = 'webUserCallback: Config field wrong type {}'.format(type(cfgData))
+                else:
+                    errStr = 'webUserCallback: Error parsing config field {}'.format(cfgData)
+                RtAttenWeb.webInterface.setUserError(errStr)
                 return
 
         cmd = request['cmd']
         logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
         if cmd == "getDefaultConfig":
+            # TODO - this is a hack to remove the ndarray, but remove this once StructDict deepcopy is implemented
+            RtAttenWeb.cfg.session.roiInds = None
             RtAttenWeb.webInterface.sendUserConfig(RtAttenWeb.cfg)
         elif cmd == "run":
             if RtAttenWeb.webClientThread is not None:
@@ -122,6 +132,7 @@ class RtAttenWeb():
         try:
             response = {'cmd': 'runStatus', 'status': 'running'}
             RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+            # TODO implement deepcopy for StuctDict cfgCopy = RtAttenWeb.cfg.deepcopy()
             RtAttenWeb.client.runSession(RtAttenWeb.serverAddr, RtAttenWeb.serverPort, RtAttenWeb.cfg)
             if RtAttenWeb.client.stopRun is True:
                 response = {'cmd': 'runStatus', 'status': 'interrupted'}

@@ -29,8 +29,8 @@ class RtAtten extends React.Component {
       logLines: [],  // image classification log
       regLines: [],  // registration processing log
     }
-    this.registrationTabIndex = 2
     this.webSocket = null
+    this.registrationTabIndex = 2
     this.onTabSelected = this.onTabSelected.bind(this);
     this.setConfigFileName = this.setConfigFileName.bind(this);
     this.setConfig = this.setConfig.bind(this);
@@ -169,7 +169,7 @@ class RtAtten extends React.Component {
   }
 
   requestDefaultConfig() {
-    var cmd = {'cmd': 'getDefaultConfig'}
+    var cmd = {cmd: 'getDefaultConfig'}
     var cmdStr = JSON.stringify(cmd)
     this.webSocket.send(cmdStr)
   }

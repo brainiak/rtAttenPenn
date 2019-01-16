@@ -2,7 +2,6 @@
 import os
 import re
 import time
-import json
 import asyncio
 import numpy as np  # type: ignore
 import datetime
@@ -17,7 +16,7 @@ from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels, copyFileWildcard, loadMatFile
 from rtfMRI.fileWatcher import FileWatcher
-from rtfMRI.Errors import InvocationError, ValidationError, StateError
+from rtfMRI.Errors import InvocationError, ValidationError, StateError, RequestError
 from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex, findPatternsDesignFile
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
 
@@ -288,12 +287,17 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputInfo)
                 for TR in block.TRs:
+                    if self.stopRun:
+                        outputInfo.logFileHandle.close()
+                        return
                     self.id_fields.trId = TR.trId
                     fileNum = TR.vol + run.disdaqs // run.TRTime
                     logging.log(DebugLevels.L3, "TR: %d, fileNum %d", TR.trId, fileNum)
                     if self.cfg.session.rtData:
                         # Assuming the output file volumes are still 1's based
                         trVolumeData = self.getNextTRData(run, fileNum)
+                        if trVolumeData is None:
+                            continue
                         TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
                     else:
                         # TR.vol is 1's based to match matlab, so we want vol-1 for zero based indexing
@@ -351,9 +355,6 @@ class RtAttenClient(RtfMRIClient):
                                      gotTTLTime, missedDeadline, processingStartTime)
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputInfo)
-                    if self.stopRun:
-                        outputInfo.logFileHandle.close()
-                        return
                 del self.id_fields.trId
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputInfo)
@@ -430,10 +431,18 @@ class RtAttenClient(RtfMRIClient):
             self.printFirstFilename = False
         if self.useWeb:
             assert self.webInterface is not None
-            data, errVal = self.webInterface.watchFile(specificFileName)
-            if errVal is not None:
-                self.webInterface.setUserError("getNextTR {}: {}".format(specificFileName, errVal))
-                raise errVal
+            while not self.stopRun:
+                data, errVal = self.webInterface.watchFile(specificFileName)
+                if errVal is None:
+                    break
+                elif isinstance(errVal, RequestError) and '408' in str(errVal):
+                    # 408 timeout returned from fileWatcher, keep waiting
+                    continue
+                else:
+                    self.webInterface.setUserError("getNextTR {}: {}".format(specificFileName, errVal))
+                    raise errVal
+            if self.stopRun:
+                return None
         else:
             self.fileWatcher.waitForFile(specificFileName)
             data = self.loadImageData(specificFileName)
