@@ -7,19 +7,18 @@ Only one connection (therefore) only one client can be supported at a time.
 The server will receive commands from the client, execute them and reply.
 """
 import os
-import sys
+import argparse
 import logging
-import click
-import clickutil
 from rtfMRI.RtfMRIServer import RtfMRIServer
 from rtfMRI.utils import installLoggers
 
 
-def ServerMain(port):
+def ServerMain(port, logLevel):
     if not os.path.exists('logs'):
         os.makedirs('logs')
 
-    installLoggers(logging.INFO, logging.INFO, filename='logs/rtAttenServer.log')
+    # installLoggers(consoleLevel, fileLevel) Debug-10, Info-20, Warning-30, Error-40, Cricital-50
+    installLoggers(logLevel, logging.INFO, filename='logs/rtAttenServer.log')
 
     try:
         # Parse and add any additional settings from the command line
@@ -30,16 +29,13 @@ def ServerMain(port):
             should_exit = rtfmri.RunEventLoop()
         logging.info("Server shutting down")
     except Exception as err:
-        logging.error(repr(err))
+        logging.error('ServerMain: {}'.format(repr(err)))
         raise err
 
 
-@click.command(context_settings=dict(help_option_names=['-h', '--help']))
-@click.option('--port', '-p', default=5200, type=int, help="server port")
-@clickutil.call(ServerMain)
-def _ServerMain():
-    pass
-
-
 if __name__ == "__main__":
-    _ServerMain()
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument('--port', '-p', default=5200, type=int, help='server port')
+    argParser.add_argument('--logLevel', '-g', default=20, type=int, help='console log level (0-50): default 20')
+    args = argParser.parse_args()
+    ServerMain(args.port, args.logLevel)

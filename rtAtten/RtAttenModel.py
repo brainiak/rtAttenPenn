@@ -21,6 +21,7 @@ from rtfMRI import ValidationUtils as vutils
 from rtfMRI.MsgTypes import MsgResult
 from rtfMRI.BaseModel import BaseModel
 from rtfMRI.StructDict import StructDict, MatlabStructDict
+from rtfMRI.Errors import StateError
 from .smooth import smooth
 from .highpassFunc import highPassRealTime, highPassBetweenRuns
 from .Test_L2_RLR_realtime import Test_L2_RLR_realtime
@@ -44,8 +45,7 @@ class RtAttenModel(BaseModel):
         if reply.result != MsgResult.Success:
             return reply
         self.session = msg.fields.cfg
-        subjectDayDir = getSubjectDayDir(self.session.subjectNum, self.session.subjectDay)
-        self.dirs.dataDir = os.path.join(self.session.serverDataDir, subjectDayDir)
+        self.dirs.dataDir = getSubjectDataDir(self.session.serverDataDir, self.session.subjectNum, self.session.subjectDay)
         if not os.path.exists(self.dirs.dataDir):
             os.makedirs(self.dirs.dataDir)
         # clear cached items
@@ -462,8 +462,7 @@ class RtAttenModel(BaseModel):
         calls the BaseModel retrieve function.
         """
         fileInfo = msg.fields.cfg
-        subjectDayDir = getSubjectDayDir(fileInfo.subjectNum, fileInfo.subjectDay)
-        dataDir = os.path.join(self.session.serverDataDir, subjectDayDir)
+        dataDir = getSubjectDataDir(self.session.serverDataDir, fileInfo.subjectNum, fileInfo.subjectDay)
         fullFileName = os.path.join(dataDir, fileInfo.filename)
         if fileInfo.findNewestPattern not in (None, ''):
             try:
@@ -512,7 +511,8 @@ class RtAttenModel(BaseModel):
                 fname = utils.findNewestFile(self.dirs.dataDir, filePattern)
             prev_bg = utils.loadMatFile(fname)
             # loadMatFile should either raise an exception or return a value
-            assert prev_bg is not None, "Load blkGrp returned None: %s" % (fname)
+            if prev_bg is None:
+                raise StateError("Load blkGrp returned None: {}".format(fname))
             if sessionId == self.id_fields.sessionId:
                 self.blkGrpCache[bgKey] = prev_bg
         return prev_bg
@@ -532,7 +532,8 @@ class RtAttenModel(BaseModel):
                 fname = utils.findNewestFile(self.dirs.dataDir, filePattern)
             model = utils.loadMatFile(fname)
             # loadMatFile should either raise an exception or return a value
-            assert model is not None, "Load model returned None: %s" % (fname)
+            if model is None:
+                raise StateError("Load model returned None: {}".format(fname))
         if sessionId == self.id_fields.sessionId:
             self.modelCache[runId] = model
         return model
@@ -656,12 +657,21 @@ def setTrData(patterns, trId, data):
         patterns.raw[trId, :] = data
 
 
-def getSubjectDayDir(subjectNum, subjectDay):
+def getSubjectDataDir(dataDir, subjectNum, subjectDay):
     """The data directory is structured by subjectNum/subjectDay.
     Return that sub-directory.
     """
-    subjectDayDir = "subject{}/day{}".format(subjectNum, subjectDay)
+    subjectDayDir = os.path.join(dataDir, "subject{}/day{}".format(subjectNum, subjectDay))
     return subjectDayDir
+
+
+def getRunDir(dataDir, subjectNum, subjectDay, runId):
+    """The data directory is structured by subjectNum/subjectDay.
+    Return that sub-directory.
+    """
+    subjectDayDir = getSubjectDataDir(dataDir, subjectNum, subjectDay)
+    runDataDir = os.path.join(subjectDayDir, 'run' + str(runId))
+    return runDataDir
 
 
 def getBlkGrpFilename(sessionId, runId, blkGrpId):

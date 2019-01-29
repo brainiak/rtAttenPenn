@@ -5,6 +5,7 @@ import shutil
 import sys
 sys.path.append(os.getcwd())
 from rtfMRI.RtfMRIClient import loadConfigFile, validateRunCfg
+from rtAtten.RtAttenModel import getSubjectDataDir
 from rtAtten.PatternsDesign2Config import createRunConfig, getLocalPatternsFile
 
 # parse experiment file
@@ -20,8 +21,9 @@ print("Destination Dir: {}".format(dstDir))
 if not os.path.exists(dstDir):
     os.makedirs(dstDir)
 
+subjectDataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
 for runId in cfg.session.Runs:
-    patterns = getLocalPatternsFile(cfg.session, runId)
+    patterns, _ = getLocalPatternsFile(cfg.session, subjectDataDir, runId)
     run = createRunConfig(cfg.session, patterns, runId)
     validateRunCfg(run)
     scanNumStr = str(run.scanNum).zfill(2)

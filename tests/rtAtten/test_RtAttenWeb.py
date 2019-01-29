@@ -7,7 +7,9 @@ rootPath = os.path.join(scriptPath, "../..")
 sys.path.append(rootPath)
 from rtfMRI.StructDict import StructDict
 from rtfMRI.RtfMRIClient import loadConfigFile
-from rtAtten.RtAttenWeb import RtAttenWeb
+from webInterface.rtAtten.RtAttenWeb import RtAttenWeb
+
+webIsStarted = False
 
 
 @pytest.fixture(scope="module")
@@ -15,6 +17,19 @@ def configData():
     currentDir = os.path.dirname(os.path.realpath(__file__))
     cfg = loadConfigFile(os.path.join(currentDir, '../rtfMRI/syntheticDataCfg.toml'))
     return cfg
+
+
+# TODO - run the web server in a thread and connect with an HTTPConnection client
+# Then run the commands you want to test.
+def startRtAttenWeb(configData):
+    global webIsStarted
+    params = StructDict()
+    params.rtserver = 'localhost:5200'
+    params.rtlocal = False
+    params.filesremote = False
+    if not webIsStarted:
+        RtAttenWeb.init(params, configData)
+        webIsStarted = True
 
 
 def localCreateRegConfig(cfg):

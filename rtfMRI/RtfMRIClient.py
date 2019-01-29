@@ -13,7 +13,7 @@ from .StructDict import StructDict, recurseCreateStructDict
 from .Messaging import RtMessagingClient, Message
 from .utils import getGitCodeId
 from .MsgTypes import MsgType, MsgEvent, MsgResult
-from .Errors import ValidationError, RequestError, InvocationError
+from .Errors import ValidationError, RequestError, InvocationError, StateError
 
 
 class RtfMRIClient():
@@ -109,9 +109,12 @@ class RtfMRIClient():
         msg.data = data
         self.messaging.sendRequest(msg)
         reply = self.messaging.getReply()
-        # TODO change from assert to error
-        assert reply.type == MsgType.Reply
-        assert reply.event_type == msg.event_type
+        if reply.type != MsgType.Reply:
+            raise StateError('sendExpectSuccess: reply message wrong type {}'.
+                             format(reply.type))
+        if reply.event_type != msg.event_type:
+            raise StateError('sendExpectSuccess: msg event type mismatch {} {}'.
+                             format(reply.event_type, msg.event_type))
         if reply.result != MsgResult.Success:
             reasonStr = ''
             if isinstance(reply.data, str):
@@ -121,6 +124,7 @@ class RtfMRIClient():
 
             if reply.result == MsgResult.Warning:
                 if reply.fields.resp is True:
+                    # TODO - remove all input requests for web interface
                     resp = input("WARNING!!: {}. Continue? Y/N [N]:".format(reasonStr))
                     if resp.upper() != 'Y':
                         raise RequestError("type:{} event:{} fields:{}: {}".format(
@@ -139,7 +143,8 @@ class RtfMRIClient():
             else:
                 raise RequestError("type:{} event:{} fields:{}: {}".format(
                     msg_type, msg_event, msg.fields, reasonStr))
-        assert reply.id == msg.id
+        if reply.id != msg.id:
+            raise StateError('sendExpectSuccess: msg id mismatch {} {}'.format(reply.id, msg.id))
         return reply
 
     def sendCmdExpectSuccess(self, msg_event, msg_fields, data=None):

@@ -107,8 +107,15 @@ def copyFileWildcard(src, dst):
     return
 
 
+def writeFile(filename, data):
+    with open(filename, 'wb') as fh:
+        bytesWritten = fh.write(data)
+        if bytesWritten != len(data):
+            raise InterruptedError("Write file %s wrote %d of %d bytes" % (filename, bytesWritten, len(data)))
+
+
 class DebugLevels:
-    L1  = 19 # most verbose
+    L1  = 19 # least verbose
     L2  = 18
     L3  = 17
     L4  = 16
@@ -117,7 +124,7 @@ class DebugLevels:
     L7  = 13
     L8  = 12
     L9  = 11
-    L10 = 10 # least verbose
+    L10 = 10 # most verbose
 
 
 def installLoggers(consoleLevel, fileLevel, filename=None):

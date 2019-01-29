@@ -111,6 +111,7 @@ class RtfMRIServer():
                     raise RequestError(
                         "unknown request type '{}'".format(msg.type))
             except VersionError as err:
+                # TODO - remove all input requests for web interface (remove True)
                 reply = warningReply(msg, err, True)
             except RTError as err:
                 logging.error("RtfMRIServer:RunEventLoop: %r", err)

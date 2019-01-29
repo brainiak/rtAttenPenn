@@ -7,43 +7,51 @@ import time
 import logging
 import json
 import re
-import traceback
+import toml
+import shlex
 from pathlib import Path
-from rtfMRI.utils import DebugLevels
+from rtfMRI.utils import DebugLevels, copyFileWildcard
 from rtfMRI.StructDict import recurseCreateStructDict
-from rtAtten.RtAttenClient import RtAttenClient, writeFile
-from rtfMRI.WebInterface import Web
+from rtfMRI.Errors import RequestError, StateError
+from rtAtten.RtAttenModel import getRunDir
+from webInterface.WebInterface import Web, getFileReqStruct, CommonOutputDir
+from webInterface.WebInterface import makeFifo, handleFifoRequests, resignalFifoThreadExit
 
 
 moduleDir = os.path.dirname(os.path.realpath(__file__))
+rootDir = os.path.join(moduleDir, "../..")
+confDir = os.path.join(moduleDir, 'conf/')
 registrationDir = os.path.join(moduleDir, 'registration/')
+patternsDir = os.path.join(moduleDir, 'patterns')
 htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
-outputDir = '/rtfmriData/'
 
 
 class RtAttenWeb():
     webInterface = Web()
-    serverAddr = 'localhost'
-    serverPort = 5200
+    rtserver = 'localhost:5200'
+    rtlocal = True
+    filesremote = False
     cfg = None
-    client = None
-    webClientThread = None
+    initialized = False
+    runSessionThread = None
     registrationThread = None
     uploadImageThread = None
-    initialized = False
+    fifoFileThread = None
 
     @staticmethod
-    def init(serverAddr, serverPort, cfg):
-        RtAttenWeb.serverAddr = serverAddr
-        RtAttenWeb.serverPort = serverPort
+    def init(params, cfg):
+        RtAttenWeb.rtserver = params.rtserver
+        RtAttenWeb.rtlocal = params.rtlocal
+        RtAttenWeb.filesremote = params.filesremote
         RtAttenWeb.cfg = cfg
-        RtAttenWeb.webInterface.outputDir = outputDir
+        RtAttenWeb.stopRun = False
         RtAttenWeb.initialized = True
         RtAttenWeb.webInterface.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
 
     @staticmethod
     def webUserCallback(client, message):
-        assert RtAttenWeb.initialized is True
+        if RtAttenWeb.initialized is not True:
+            raise StateError('webUserCallback: RtAttenWeb not initialized')
         request = json.loads(message)
         if 'config' in request:
             # Common code for any command that sends config information - retrieve the config info
@@ -52,7 +60,6 @@ class RtAttenWeb():
             if newCfg is not None:
                 RtAttenWeb.cfg = newCfg
             else:
-                errStr = 'Unable to parse config'
                 if cfgData is None:
                     errStr = 'webUserCallback: Config field is None'
                 elif type(cfgData) not in (dict, list):
@@ -65,30 +72,28 @@ class RtAttenWeb():
         cmd = request['cmd']
         logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
         if cmd == "getDefaultConfig":
-            # TODO - this is a hack to remove the roiInds ndarray because it can't be Jsonified.
-            # Remove this line once StructDict deepcopy is implemented and make a copy
-            # of RtAttenWeb.cfg before passing to runSession()
-            del RtAttenWeb.cfg.session.roiInds
+            if 'session' in RtAttenWeb.cfg:
+                # remove the roiInds ndarray because it can't be Jsonified.
+                del RtAttenWeb.cfg.session.roiInds
             RtAttenWeb.webInterface.sendUserConfig(RtAttenWeb.cfg)
         elif cmd == "run":
-            if RtAttenWeb.webClientThread is not None:
-                RtAttenWeb.webClientThread.join(timeout=1)
-                if RtAttenWeb.webClientThread.is_alive():
+            if RtAttenWeb.runSessionThread is not None:
+                RtAttenWeb.runSessionThread.join(timeout=1)
+                if RtAttenWeb.runSessionThread.is_alive():
                     RtAttenWeb.webInterface.setUserError("Client thread already runnning, skipping new request")
                     return
-                RtAttenWeb.client = None
-                RtAttenWeb.webClientThread = None
-            RtAttenWeb.webClientThread = threading.Thread(name='webClientThread', target=RtAttenWeb.runClient)
-            RtAttenWeb.webClientThread.setDaemon(True)
-            RtAttenWeb.webClientThread.start()
+                RtAttenWeb.runSessionThread = None
+            RtAttenWeb.stopRun = False
+            RtAttenWeb.runSessionThread = threading.Thread(name='runSessionThread', target=RtAttenWeb.runSession)
+            RtAttenWeb.runSessionThread.setDaemon(True)
+            RtAttenWeb.runSessionThread.start()
         elif cmd == "stop":
-            if RtAttenWeb.webClientThread is not None:
-                if RtAttenWeb.client is not None:
-                    RtAttenWeb.client.doStopRun()
-                RtAttenWeb.webClientThread.join(timeout=1)
-                if not RtAttenWeb.webClientThread.is_alive():
-                    RtAttenWeb.client = None
-                    RtAttenWeb.webClientThread = None
+            if RtAttenWeb.runSessionThread is not None:
+                RtAttenWeb.stopRun = True
+                RtAttenWeb.runSessionThread.join(timeout=1)
+                if not RtAttenWeb.runSessionThread.is_alive():
+                    RtAttenWeb.runSessionThread = None
+                    RtAttenWeb.stopRun = False
         elif cmd == "runReg":
             if RtAttenWeb.registrationThread is not None:
                 RtAttenWeb.registrationThread.join(timeout=1)
@@ -122,37 +127,92 @@ class RtAttenWeb():
             for key, val in regGlobals.items():
                 if re.search('folder|dir|path', key, flags=re.IGNORECASE) is not None:
                     # prepend common writable directory to value
-                    val = os.path.normpath(outputDir + val)
+                    val = os.path.normpath(CommonOutputDir + val)
                 fp.write(key + '=' + str(val) + '\n')
             fp.write('code_path=' + registrationDir)
 
     @staticmethod
-    def runClient():
-        assert RtAttenWeb.client is None
-        RtAttenWeb.client = RtAttenClient()
-        RtAttenWeb.client.setWebInterface(RtAttenWeb.webInterface)
-        try:
-            response = {'cmd': 'runStatus', 'status': 'running'}
-            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
-            # TODO implement deepcopy for StuctDict cfgCopy = RtAttenWeb.cfg.deepcopy()
-            RtAttenWeb.client.runSession(RtAttenWeb.serverAddr, RtAttenWeb.serverPort, RtAttenWeb.cfg)
-            if RtAttenWeb.client.stopRun is True:
-                response = {'cmd': 'runStatus', 'status': 'interrupted'}
-            else:
-                response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
-            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
-        except Exception as err:
-            response = {'cmd': 'runStatus', 'status': 'error'}
-            RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
-            RtAttenWeb.webInterface.setUserError("RunClient: {}".format(err))
-            traceback_str = ''.join(traceback.format_tb(err.__traceback__))
-            print(traceback_str)
-        RtAttenWeb.client = None
+    def runSession():
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        cfg = RtAttenWeb.cfg
+        # override confirmation for files already existing if needed
+        if (cfg.session.skipConfirmForReprocess is None or
+                cfg.session.skipConfirmForReprocess is False):
+            logging.warn('Overriding skipConfirmForReprocess to True... skipping confimation')
+            cfg.session.skipConfirmForReprocess = True
+
+        # write out config file for use by rtAtten client
+        configFileName = os.path.join(confDir, 'cfg_{}_day{}_run{}.toml'.
+                                      format(cfg.session.subjectName,
+                                             cfg.session.subjectDay,
+                                             cfg.session.Runs[0]))
+        with open(configFileName, 'w+') as fd:
+            toml.dump(cfg, fd)
+
+        if RtAttenWeb.filesremote is True and not cfg.session.getPatternsFromControlRoom:
+            # copy the default patterns files to the local run directory
+            for runId in cfg.session.Runs:
+                runDataDir = getRunDir(cfg.session.dataDir, cfg.session.subjectNum,
+                                       cfg.session.subjectDay, runId)
+                runDataDir = os.path.normpath(CommonOutputDir + runDataDir)
+                if not os.path.exists(runDataDir):
+                    os.makedirs(runDataDir)
+                patternsSource = os.path.join(patternsDir, 'patternsdesign_'+str(runId)+'*')
+                copyFileWildcard(patternsSource, runDataDir)
+
+        # specify -u python option to disable buffering print commands
+        cmdStr = 'python -u ClientMain.py -e {}'.format(configFileName)
+        # set options for runnings a local rtserver or connecting to remote one
+        if RtAttenWeb.rtlocal is True:
+            cmdStr += ' -l'
+        else:
+            (server, port) = RtAttenWeb.rtserver.split(':')
+            cmdStr += ' -a {} -p {}'.format(server, port)
+        # set option for remote file requests
+        fifoThread = None
+        if RtAttenWeb.filesremote is True:
+            webpipes = makeFifo()
+            cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
+            # start thread listening for remote file requests on fifo queue
+            fifoThread = threading.Thread(name='fifoThread', target=handleFifoRequests,
+                                          args=(RtAttenWeb.webInterface, webpipes))
+            fifoThread.setDaemon(True)
+            fifoThread.start()
+        # print(cmdStr)
+        cmd = shlex.split(cmdStr)
+        proc = subprocess.Popen(cmd, cwd=rootDir, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        # send running status to user web page
+        response = {'cmd': 'runStatus', 'status': 'running'}
+        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        outputLineCount = 0
+        line = 'start'
+        # subprocess poll returns None while subprocess is running
+        while(proc.poll() is None or line != ''):
+            if RtAttenWeb.stopRun is True:
+                # signal the process to exit by closing stdin
+                proc.stdin.close()
+            line = proc.stdout.readline().decode('utf-8')
+            if line != '':
+                # check if line has error in it and print to console
+                if re.search('error', line, re.IGNORECASE):
+                    print(line)
+                # send output to web interface
+                response = {'cmd': 'userLog', 'value': line}
+                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                outputLineCount += 1
+        # processing complete, set status
+        response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
+        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        # make sure fifo thread has exited
+        resignalFifoThreadExit(fifoThread, webpipes)
+        return outputLineCount
 
     @staticmethod
     def runRegistration(request, test=None):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        assert request['cmd'] == "runReg"
+        if 'cmd' not in request or request['cmd'] != "runReg":
+            raise StateError('runRegistration: incorrect cmd request: {}'.format(request))
         try:
             regConfig = request['regConfig']
             regType = request['regType']
@@ -199,11 +259,11 @@ class RtAttenWeb():
             line = proc.stdout.readline().decode('utf-8')
             if line != '':
                 # send output to web interface
-                if test is None:
+                if test:
+                    print(line, end='')
+                else:
                     response = {'cmd': 'regLog', 'value': line}
                     RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
-                else:
-                    print(line, end='')
                 outputLineCount += 1
         # processing complete, clear status
         response = {'cmd': 'regStatus', 'type': regType, 'status': 'complete \u2714'}
@@ -213,9 +273,9 @@ class RtAttenWeb():
     @staticmethod
     def uploadImages(request):
         asyncio.set_event_loop(asyncio.new_event_loop())
-        assert request['cmd'] == "uploadImages"
-        assert RtAttenWeb.webInterface is not None
-        if len(RtAttenWeb.webInterface.wsDataConns) == 0:
+        if 'cmd' not in request or request['cmd'] != "uploadImages":
+            raise StateError('uploadImages: incorrect cmd request: {}'.format(request))
+        if RtAttenWeb.webInterface.wsDataConn is None:
             # A remote fileWatcher hasn't connected yet
             errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
             RtAttenWeb.webInterface.setUserError(errStr)
@@ -226,39 +286,28 @@ class RtAttenWeb():
             numDicoms = int(request['numDicoms'])
             uploadType = request['type']
         except KeyError as err:
-            RtAttenWeb.webInterface.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
-            return
-        watchFilePattern = "001_000{:03d}_0*".format(scanNum)
-        try:
-            RtAttenWeb.webInterface.initWatch(scanFolder, watchFilePattern, 1)
-        except Exception as err:
-            RtAttenWeb.webInterface.setUserError("Error initWatch: {}".format(err))
+            RtAttenWeb.webInterface.setUserError("Registration request missing a parameter: {}".format(err))
             return
         fileType = Path(RtAttenWeb.cfg.session.dicomNamePattern).suffix
-        outputFolder = os.path.normpath(outputDir + scanFolder)
-        if not os.path.exists(outputFolder):
-            os.makedirs(outputFolder)
-        # send periodic progress reports to front-end
         dicomsInProgressInterval = numDicoms / 4
         intervalCount = 1
+        # send periodic progress reports to front-end
         response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'in-progress'}
         RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
         for i in range(1, numDicoms+1):
             filename = "001_{:06d}_{:06d}{}".format(scanNum, i, fileType)
-            # print("uploading {} {}".format(scanFolder, filename))
-            data, errVal = RtAttenWeb.webInterface.getFile(filename, asRawBytes=True)
-            if errVal is not None:
+            fullFilename = os.path.join(scanFolder, filename)
+            try:
+                cmd = getFileReqStruct(fullFilename, writefile=True)
+                response = RtAttenWeb.webInterface.sendDataMessage(cmd)
+                if response['status'] != 200:
+                    raise RequestError(response['error'])
+            except Exception as err:
                 RtAttenWeb.webInterface.setUserError(
-                    "Error uploading file {}/{}: {}".format(scanFolder, filename, errVal))
+                    "Error uploading file {}: {}".format(fullFilename, str(err)))
                 return
-            # prepend with common path and write out file
-            # note: can't just use os.path.join() because if two or more elements
-            #   have an aboslute path it discards the earlier elements
-            outputFilename = os.path.join(outputFolder, filename)
-            writeFile(outputFilename, data)
             if i > intervalCount * dicomsInProgressInterval:
-                val = 1/4 * intervalCount
-                val = "{:.0f}%".format(val*100)
+                val = "{:.0f}%".format(1/4 * intervalCount * 100)  # convert to a percentage
                 response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': val}
                 RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
                 intervalCount += 1

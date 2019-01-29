@@ -1,0 +1,526 @@
+import tornado.web
+import tornado.websocket
+import os
+import time
+import ssl
+import json
+import asyncio
+import threading
+import logging
+from pathlib import Path
+from base64 import b64decode
+import rtfMRI.utils as utils
+from rtfMRI.StructDict import StructDict
+from rtfMRI.ReadDicom import readDicomFromBuffer
+from rtfMRI.Messaging import getCertPath, getKeyPath
+from rtfMRI.utils import DebugLevels, writeFile
+from rtfMRI.Errors import RequestError, StateError, RTError
+
+
+certsDir = 'certs'
+sslCertFile = 'rtAtten.crt'
+sslPrivateKey = 'rtAtten_private.key'
+CommonOutputDir = '/rtfmriData/'
+
+
+def defaultCallback(client, message):
+    print("client({}): msg({})".format(client, message))
+
+
+class Web():
+    ''' Cloud service web-interface that is the front-end to the data processing. '''
+    app = None
+    httpServer = None
+    # Arrays of WebSocket connections that have been established from client windows
+    wsSubjConns = []  # type: ignore
+    wsUserConns = []  # type: ignore
+    wsDataConn = None  # type: ignore  # Only one data connection
+    # Callback functions to invoke when message received from client window connection
+    userWidnowCallback = defaultCallback
+    subjWindowCallback = defaultCallback
+    # Main html page to load
+    webIndexPage = 'index.html'
+    dataCallbacks = {}
+    dataSequenceNum = 0
+    # Synchronizing across threads
+    threadLock = threading.Lock()
+
+    @staticmethod
+    def start(index='index.html', userCallback=defaultCallback,
+              subjCallback=defaultCallback, port=8888):
+        if Web.app is not None:
+            raise RuntimeError("Web Interface already running.")
+        Web.webIndexPage = index
+        Web.subjWindowCallback = subjCallback
+        Web.userWidnowCallback = userCallback
+        webDir = Path(os.path.dirname(index)).parent
+        src_root = os.path.join(webDir, 'src')
+        css_root = os.path.join(webDir, 'css')
+        img_root = os.path.join(webDir, 'img')
+        build_root = os.path.join(webDir, 'build')
+        Web.app = tornado.web.Application([
+            (r'/', Web.UserHttp),
+            (r'/wsUser', Web.UserWebSocket),
+            (r'/wsSubject', Web.SubjectWebSocket),
+            (r'/wsData', Web.DataWebSocket),
+            (r'/src/(.*)', tornado.web.StaticFileHandler, {'path': src_root}),
+            (r'/css/(.*)', tornado.web.StaticFileHandler, {'path': css_root}),
+            (r'/img/(.*)', tornado.web.StaticFileHandler, {'path': img_root}),
+            (r'/build/(.*)', tornado.web.StaticFileHandler, {'path': build_root}),
+        ])
+        # start event loop if needed
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError as err:
+            # RuntimeError thrown if no current event loop
+            # Start the event loop
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+        ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_ctx.load_cert_chain(getCertPath(certsDir, sslCertFile),
+                                getKeyPath(certsDir, sslPrivateKey))
+        print("Listening on: http://localhost:{}".format(port))
+        Web.httpServer = tornado.httpserver.HTTPServer(Web.app, ssl_options=ssl_ctx)
+        Web.httpServer.listen(port)
+        tornado.ioloop.IOLoop.current().start()
+
+    @staticmethod
+    def close():
+        # Currently this should never be called
+        raise StateError("Web close() called")
+
+        Web.threadLock.acquire()
+        try:
+            if Web.wsDataConn is not None:
+                Web.wsDataConn.close()
+            Web.wsDataConn = None
+
+            for client in Web.wsUserConns[:]:
+                client.close()
+            Web.wsUserConns = []
+
+            for client in Web.wsSubjConns[:]:
+                client.close()
+            Web.wsSubjConns = []
+        finally:
+            Web.threadLock.release()
+
+    @staticmethod
+    def dataLog(filename, logStr):
+        cmd = {'cmd': 'dataLog', 'logLine': logStr, 'filename': filename}
+        try:
+            Web.sendDataMessage(cmd, timeout=5)
+        except Exception as err:
+            logging.warn('Web: dataLog: error {}'.format(err))
+            return False
+        return True
+
+    @staticmethod
+    def userLog(logStr):
+        cmd = {'cmd': 'userLog', 'value': logStr}
+        Web.sendUserMessage(json.dumps(cmd))
+
+    @staticmethod
+    def setUserError(errStr):
+        response = {'cmd': 'error', 'error': errStr}
+        Web.sendUserMessage(json.dumps(response))
+
+    @staticmethod
+    def sendUserConfig(config):
+        response = {'cmd': 'config', 'value': config}
+        Web.sendUserMessage(json.dumps(response))
+
+    @staticmethod
+    def sendDataMessage(cmd, timeout=None):
+        if Web.wsDataConn is None:
+            raise StateError("WebInterface: No Data Websocket Connection")
+        Web.threadLock.acquire()
+        try:
+            Web.dataSequenceNum += 1
+            seqNum = Web.dataSequenceNum
+            cmd['seqNum'] = seqNum
+            msg = json.dumps(cmd)
+            callbackStruct = StructDict()
+            callbackStruct.seqNum = seqNum
+            callbackStruct.timeStamp = time.time()
+            callbackStruct.event = threading.Event()
+            callbackStruct.status = 0
+            callbackStruct.error = None
+            # callbackStruct.fileData = b''
+            Web.dataCallbacks[seqNum] = callbackStruct
+            Web.wsDataConn.write_message(msg)
+        except Exception as err:
+            errStr = 'sendDataMessage error: type {}: {}'.format(type(err), str(err))
+            raise RTError(errStr)
+        finally:
+            Web.threadLock.release()
+        callbackStruct.event.wait(timeout)
+        if callbackStruct.event.is_set() is False:
+            raise TimeoutError("sendDataMessage: Data Request Timed Out({}) {}".format(timeout, msg))
+        if callbackStruct.response is None:
+            raise StateError('sendDataMessage: callbackStruct.response is None for command {}'.format(cmd))
+        if callbackStruct.status == 200 and 'writefile' in callbackStruct.response:
+            writeResponseDataToFile(callbackStruct.response)
+        return callbackStruct.response
+
+    @staticmethod
+    def dataCallback(client, message):
+        response = json.loads(message)
+        if 'cmd' not in response:
+            raise StateError('dataCallback: cmd field missing from response: {}'.format(response))
+        if 'status' not in response:
+            raise StateError('dataCallback: status field missing from response: {}'.format(response))
+        if 'seqNum' not in response:
+            raise StateError('dataCallback: seqNum field missing from response: {}'.format(response))
+        seqNum = response['seqNum']
+        origCmd = response['cmd']
+        logging.log(DebugLevels.L6, "callback {}: {} {}".format(seqNum, origCmd, response['status']))
+        # Thread Synchronized Section
+        Web.threadLock.acquire()
+        try:
+            callbackStruct = Web.dataCallbacks.pop(seqNum, None)
+            if callbackStruct is None:
+                logging.error('WebServer: dataCallback seqNum {} not found, current seqNum {}'
+                              .format(seqNum, Web.dataSequenceNum))
+                return
+            if callbackStruct.seqNum != seqNum:
+                # This should never happen
+                raise StateError('seqNum mismtach {} {}'.format(callbackStruct.seqNum, seqNum))
+            callbackStruct.response = response
+            callbackStruct.status = response['status']
+            if callbackStruct.status == 200:
+                if origCmd in ('ping', 'initWatch', 'putTextFile', 'dataLog'):
+                    pass
+                elif origCmd in ('getFile', 'getNewestFile', 'watchFile'):
+                    if 'data' not in response:
+                        raise StateError('dataCallback: data field missing from response: {}'.format(response))
+                else:
+                    callbackStruct.error = 'Unrecognized origCmd {}'.format(origCmd)
+            else:
+                if 'error' not in response or response['error'] == '':
+                    raise StateError('dataCallback: error field missing from response: {}'.format(response))
+                callbackStruct.error = response['error']
+            callbackStruct.event.set()
+        except Exception as err:
+            logging.error('WebServer: dataCallback error: {}'.format(err))
+            raise err
+        finally:
+            Web.threadLock.release()
+        Web.pruneCallbacks()
+
+    @staticmethod
+    def pruneCallbacks():
+        numWaitingCallbacks = len(Web.dataCallbacks)
+        if numWaitingCallbacks == 0:
+            return
+        logging.info('Web pruneCallbacks: checking {} callbaks'.format(numWaitingCallbacks))
+        Web.threadLock.acquire()
+        try:
+            maxSeconds = 300
+            now = time.time()
+            for seqNum in Web.dataCallbacks.keys():
+                # check how many seconds old each callback is
+                cb = Web.dataCallbacks[seqNum]
+                secondsElapsed = now - cb.timeStamp
+                if secondsElapsed > maxSeconds:
+                    # older than max threshold so remove
+                    cb.status = 400
+                    cb.error = 'Callback time exceeded max threshold {}s {}s'.format(maxSeconds, secondsElapsed)
+                    cb.response = {'cmd': 'unknown', 'status': cb.status, 'error': cb.error}
+                    cb.event.set()
+                    del Web.dataCallbacks[seqNum]
+        except Exception as err:
+            logging.error('Web pruneCallbacks: error {}'.format(err))
+        finally:
+            Web.threadLock.release()
+
+    @staticmethod
+    def sendUserMessage(msg):
+        Web.threadLock.acquire()
+        try:
+            for client in Web.wsUserConns:
+                client.write_message(msg)
+        finally:
+            Web.threadLock.release()
+
+    class UserHttp(tornado.web.RequestHandler):
+        def get(self):
+            full_path = os.path.join(os.getcwd(), Web.webIndexPage)
+            logging.log(DebugLevels.L6, 'Index request: pwd: {}'.format(full_path))
+            Web.threadLock.acquire()
+            try:
+                self.render(full_path)
+            finally:
+                Web.threadLock.release()
+
+    class SubjectWebSocket(tornado.websocket.WebSocketHandler):
+        def open(self):
+            logging.log(DebugLevels.L1, "Subject WebSocket opened")
+            Web.threadLock.acquire()
+            try:
+                Web.wsSubjConns.append(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_close(self):
+            logging.log(DebugLevels.L1, "Subject WebSocket closed")
+            Web.threadLock.acquire()
+            try:
+                Web.wsSubjConns.remove(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_message(self, message):
+            Web.subjWindowCallback(self, message)
+
+    class UserWebSocket(tornado.websocket.WebSocketHandler):
+        def open(self):
+            logging.log(DebugLevels.L1, "User WebSocket opened")
+            Web.threadLock.acquire()
+            try:
+                Web.wsUserConns.append(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_close(self):
+            logging.log(DebugLevels.L1, "User WebSocket closed")
+            Web.threadLock.acquire()
+            try:
+                Web.wsUserConns.remove(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_message(self, message):
+            Web.userWidnowCallback(self, message)
+
+    class DataWebSocket(tornado.websocket.WebSocketHandler):
+        def open(self):
+            logging.log(DebugLevels.L1, "Data WebSocket opened")
+            Web.threadLock.acquire()
+            try:
+                # close any existing connections
+                if Web.wsDataConn is not None:
+                    Web.wsDataConn.close()
+                # add new connection
+                Web.wsDataConn = self
+            except Exception as err:
+                logging.error('WebServer: Open Data Socket error: {}'.format(err))
+            finally:
+                Web.threadLock.release()
+
+        def on_close(self):
+            logging.log(DebugLevels.L1, "Data WebSocket closed")
+            Web.threadLock.acquire()
+            try:
+                Web.wsDataConn = None
+                # signal the close to anyone waiting for replies
+                for seqNum, cb in Web.dataCallbacks.items():
+                    cb.status = 499
+                    cb.error = 'Client closed connection'
+                    cb.response = {'cmd': 'unknown', 'status': cb.status, 'error': cb.error}
+                    cb.event.set()
+                Web.dataCallbacks = {}
+            finally:
+                Web.threadLock.release()
+
+        def on_message(self, message):
+            Web.dataCallback(self, message)
+
+
+# Set of helper functions for creating remote file requests
+def getFileReqStruct(filename, writefile=False):
+    cmd = {'cmd': 'getFile', 'filename': filename}
+    if writefile is True:
+        cmd['writefile'] = True
+    return cmd
+
+
+def getNewestFileReqStruct(filename, writefile=False):
+    cmd = {'cmd': 'getNewestFile', 'filename': filename}
+    if writefile is True:
+        cmd['writefile'] = True
+    return cmd
+
+
+def watchFileReqStruct(filename, timeout=10, writefile=False):
+    cmd = {'cmd': 'watchFile', 'filename': filename, 'timeout': timeout}
+    if writefile is True:
+        cmd['writefile'] = True
+    return cmd
+
+
+def initWatchReqStruct(dir, filePattern, minFileSize):
+    cmd = {
+        'cmd': 'initWatch',
+        'dir': dir,
+        'filePattern': filePattern,
+        'minFileSize': minFileSize
+    }
+    return cmd
+
+
+def putTextFileReqStruct(filename, str):
+    cmd = {
+        'cmd': 'putTextFile',
+        'filename': filename,
+        'text': str,
+    }
+    return cmd
+
+
+def makeFifo():
+    fifodir = '/tmp/pipes/'
+    if not os.path.exists(fifodir):
+        os.makedirs(fifodir)
+    # remove all previous pipes
+    for p in Path(fifodir).glob("rtatten_*"):
+        p.unlink()
+    # create new pipe
+    fifoname = os.path.join(fifodir, 'rtatten_pipe_{}'.format(int(time.time())))
+    # fifo stuct
+    webpipes = StructDict()
+    webpipes.name_out = fifoname + '.toclient'
+    webpipes.name_in = fifoname + '.fromclient'
+    if not os.path.exists(webpipes.name_out):
+        os.mkfifo(webpipes.name_out)
+    if not os.path.exists(webpipes.name_in):
+        os.mkfifo(webpipes.name_in)
+    webpipes.fifoname = fifoname
+    return webpipes
+
+
+def handleFifoRequests(webServer, webpipes):
+    '''A thread routine that listens for web requests through a pair of named pipes.
+    This allows another process to send web requests without directly integrating
+    the web server into the process.
+    Listens on an fd_in pipe for requests and writes the results back on the fd_out pipe.
+    '''
+    global CommonOutputDir
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    webpipes.fd_out = open(webpipes.name_out, mode='w', buffering=1)
+    webpipes.fd_in = open(webpipes.name_in, mode='r')
+    while True:
+        msg = webpipes.fd_in.readline()
+        if len(msg) == 0:
+            # fifo closed
+            break
+        # parse command
+        cmd = json.loads(msg)
+        if 'cmd' not in cmd:
+            raise StateError('handleFifoRequests: cmd field not in command: {}'.format(cmd))
+        reqType = cmd['cmd']
+        response = StructDict({'status': 200})
+        if reqType == 'webCommonDir':
+            response.filename = CommonOutputDir
+        else:
+            try:
+                response = webServer.sendDataMessage(cmd, timeout=5)
+                if response is None:
+                    raise StateError('handleFifoRequests: Response None from sendDataMessage')
+                if 'status' not in response:
+                    raise StateError('handleFifoRequests: status field missing from response: {}'.format(response))
+                if response['status'] not in (200, 408):
+                    if 'error' not in response:
+                        raise StateError('handleFifoRequests: error field missing from response: {}'.format(response))
+                    webServer.setUserError(response['error'])
+                    logging.error('handleFifo status {}: {}'.format(response['status'], response['error']))
+            except Exception as err:
+                errStr = 'SendDataMessage Exception type {}: error {}:'.format(type(err), str(err))
+                response = {'status': 400, 'error': errStr}
+                webServer.setUserError(errStr)
+                logging.error('handleFifo Excpetion: {}'.format(errStr))
+                raise err
+        webpipes.fd_out.write(json.dumps(response) + os.linesep)
+    # End while loop
+    logging.info('handleFifo thread exit')
+    webpipes.fd_in.close()
+    webpipes.fd_out.close()
+
+
+def resignalFifoThreadExit(fifoThread, webpipes):
+    '''Under normal exit conditions the fifothread will exit when the fifo filehandles
+    are closed. However if the fifo filehandles were never opened by both ends then
+    the fifothread can be blocked waiting for them to open. To handle that case
+    we open both filehandles with O_NONBLOCK flag so that if the fifo thread reader
+    is listening it will be opened and closed, if not it will throw OSError exception
+    in which case the fifothread has already exited and closed the fifo filehandles.
+    '''
+    if fifoThread is None:
+        return
+    try:
+        pipeout = os.open(webpipes.name_out, os.O_RDONLY | os.O_NONBLOCK)
+        os.close(pipeout)
+        pipein = os.open(webpipes.name_in, os.O_WRONLY | os.O_NONBLOCK)
+        os.close(pipein)
+    except OSError as err:
+        # No reader/writer listening on file so fifoThread already exited
+        pass
+    fifoThread.join(timeout=1)
+    if fifoThread.is_alive() is not False:
+        raise StateError('runSession: fifoThread not completed')
+
+
+def clientWebpipeCmd(webpipes, cmd):
+    '''Send a web request using named pipes to the web server for handling.
+    This allows a separate client process to make requests of the web server process.
+    It writes the request on fd_out and recieves the reply on fd_in.
+    '''
+    webpipes.fd_out.write(json.dumps(cmd) + os.linesep)
+    msg = webpipes.fd_in.readline()
+    response = json.loads(msg)
+    retVals = StructDict()
+    decodedData = None
+    if 'status' not in response:
+        raise StateError('clientWebpipeCmd: status not in response: {}'.format(response))
+    retVals.statusCode = response['status']
+    if retVals.statusCode == 200:  # success
+        if 'filename' in response:
+            retVals.filename = response['filename']
+        if 'data' in response:
+            decodedData = b64decode(response['data'])
+            if retVals.filename is None:
+                raise StateError('clientWebpipeCmd: filename field is None')
+            retVals.data = formatFileData(retVals.filename, decodedData)
+    elif retVals.statusCode not in (200, 408):
+        raise RequestError('WebRequest error: ' + response['error'])
+    return retVals
+
+
+def formatFileData(filename, data):
+    '''Convert raw bytes to a specific memory format such as dicom or matlab data'''
+    fileExtension = Path(filename).suffix
+    if fileExtension == '.mat':
+        # Matlab file format
+        result = utils.loadMatFileFromBuffer(data)
+    elif fileExtension == '.dcm':
+        # Dicom file format
+        result = readDicomFromBuffer(data)
+    else:
+        result = data
+    return result
+
+
+def writeResponseDataToFile(response):
+    '''For responses that have writefile set, write the data to a file'''
+    global CommonOutputDir
+    if response['status'] != 200:
+        raise StateError('writeResponseDataToFile: status not 200')
+    if 'writefile' in response and response['writefile'] is True:
+        # write the returned data out to a file
+        if 'data' not in response:
+            raise StateError('writeResponseDataToFile: data field not in response: {}'.format(response))
+        if 'filename' not in response:
+            del response['data']
+            raise StateError('writeResponseDataToFile: filename field not in response: {}'.format(response))
+        filename = response['filename']
+        decodedData = b64decode(response['data'])
+        # prepend with common output path and write out file
+        # note: can't just use os.path.join() because if two or more elements
+        #   have an aboslute path it discards the earlier elements
+        outputFilename = os.path.normpath(CommonOutputDir + filename)
+        dirName = os.path.dirname(outputFilename)
+        if not os.path.exists(dirName):
+            os.makedirs(dirName)
+        writeFile(outputFilename, decodedData)
+        response['filename'] = outputFilename
+        del response['data']

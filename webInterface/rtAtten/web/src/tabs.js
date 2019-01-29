@@ -310,7 +310,7 @@ class RtAtten extends React.Component {
       var wsMsg = messageEvent.data;
       var request = JSON.parse(wsMsg)
       // reset error message
-      this.setState({error: ''})
+      // this.setState({error: ''})
       var cmd = request['cmd']
       if (cmd == 'config') {
         var config = request['value']

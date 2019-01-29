@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-pushd rtAtten/web
+pushd webInterface/rtAtten/web
 npm run build
 popd
 
@@ -10,4 +10,4 @@ if [ $# -gt 1 ]; then
   EXP_PARAM="$1 $2"
 fi
 
-python ClientMain.py -w -l $EXP_PARAM
+python WebMain.py -l -r $EXP_PARAM

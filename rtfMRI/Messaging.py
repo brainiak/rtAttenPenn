@@ -169,7 +169,7 @@ class RtMessagingServer:
             except ConnectionAbortedError:
                 break
             except OSError as err:
-                logging.error(repr(err))
+                logging.error('getRequest: {}'.format(repr(err)))
                 if self.conn is not None:
                     self.conn.close()
                     self.conn = None
@@ -241,7 +241,7 @@ def recvall(conn, count):
         # socket.recv no longer can throw InterruptedError as of python 3.5
         packet = conn.recv(count)
         if not packet:
-            raise socket.error("connection disconnected")
+            raise socket.error("rtclient: connection from rtserver disconnected")
         packetByteList.append(packet)
         count -= len(packet)
     buf = b''.join(packetByteList)
