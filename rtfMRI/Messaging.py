@@ -166,10 +166,11 @@ class RtMessagingServer:
                 # read from the connection
                 msg = recvMsg(self.conn)  # Can raise MessageError, PickleError
                 return msg
-            except ConnectionAbortedError:
+            except ConnectionAbortedError as err:
+                logging.error('request handler: ConnectionAborted: {}'.format(repr(err)))
                 break
-            except OSError as err:
-                logging.error('getRequest: {}'.format(repr(err)))
+            except socket.error as err:
+                logging.debug('request handler: {}'.format(repr(err)))
                 if self.conn is not None:
                     self.conn.close()
                     self.conn = None
@@ -241,7 +242,7 @@ def recvall(conn, count):
         # socket.recv no longer can throw InterruptedError as of python 3.5
         packet = conn.recv(count)
         if not packet:
-            raise socket.error("rtclient: connection from rtserver disconnected")
+            raise socket.error("recvall: disconnected")
         packetByteList.append(packet)
         count -= len(packet)
     buf = b''.join(packetByteList)

@@ -8,6 +8,7 @@ import numpy as np  # type: ignore
 from dateutil import parser
 from pathlib import Path
 import rtfMRI.utils as utils
+import webInterface.WebClientUtils as wcutils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
@@ -16,8 +17,6 @@ from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels, writeFile
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError, StateError, RequestError
-from webInterface.WebInterface import initWatchReqStruct, getFileReqStruct, watchFileReqStruct
-from webInterface.WebInterface import getNewestFileReqStruct, putTextFileReqStruct, clientWebpipeCmd
 from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile
 from .PatternsDesign2Config import getPatternsFileRegex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDataDir
@@ -112,7 +111,7 @@ class RtAttenClient(RtfMRIClient):
             # the data directory to be a subset of a common output directory.
             self.dirs.remoteDataDir = self.dirs.dataDir
             cmd = {'cmd': 'webCommonDir'}
-            retVals = clientWebpipeCmd(self.webpipes, cmd)
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, cmd)
             self.webCommonDir = retVals.filename
             self.dirs.dataDir = os.path.normpath(self.webCommonDir + self.dirs.dataDir)
         self.dirs.serverDataDir = getSubjectDataDir(cfg.session.serverDataDir, cfg.session.subjectNum, cfg.session.subjectDay)
@@ -137,10 +136,10 @@ class RtAttenClient(RtfMRIClient):
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
         if self.webpipes:
             # send initWatch via webpipe
-            initWatchCmd = initWatchReqStruct(self.dirs.imgDir,
-                                              cfg.session.watchFilePattern,
-                                              cfg.session.minExpectedDicomSize)
-            clientWebpipeCmd(self.webpipes, initWatchCmd)
+            initWatchCmd = wcutils.initWatchReqStruct(self.dirs.imgDir,
+                                                      cfg.session.watchFilePattern,
+                                                      cfg.session.minExpectedDicomSize)
+            wcutils.clientWebpipeCmd(self.webpipes, initWatchCmd)
         else:
             if not os.path.exists(self.dirs.imgDir):
                 os.makedirs(self.dirs.imgDir)
@@ -157,8 +156,8 @@ class RtAttenClient(RtfMRIClient):
             # get the mask from remote site
             maskFileName = os.path.join(self.dirs.remoteDataDir, maskFileName)
             logging.info("Getting Remote Mask file: %s", maskFileName)
-            getFileCmd = getFileReqStruct(maskFileName)
-            retVals = clientWebpipeCmd(self.webpipes, getFileCmd)
+            getFileCmd = wcutils.getFileReqStruct(maskFileName)
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, getFileCmd)
             maskData = retVals.data
             print("Using remote mask {}".format(retVals.filename))
         else:
@@ -201,8 +200,8 @@ class RtAttenClient(RtfMRIClient):
         patterns = None
         if self.webpipes and self.cfg.session.getPatternsFromControlRoom:
             fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId, addRunDir=True)
-            getNewestFileCmd = getNewestFileReqStruct(fileRegex)
-            retVals = clientWebpipeCmd(self.webpipes, getNewestFileCmd)
+            getNewestFileCmd = wcutils.getNewestFileReqStruct(fileRegex)
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, getNewestFileCmd)
             if retVals.statusCode != 200:
                 raise RequestError('runRun: statusCode not 200: {}'.format(retVals.statusCode))
             patterns = retVals.data
@@ -413,8 +412,8 @@ class RtAttenClient(RtfMRIClient):
         if self.webpipes:
             statusCode = 408  # loop while filewatch timeout 408 occurs
             while statusCode == 408:
-                watchCmd = watchFileReqStruct(specificFileName)
-                retVals = clientWebpipeCmd(self.webpipes, watchCmd)
+                watchCmd = wcutils.watchFileReqStruct(specificFileName)
+                retVals = wcutils.clientWebpipeCmd(self.webpipes, watchCmd)
                 statusCode = retVals.statusCode
                 data = retVals.data
             if statusCode != 200:
@@ -484,8 +483,8 @@ def outputPredictionFile(predict, outputInfo):
         return
     if outputInfo.webpipes is not None:
         remoteFilename = os.path.join(outputInfo.remoteClassOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
-        putFileCmd = putTextFileReqStruct(remoteFilename, str(predict.catsep))
-        clientWebpipeCmd(outputInfo.webpipes, putFileCmd)
+        putFileCmd = wcutils.putTextFileReqStruct(remoteFilename, str(predict.catsep))
+        wcutils.clientWebpipeCmd(outputInfo.webpipes, putFileCmd)
     else:
         filename = os.path.join(outputInfo.classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
         with open(filename, 'w+') as volFile:

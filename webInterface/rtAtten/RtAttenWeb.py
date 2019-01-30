@@ -14,8 +14,9 @@ from rtfMRI.utils import DebugLevels, copyFileWildcard
 from rtfMRI.StructDict import recurseCreateStructDict
 from rtfMRI.Errors import RequestError, StateError
 from rtAtten.RtAttenModel import getRunDir
-from webInterface.WebInterface import Web, getFileReqStruct, CommonOutputDir
-from webInterface.WebInterface import makeFifo, handleFifoRequests, resignalFifoThreadExit
+from webInterface.WebServer import Web, CommonOutputDir
+from webInterface.WebServer import makeFifo, handleFifoRequests, resignalFifoThreadExit
+from webInterface.WebClientUtils import getFileReqStruct
 
 
 moduleDir = os.path.dirname(os.path.realpath(__file__))
@@ -27,7 +28,7 @@ htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
 
 
 class RtAttenWeb():
-    webInterface = Web()
+    webServer = Web()
     rtserver = 'localhost:5200'
     rtlocal = True
     filesremote = False
@@ -46,7 +47,7 @@ class RtAttenWeb():
         RtAttenWeb.cfg = cfg
         RtAttenWeb.stopRun = False
         RtAttenWeb.initialized = True
-        RtAttenWeb.webInterface.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
+        RtAttenWeb.webServer.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
 
     @staticmethod
     def webUserCallback(client, message):
@@ -66,7 +67,7 @@ class RtAttenWeb():
                     errStr = 'webUserCallback: Config field wrong type {}'.format(type(cfgData))
                 else:
                     errStr = 'webUserCallback: Error parsing config field {}'.format(cfgData)
-                RtAttenWeb.webInterface.setUserError(errStr)
+                RtAttenWeb.webServer.setUserError(errStr)
                 return
 
         cmd = request['cmd']
@@ -75,12 +76,12 @@ class RtAttenWeb():
             if 'session' in RtAttenWeb.cfg:
                 # remove the roiInds ndarray because it can't be Jsonified.
                 del RtAttenWeb.cfg.session.roiInds
-            RtAttenWeb.webInterface.sendUserConfig(RtAttenWeb.cfg)
+            RtAttenWeb.webServer.sendUserConfig(RtAttenWeb.cfg)
         elif cmd == "run":
             if RtAttenWeb.runSessionThread is not None:
                 RtAttenWeb.runSessionThread.join(timeout=1)
                 if RtAttenWeb.runSessionThread.is_alive():
-                    RtAttenWeb.webInterface.setUserError("Client thread already runnning, skipping new request")
+                    RtAttenWeb.webServer.setUserError("Client thread already runnning, skipping new request")
                     return
                 RtAttenWeb.runSessionThread = None
             RtAttenWeb.stopRun = False
@@ -98,7 +99,7 @@ class RtAttenWeb():
             if RtAttenWeb.registrationThread is not None:
                 RtAttenWeb.registrationThread.join(timeout=1)
                 if RtAttenWeb.registrationThread.is_alive():
-                    RtAttenWeb.webInterface.setUserError("Registraion thread already runnning, skipping new request")
+                    RtAttenWeb.webServer.setUserError("Registraion thread already runnning, skipping new request")
                     return
             RtAttenWeb.registrationThread = threading.Thread(name='registrationThread',
                                                              target=RtAttenWeb.runRegistration,
@@ -109,7 +110,7 @@ class RtAttenWeb():
             if RtAttenWeb.uploadImageThread is not None:
                 RtAttenWeb.uploadImageThread.join(timeout=1)
                 if RtAttenWeb.uploadImageThread.is_alive():
-                    RtAttenWeb.webInterface.setUserError("Registraion thread already runnning, skipping new request")
+                    RtAttenWeb.webServer.setUserError("Registraion thread already runnning, skipping new request")
                     return
             RtAttenWeb.uploadImageThread = threading.Thread(name='uploadImages',
                                                             target=RtAttenWeb.uploadImages,
@@ -117,7 +118,7 @@ class RtAttenWeb():
             RtAttenWeb.uploadImageThread.setDaemon(True)
             RtAttenWeb.uploadImageThread.start()
         else:
-            RtAttenWeb.webInterface.setUserError("unknown command " + cmd)
+            RtAttenWeb.webServer.setUserError("unknown command " + cmd)
 
     @staticmethod
     def writeRegConfigFile(regGlobals, scriptPath):
@@ -175,7 +176,7 @@ class RtAttenWeb():
             cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
             # start thread listening for remote file requests on fifo queue
             fifoThread = threading.Thread(name='fifoThread', target=handleFifoRequests,
-                                          args=(RtAttenWeb.webInterface, webpipes))
+                                          args=(RtAttenWeb.webServer, webpipes))
             fifoThread.setDaemon(True)
             fifoThread.start()
         # print(cmdStr)
@@ -184,7 +185,7 @@ class RtAttenWeb():
                                 stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
         # send running status to user web page
         response = {'cmd': 'runStatus', 'status': 'running'}
-        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         outputLineCount = 0
         line = 'start'
         # subprocess poll returns None while subprocess is running
@@ -199,11 +200,11 @@ class RtAttenWeb():
                     print(line)
                 # send output to web interface
                 response = {'cmd': 'userLog', 'value': line}
-                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
                 outputLineCount += 1
         # processing complete, set status
         response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
-        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         # make sure fifo thread has exited
         resignalFifoThreadExit(fifoThread, webpipes)
         return outputLineCount
@@ -218,7 +219,7 @@ class RtAttenWeb():
             regType = request['regType']
             dayNum = int(regConfig['dayNum'])
         except KeyError as err:
-            RtAttenWeb.webInterface.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
+            RtAttenWeb.webServer.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
             return
         # Create the globals.sh file in registration directory
         RtAttenWeb.writeRegConfigFile(regConfig, registrationDir)
@@ -227,9 +228,11 @@ class RtAttenWeb():
             cmd = test
         elif regType == 'skullstrip':
             if dayNum != 1:
-                RtAttenWeb.webInterface.setUserError("Skullstrip can only be run for day1 data")
+                RtAttenWeb.webServer.setUserError("Skullstrip can only be run for day1 data")
                 return
             cmd = ['bash', 'skullstrip_t1.sh', '1']
+            if 'makenii' in regConfig and regConfig['makenii'] is False:
+                cmd = ['bash', 'skullstrip_t1.sh']
         elif regType == 'registration':
             if dayNum == 1:
                 cmd = ['bash', 'reg_t1.sh']
@@ -238,7 +241,7 @@ class RtAttenWeb():
         elif regType == 'makemask':
             cmd = ['bash', 'run_makemask_nii.sh']
         else:
-            RtAttenWeb.webInterface.setUserError("unknown registration type: " + regType)
+            RtAttenWeb.webServer.setUserError("unknown registration type: " + regType)
             return
 
         proc = subprocess.Popen(cmd, cwd=registrationDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -255,7 +258,7 @@ class RtAttenWeb():
                 # logging.log(logging.INFO, "psutil pid %d", proc.pid)
                 procInfo = getProcessInfo(proc.pid, str(cmd))
                 response = {'cmd': 'regStatus', 'type': regType, 'status': procInfo}
-                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
             line = proc.stdout.readline().decode('utf-8')
             if line != '':
                 # send output to web interface
@@ -263,11 +266,11 @@ class RtAttenWeb():
                     print(line, end='')
                 else:
                     response = {'cmd': 'regLog', 'value': line}
-                    RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                    RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
                 outputLineCount += 1
         # processing complete, clear status
         response = {'cmd': 'regStatus', 'type': regType, 'status': 'complete \u2714'}
-        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         return outputLineCount
 
     @staticmethod
@@ -275,10 +278,10 @@ class RtAttenWeb():
         asyncio.set_event_loop(asyncio.new_event_loop())
         if 'cmd' not in request or request['cmd'] != "uploadImages":
             raise StateError('uploadImages: incorrect cmd request: {}'.format(request))
-        if RtAttenWeb.webInterface.wsDataConn is None:
+        if RtAttenWeb.webServer.wsDataConn is None:
             # A remote fileWatcher hasn't connected yet
             errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
-            RtAttenWeb.webInterface.setUserError(errStr)
+            RtAttenWeb.webServer.setUserError(errStr)
             return
         try:
             scanFolder = request['scanFolder']
@@ -286,33 +289,33 @@ class RtAttenWeb():
             numDicoms = int(request['numDicoms'])
             uploadType = request['type']
         except KeyError as err:
-            RtAttenWeb.webInterface.setUserError("Registration request missing a parameter: {}".format(err))
+            RtAttenWeb.webServer.setUserError("Registration request missing a parameter: {}".format(err))
             return
         fileType = Path(RtAttenWeb.cfg.session.dicomNamePattern).suffix
         dicomsInProgressInterval = numDicoms / 4
         intervalCount = 1
         # send periodic progress reports to front-end
         response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'in-progress'}
-        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         for i in range(1, numDicoms+1):
             filename = "001_{:06d}_{:06d}{}".format(scanNum, i, fileType)
             fullFilename = os.path.join(scanFolder, filename)
             try:
                 cmd = getFileReqStruct(fullFilename, writefile=True)
-                response = RtAttenWeb.webInterface.sendDataMessage(cmd)
+                response = RtAttenWeb.webServer.sendDataMessage(cmd)
                 if response['status'] != 200:
                     raise RequestError(response['error'])
             except Exception as err:
-                RtAttenWeb.webInterface.setUserError(
+                RtAttenWeb.webServer.setUserError(
                     "Error uploading file {}: {}".format(fullFilename, str(err)))
                 return
             if i > intervalCount * dicomsInProgressInterval:
                 val = "{:.0f}%".format(1/4 * intervalCount * 100)  # convert to a percentage
                 response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': val}
-                RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
                 intervalCount += 1
         response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'complete \u2714'}
-        RtAttenWeb.webInterface.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
 
 
 def getProcessInfo(pid, name):

@@ -16,8 +16,8 @@ class RegistrationPane extends React.Component {
   }
 
   inputOnChange(event) {
-    var val = event.target.value
     var name = event.target.name
+    var val = (event.target.type === 'checkbox') ? event.target.checked : event.target.value;
     this.props.setRegConfigItem(name, val)
   }
 
@@ -109,6 +109,12 @@ class RegistrationPane extends React.Component {
               value={this.props.getRegConfigItem('fParam')}
               onChange={this.inputOnChange}
             />
+            <label className="cell5p">nii:</label>
+            <input className="cell5p" type="checkbox"
+              name="makenii"
+              checked={this.props.getRegConfigItem('makenii')}
+              onChange={this.inputOnChange}
+            />
             <button className="cell5p" name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
             <label className="cell5p">{this.props.regInfo['skullstrip']}</label>
           </p>
@@ -116,6 +122,8 @@ class RegistrationPane extends React.Component {
             <label className="cell10p">Registartion</label>
             <label className="cell5p"></label>
             <input className="cell5p hidden" size="5" />
+            <label className="cell5p"></label>
+            <input className="cell5p hidden" type="checkbox" />
             <button className="cell5p" name="registration" onClick={this.runBttnOnClick}>Run</button>
             <label className="cell5p">{this.props.regInfo['registration']}</label>
           </p>
@@ -123,6 +131,8 @@ class RegistrationPane extends React.Component {
             <label className="cell10p">Make Mask</label>
             <label className="cell5p"></label>
             <input className="cell5p hidden" size="5" />
+            <label className="cell5p"></label>
+            <input className="cell5p hidden" type="checkbox" />
             <button className="cell5p" name="makemask" onClick={this.runBttnOnClick}>Run</button>
             <label className="cell5p">{this.props.regInfo['makemask']}</label>
           </p>
