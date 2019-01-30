@@ -1,13 +1,8 @@
-import os
-import sys
 import re
 import logging
 import argparse
-currPath = os.path.dirname(os.path.realpath(__file__))
-rootPath = os.path.join(currPath, "../../")
-sys.path.append(rootPath)
 from rtfMRI.utils import installLoggers
-from rtfMRI.fileWatcher import WebSocketFileWatcher
+from webInterface.webSocketFileWatcher import WebSocketFileWatcher
 
 
 defaultAllowedDirs = ['/tmp', '/data']
@@ -15,7 +10,7 @@ defaultAllowedTypes = ['.dcm', '.mat']
 
 
 if __name__ == "__main__":
-    installLoggers(logging.INFO, logging.DEBUG+1, filename='logs/fileWatcher.log')
+    installLoggers(logging.INFO, logging.INFO, filename='logs/fileWatcher.log')
     # do arg parse for server to connect to
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', action="store", dest="server", default="localhost:8888",

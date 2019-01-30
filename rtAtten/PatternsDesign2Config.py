@@ -3,22 +3,19 @@ import os
 import logging
 import numpy as np  # type: ignore
 from rtfMRI.StructDict import StructDict
-from .RtAttenModel import getSubjectDayDir
 from rtfMRI.utils import loadMatFile, findNewestFile
 from rtfMRI.Errors import ValidationError
 
 
-def getLocalPatternsFile(session, runId):
-    subjectDayDir = getSubjectDayDir(session.subjectNum, session.subjectDay)
-    dataDir = os.path.join(session.dataDir, subjectDayDir)
+def getLocalPatternsFile(session, subjectDataDir, runId):
     if session.findNewestPatterns:
         # load the newest file patterns
-        patternsFilename = findPatternsDesignFile(session, dataDir, runId)
+        patternsFilename = findPatternsDesignFile(session, subjectDataDir, runId)
     else:
         idx = getRunIndex(session, runId)
         if idx >= 0 and len(session.patternsDesignFiles) > idx:
             patternsFilename = session.patternsDesignFiles[idx]
-            patternsFilename = os.path.join(dataDir, os.path.basename(patternsFilename))
+            patternsFilename = os.path.join(subjectDataDir, os.path.basename(patternsFilename))
         else:
             # either not enough runs specified or not enough patternsDesignFiles specified
             if idx < 0:
@@ -30,7 +27,7 @@ def getLocalPatternsFile(session, runId):
     # load and parse the pattensDesign file
     logging.info("Using Local Patterns file: %s", patternsFilename)
     patterns = loadMatFile(patternsFilename)
-    return patterns
+    return patterns, patternsFilename
 
 
 def createRunConfig(session, patterns, runId, scanNum=-1):
@@ -52,14 +49,14 @@ def createRunConfig(session, patterns, runId, scanNum=-1):
 
     run.firstVolPhase1 = int(np.min(np.where(patterns.block.squeeze() == 1)))
     run.lastVolPhase1 = int(np.max(np.where(patterns.block.squeeze() == patterns.nBlocksPerPhase)))
-    assert run.lastVolPhase1 == patterns.lastVolPhase1-1,\
-        "assert calulated lastVolPhase1 is same as loaded from patternsdesign {} {}"\
-        .format(run.lastVolPhase1, patterns.lastVolPhase1)
+    if run.lastVolPhase1 != patterns.lastVolPhase1-1:
+        raise ValidationError("createRunConfig: calulated lastVolPhase1 is same as loaded from"
+                              "patternsdesign {} {}".format(run.lastVolPhase1, patterns.lastVolPhase1))
     run.nVolsPhase1 = run.lastVolPhase1 - run.firstVolPhase1 + 1
     run.firstVolPhase2 = int(np.min(np.where(patterns.block.squeeze() == (patterns.nBlocksPerPhase+1))))
-    assert run.firstVolPhase2 == patterns.firstVolPhase2-1,\
-        "assert calulated firstVolPhase2 is same as load from patternsdesign {} {}"\
-        .format(run.firstVolPhase2, patterns.firstVolPhase2)
+    if run.firstVolPhase2 != patterns.firstVolPhase2-1:
+        raise ValidationError("createRunConfig: calulated firstVolPhase2 is same as loaded from "
+                              "patternsdesign {} {}".format(run.firstVolPhase2, patterns.firstVolPhase2))
     run.lastVolPhase2 = int(np.max(np.where(patterns.type.squeeze() != 0)))
     run.nVolsPhase2 = run.lastVolPhase2 - run.firstVolPhase2 + 1
 
@@ -108,7 +105,8 @@ def createBlockGroupConfig(tr_range, patterns):
         if tr.type != 0:
             if blkGrp.type == 0:
                 blkGrp.type = tr.type
-            assert blkGrp.type == tr.type, "inconsistent TR types in block group"
+            if blkGrp.type != tr.type:
+                raise ValidationError("createBlockGroupConfig: inconsistent TR types in block group")
         tr.regressor = [int(patterns.regressor[0, iTR]), int(patterns.regressor[1, iTR])]
         block.TRs.append(tr)
     if len(block.TRs) > 0:

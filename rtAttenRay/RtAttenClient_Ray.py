@@ -20,7 +20,7 @@ from rtfMRI.StructDict import StructDict
 from rtfMRI.RtfMRIClient import loadConfigFile, validateSessionCfg, validateRunCfg
 from rtfMRI.Errors import InvocationError, ValidationError
 import rtAtten.PatternsDesign2Config as Pats
-from rtAttenRay.RtAttenModel_Ray import RtAttenModel_Ray, getSubjectDayDir, getBlkGrpFilename, getModelFilename
+from rtAttenRay.RtAttenModel_Ray import RtAttenModel_Ray, getSubjectDataDir, getBlkGrpFilename, getModelFilename
 import ray
 
 
@@ -32,8 +32,9 @@ def ClientMain(config: str, rayremote: str):
     client = LocalClient(rtatten)
     cfg = loadConfigFile(config)
     client.start_session(cfg)
+    subjectDataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
     for runId in cfg.session.Runs:
-        patterns = Pats.getLocalPatternsFile(cfg.session, runId)
+        patterns, _ = Pats.getLocalPatternsFile(cfg.session, subjectDataDir, runId)
         run = Pats.createRunConfig(cfg.session, patterns, runId)
         validateRunCfg(run)
         client.do_run(run)
@@ -67,8 +68,7 @@ class LocalClient():
         self.id_fields.subjectDay = cfg.session.subjectDay
 
         # Set Directories
-        subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
-        self.dirs.dataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
+        self.dirs.dataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
         print("Mask and patterns files being read from: {}".format(self.dirs.dataDir))
         self.dirs.serverDataDir = os.path.join(cfg.session.serverDataDir, subjectDayDir)
         if not os.path.exists(self.dirs.serverDataDir):

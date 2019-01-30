@@ -21,7 +21,7 @@ class RtAtten extends React.Component {
     this.state = {
       config: {session: {}},
       configFileName: 'Default',
-      regConfig: {fParam: '0.6'},
+      regConfig: {fParam: '0.6', makenii: true},
       regInfo: {},
       runStatus: '',
       connected: false,
@@ -30,7 +30,7 @@ class RtAtten extends React.Component {
       regLines: [],  // registration processing log
     }
     this.webSocket = null
-    this.registrationTabIndex = 2
+    this.registrationTabIndex = 1
     this.onTabSelected = this.onTabSelected.bind(this);
     this.setConfigFileName = this.setConfigFileName.bind(this);
     this.setConfig = this.setConfig.bind(this);
@@ -89,6 +89,7 @@ class RtAtten extends React.Component {
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
     regGlobals.fParam = this.getRegConfigItem('fParam')
+    regGlobals.makenii = this.getRegConfigItem('makenii')
     regGlobals.data_path = cfg.session.dataDir
     regGlobals.dryrun = cfg.session.registrationDryRun.toString().toLowerCase()
     regGlobals.roi_name = "wholebrain_mask"
@@ -310,7 +311,7 @@ class RtAtten extends React.Component {
       var wsMsg = messageEvent.data;
       var request = JSON.parse(wsMsg)
       // reset error message
-      this.setState({error: ''})
+      // this.setState({error: ''})
       var cmd = request['cmd']
       if (cmd == 'config') {
         var config = request['value']
@@ -369,8 +370,8 @@ class RtAtten extends React.Component {
      elem(Tabs, {onSelect: this.onTabSelected},
        elem(TabList, {},
          elem(Tab, {}, 'Run'),
-         elem(Tab, {}, 'Settings'),
          elem(Tab, {}, 'Registration'),
+         elem(Tab, {}, 'Settings'),
        ),
        elem(TabPanel, {},
          elem(StatusPane,
@@ -389,17 +390,6 @@ class RtAtten extends React.Component {
          ),
        ),
        elem(TabPanel, {},
-         elem(SettingsPane,
-           {config: this.state.config,
-            configFileName: this.state.configFileName,
-            setConfig: this.setConfig,
-            getConfigItem: this.getConfigItem,
-            setConfigItem: this.setConfigItem,
-            setConfigFileName: this.setConfigFileName,
-           }
-         ),
-       ),
-       elem(TabPanel, {},
          elem(RegistrationPane,
            {error: this.state.error,
             regLines: this.state.regLines,
@@ -411,6 +401,18 @@ class RtAtten extends React.Component {
            }
          ),
        ),
+       elem(TabPanel, {},
+         elem(SettingsPane,
+           {config: this.state.config,
+            configFileName: this.state.configFileName,
+            setConfig: this.setConfig,
+            getConfigItem: this.getConfigItem,
+            setConfigItem: this.setConfigItem,
+            setConfigFileName: this.setConfigFileName,
+           }
+         ),
+       ),
+
      )
     return tp
   }

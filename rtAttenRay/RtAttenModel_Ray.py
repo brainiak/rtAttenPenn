@@ -43,8 +43,7 @@ class RtAttenModel_Ray(BaseModel_Ray):
             reply.errorMsg = "super.StartSession() failed"
             return reply
         self.session = sessionCfg
-        subjectDayDir = getSubjectDayDir(self.session.subjectNum, self.session.subjectDay)
-        self.dirs.dataDir = os.path.join(self.session.serverDataDir, subjectDayDir)
+        self.dirs.dataDir = getSubjectDataDir(self.session.serverDataDir, self.session.subjectNum, self.session.subjectDay)
         if not os.path.exists(self.dirs.dataDir):
             os.makedirs(self.dirs.dataDir)
         # clear cached items
@@ -451,8 +450,8 @@ class RtAttenModel_Ray(BaseModel_Ray):
         Sets the file path based on the session directory settings and then
         calls the BaseModel retrieve function.
         """
-        subjectDayDir = getSubjectDayDir(fileInfo.subjectNum, fileInfo.subjectDay)
-        fullFileName = os.path.join(self.session.serverDataDir, subjectDayDir, fileInfo.filename)
+        subjectDataDir = getSubjectDataDir(self.session.serverDataDir, fileInfo.subjectNum, fileInfo.subjectDay)
+        fullFileName = os.path.join(subjectDataDir, fileInfo.filename)
         reply = super().RetrieveData(fullFileName)
         return reply
 
@@ -626,11 +625,11 @@ def setTrData(patterns, trId, data):
         patterns.raw[trId, :] = data
 
 
-def getSubjectDayDir(subjectNum, subjectDay):
+def getSubjectDataDir(dataDir, subjectNum, subjectDay):
     """The data directory is structured by subjectNum/subjectDay.
     Return that sub-directory.
     """
-    subjectDayDir = "subject{}/day{}".format(subjectNum, subjectDay)
+    subjectDayDir = os.path.join(dataDir, "subject{}/day{}".format(subjectNum, subjectDay))
     return subjectDayDir
 
 

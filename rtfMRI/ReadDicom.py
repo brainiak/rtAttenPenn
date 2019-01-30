@@ -1,4 +1,5 @@
 import numpy as np  # type: ignore
+from rtfMRI.Errors import StateError
 try:
     import pydicom as dicom  # type: ignore
 except ModuleNotFoundError:
@@ -24,7 +25,9 @@ def parseDicomVolume(dicomImg, sliceDim):
     sliceNum = 0
     for row in range(numSlicesPerCol):
         for col in range(numSlicesPerRow):
-            assert sliceNum < max_slices
+            if sliceNum >= max_slices:
+                raise StateError('parseDicomVolume: sliceNum {} exceeds max_slices {}'
+                                 .format(sliceNum, max_slices))
             rpos = row * sliceHeight
             cpos = col * sliceWidth
             slice = image[rpos: rpos+sliceHeight, cpos: cpos+sliceWidth]

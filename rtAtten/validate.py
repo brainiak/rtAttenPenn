@@ -8,7 +8,7 @@ import rtfMRI.utils as utils
 import rtfMRI.ValidationUtils as vutils
 from rtfMRI.RtfMRIClient import loadConfigFile
 from rtfMRI.Errors import ValidationError
-from rtAtten.RtAttenModel import getSubjectDayDir
+from rtAtten.RtAttenModel import getSubjectDataDir
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression
 from rtfMRI.StructDict import StructDict, MatlabStructDict
@@ -16,8 +16,7 @@ from sklearn.metrics import roc_auc_score
 
 def validateMatlabPython(configFile):
     cfg = loadConfigFile(configFile)
-    subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
-    matDataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
+    matDataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
     pyDataDir = matDataDir
     all_ROC = np.zeros((4,2,len(cfg.session.Runs)))
     for runId in cfg.session.Runs:

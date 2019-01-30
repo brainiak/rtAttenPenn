@@ -12,6 +12,7 @@ from rtfMRI.ReadDicom import applyMask
 from rtfMRI.MsgTypes import MsgEvent, MsgResult
 from rtfMRI.Errors import RequestError
 from rtAtten.RtAttenClient import RtAttenClient
+from rtAtten.RtAttenModel import getSubjectDataDir
 from rtAtten.PatternsDesign2Config import createRunConfig, getLocalPatternsFile
 import tests.rtfMRI.simfmri.generate_data as gd
 
@@ -44,7 +45,7 @@ class TestDeadlines:
         gd.generate_data(cfgFilePath)
 
         # Start Server
-        cls.server = threading.Thread(name='server', target=ServerMain, args=(cls.serverPort,))
+        cls.server = threading.Thread(name='server', target=ServerMain, args=(cls.serverPort, 20))
         cls.server.setDaemon(True)
         cls.server.start()
 
@@ -57,7 +58,8 @@ class TestDeadlines:
         # Run Client Until first TR
         runId = cls.cfg.session.Runs[0]
         scanNum = cls.cfg.session.ScanNums[0]
-        patterns = getLocalPatternsFile(cls.cfg.session, runId)
+        subjectDataDir = getSubjectDataDir(cls.cfg.session.dataDir, cls.cfg.session.subjectNum, cls.cfg.session.subjectDay)
+        patterns, _ = getLocalPatternsFile(cls.cfg.session, subjectDataDir, runId)
         run = createRunConfig(cls.cfg.session, patterns, runId, scanNum)
         cls.client.id_fields.runId = run.runId
         blockGroup = run.blockGroups[0]

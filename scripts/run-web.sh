@@ -18,7 +18,7 @@ else
 fi
 
 # build javascritp files
-pushd rtAtten/web
+pushd webInterface/rtAtten/web
 npm run build
 popd
 
@@ -39,7 +39,7 @@ if [ ! -z $CFG ]; then
 fi
 
 # run rtAtten web server
-echo "python ClientMain.py -w -l $EXP_PARAM"
-python ClientMain.py -w -l $EXP_PARAM
+echo "python WebMain.py -l -r $EXP_PARAM"
+python WebMain.py -l -r $EXP_PARAM
 
 kill -15 $VNCPID

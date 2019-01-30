@@ -2,12 +2,12 @@ import pytest
 import os
 import threading
 import time
-import json
 import logging
-from rtfMRI.fileWatcher import WebSocketFileWatcher
-from rtfMRI.WebInterface import Web
-from rtfMRI.Errors import RequestError
+from base64 import b64decode
 from rtfMRI.utils import installLoggers
+from webInterface.webSocketFileWatcher import WebSocketFileWatcher
+from webInterface.WebServer import Web
+import webInterface.WebClientUtils as wcutils
 
 
 testDir = os.path.dirname(__file__)
@@ -25,7 +25,7 @@ class TestFileWatcher:
 
     def setup_class(cls):
         installLoggers(logging.DEBUG, logging.DEBUG, filename='logs/tests.log')
-        # Start a webInterface thread running
+        # Start a webServer thread running
         webKwArgs = {'index': 'rtAtten/html/index.html', 'port': 8921}
         cls.webThread = threading.Thread(name='webThread', target=Web.start, kwargs=webKwArgs)
         cls.webThread.setDaemon(True)
@@ -50,8 +50,8 @@ class TestFileWatcher:
     def test_ping(cls):
         print("test_ping")
         global pingCallbackEvent
-        # Send a ping request from webInterface to fileWatcher
-        assert len(Web.wsDataConns) > 0
+        # Send a ping request from webServer to fileWatcher
+        assert Web.wsDataConn is not None
         cmd = {'cmd': 'ping'}
         Web.sendDataMessage(cmd, timeout=2)
 
@@ -79,36 +79,45 @@ class TestFileWatcher:
     def test_getFile(cls, dicomTestFilename):
         print("test_getFile")
         global fileData
-        assert len(Web.wsDataConns) > 0
+        assert Web.wsDataConn is not None
         # Try to initialize file watcher with non-allowed directory
-        try:
-            Web.initWatch('/', '*', 0)
-        except RequestError as error:
-            # we expect an error because '/' directory not allowed
-            assert True
-        else:
-            assert False
+        cmd = wcutils.initWatchReqStruct('/', '*', 0)
+        response = Web.sendDataMessage(cmd)
+        # we expect an error because '/' directory not allowed
+        assert response['status'] == 400
 
         # Initialize with allowed directory
-        try:
-            Web.initWatch(testDir, '*', 0)
-        except RequestError as error:
-            # we expect an error because '/' directory not allowed
-            assert False
+        cmd = wcutils.initWatchReqStruct(testDir, '*', 0)
+        response = Web.sendDataMessage(cmd)
+        assert response['status'] == 200
 
         with open(dicomTestFilename, 'rb') as fp:
             data = fp.read()
-        webData, err = Web.watchFile(dicomTestFilename, asRawBytes=True)
-        assert(data == webData and err is None)
-        webData, err = Web.getFile(dicomTestFilename, asRawBytes=True)
-        assert(data == webData and err is None)
-        webData, err = Web.getNewestFile(dicomTestFilename, asRawBytes=True)
-        assert(data == webData and err is None)
+
+        cmd = wcutils.watchFileReqStruct(dicomTestFilename)
+        response = Web.sendDataMessage(cmd)
+        assert response['status'] == 200
+        responseData = b64decode(response['data'])
+        assert responseData == data
+
+        cmd = wcutils.getFileReqStruct(dicomTestFilename)
+        response = Web.sendDataMessage(cmd)
+        assert response['status'] == 200
+        responseData = b64decode(response['data'])
+        assert responseData == data
+
+        cmd = wcutils.getNewestFileReqStruct(dicomTestFilename)
+        response = Web.sendDataMessage(cmd)
+        assert response['status'] == 200
+        responseData = b64decode(response['data'])
+        assert responseData == data
 
         # Try to get a non-allowed file
-        webData, err = Web.getFile('/tmp/file.nope')
-        assert(err is not None and webData is None)
+        cmd = wcutils.getFileReqStruct('/tmp/file.nope')
+        response = Web.sendDataMessage(cmd)
+        assert(response['status'] == 400)
 
         # try from a non-allowed directory
-        webData, err = Web.getFile('/nope/file.dcm')
-        assert(err is not None and webData is None)
+        cmd = wcutils.getFileReqStruct('/nope/file.dcm')
+        response = Web.sendDataMessage(cmd)
+        assert(response['status'] == 400)

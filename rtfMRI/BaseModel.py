@@ -72,6 +72,8 @@ class BaseModel():
             reply = self.DeleteData(msg)
         else:
             reply = self.createReplyMessage(msg, MsgResult.Error)
+        if reply.result == MsgResult.Error:
+            logging.error("Server request error: {}".format(reply.data))
         return reply
 
     def validateMsg(self, msg):

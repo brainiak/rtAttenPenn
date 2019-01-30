@@ -2,27 +2,29 @@
 import os
 import re
 import time
-import asyncio
-import numpy as np  # type: ignore
 import datetime
 import logging
+import numpy as np  # type: ignore
 from dateutil import parser
 from pathlib import Path
 import rtfMRI.utils as utils
+import webInterface.WebClientUtils as wcutils
 from rtfMRI.RtfMRIClient import RtfMRIClient, validateRunCfg
 from rtfMRI.MsgTypes import MsgEvent
 from rtfMRI.StructDict import StructDict, copy_toplevel
 from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
-from rtfMRI.utils import dateStr30, DebugLevels, copyFileWildcard, loadMatFile
+from rtfMRI.utils import dateStr30, DebugLevels, writeFile
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.Errors import InvocationError, ValidationError, StateError, RequestError
-from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile, getPatternsFileRegex, findPatternsDesignFile
-from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDayDir
+from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile
+from .PatternsDesign2Config import getPatternsFileRegex
+from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDataDir
 
-
-moduleDir = os.path.dirname(os.path.realpath(__file__))
-patternsDir = os.path.join(moduleDir, 'patterns')
+'''Note: print() command buffers multiple lines before outputting by default.
+To change print() command to unbuffered invoke python with -u option. Or use alias
+import functools; print = functools.partial(print, flush=True)
+'''
 
 
 class RtAttenClient(RtfMRIClient):
@@ -33,9 +35,9 @@ class RtAttenClient(RtfMRIClient):
         self.printFirstFilename = True
         self.ttlPulseClient = TTLPulseClient()
         self.fileWatcher = FileWatcher()
-        self.useWeb = False
-        self.webInterface = None
-        self.stopRun = False
+        self.webpipes = None
+        self.webCommonDir = None
+        self.webPatternsDir = None
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
@@ -43,14 +45,9 @@ class RtAttenClient(RtfMRIClient):
             self.ttlPulseClient.close()
         super().__del__()
 
-    def setWebInterface(self, web):
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        self.webInterface = web
-        self.useWeb = True
+    def setWebpipes(self, webpipes):
+        self.webpipes = webpipes
         self.fileWatcher = None
-
-    def doStopRun(self):
-        self.stopRun = True
 
     def cfgValidation(self, cfg):
         # some model specific validations
@@ -108,15 +105,16 @@ class RtAttenClient(RtfMRIClient):
         logging.log(DebugLevels.L1, "Config: %r", cfg)
 
         # Set Directories
-        subjectDayDir = getSubjectDayDir(cfg.session.subjectNum, cfg.session.subjectDay)
-        self.dirs.dataDir = os.path.join(cfg.session.dataDir, subjectDayDir)
-        print("Mask and patterns files being read from: {}".format(self.dirs.dataDir))
-        if self.useWeb:
+        self.dirs.dataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
+        if self.webpipes:
             # Remote fileWatcher dataDir will be the same, but locally we want
-            # the data directory to be a subset of a predefined output directory.
+            # the data directory to be a subset of a common output directory.
             self.dirs.remoteDataDir = self.dirs.dataDir
-            self.dirs.dataDir = os.path.normpath(self.webInterface.outputDir + self.dirs.dataDir)
-        self.dirs.serverDataDir = os.path.join(cfg.session.serverDataDir, subjectDayDir)
+            cmd = {'cmd': 'webCommonDir'}
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, cmd)
+            self.webCommonDir = retVals.filename
+            self.dirs.dataDir = os.path.normpath(self.webCommonDir + self.dirs.dataDir)
+        self.dirs.serverDataDir = getSubjectDataDir(cfg.session.serverDataDir, cfg.session.subjectNum, cfg.session.subjectDay)
         if os.path.abspath(self.dirs.serverDataDir):
             # strip the leading separator to make it a relative path
             self.dirs.serverDataDir = self.dirs.serverDataDir.lstrip(os.sep)
@@ -129,64 +127,58 @@ class RtAttenClient(RtfMRIClient):
                 try:
                     imgDirDate = parser.parse(cfg.session.date)
                 except ValueError as err:
-                    imgDirDate = datetime.datetime.now()
-                    resp = input("Unable to parse date string, use today's date for image dir? Y/N [N]: ")
-                    if resp.upper() != 'Y':
-                        return
+                    raise RequestError('Unable to parse date string {}'.format(cfg.session.date))
             datestr = imgDirDate.strftime("%Y%m%d")
             imgDirName = "{}.{}.{}".format(datestr, cfg.session.subjectName, cfg.session.subjectName)
             self.dirs.imgDir = os.path.join(cfg.session.imgDir, imgDirName)
         else:
             self.dirs.imgDir = cfg.session.imgDir
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        if self.useWeb:
-            assert self.webInterface is not None
-            if len(self.webInterface.wsDataConns) == 0:
-                # A remote fileWatcher hasn't connected yet
-                errStr = 'Waiting for fileWatcher to attach, please try again momentarily'
-                self.webInterface.setUserError(errStr)
-                raise StateError(errStr)
-            self.webInterface.initWatch(self.dirs.imgDir,
-                                        cfg.session.watchFilePattern,
-                                        cfg.session.minExpectedDicomSize)
+        if self.webpipes:
+            # send initWatch via webpipe
+            initWatchCmd = wcutils.initWatchReqStruct(self.dirs.imgDir,
+                                                      cfg.session.watchFilePattern,
+                                                      cfg.session.minExpectedDicomSize)
+            wcutils.clientWebpipeCmd(self.webpipes, initWatchCmd)
         else:
             if not os.path.exists(self.dirs.imgDir):
                 os.makedirs(self.dirs.imgDir)
-            assert self.fileWatcher is not None
+            if self.fileWatcher is None:
+                raise StateError('initSession: fileWatcher is None')
             self.fileWatcher.initFileNotifier(self.dirs.imgDir,
                                               cfg.session.watchFilePattern,
                                               cfg.session.minExpectedDicomSize)
 
         # Load ROI mask - an array with 1s indicating the voxels of interest
+        maskData = None
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
-        if self.useWeb and cfg.session.getMasksFromControlRoom:
+        if self.webpipes and cfg.session.getMasksFromControlRoom:
             # get the mask from remote site
             maskFileName = os.path.join(self.dirs.remoteDataDir, maskFileName)
             logging.info("Getting Remote Mask file: %s", maskFileName)
-            maskData, errVal = self.webInterface.getFile(maskFileName)
-            if errVal is not None:
-                self.webInterface.setUserError("Get Remote Mask file {}: {}".format(maskFileName, errVal))
-                raise errVal
+            getFileCmd = wcutils.getFileReqStruct(maskFileName)
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, getFileCmd)
+            maskData = retVals.data
+            print("Using remote mask {}".format(retVals.filename))
         else:
             # read mask locally
             maskFileName = os.path.join(self.dirs.dataDir, maskFileName)
             logging.info("Getting Local Mask file: %s", maskFileName)
             maskData = utils.loadMatFile(maskFileName)
+            print("Using mask {}".format(maskFileName))
         roi = maskData.mask
-        assert type(roi) == np.ndarray
+        if type(roi) != np.ndarray:
+            raise StateError('initSession: ROI type {} is not ndarray'.format(type(roi)))
         # find indices of non-zero elements in roi in row-major order but sorted by col-major order
         cfg.session.roiInds = utils.find(roi)
         cfg.session.roiDims = roi.shape
         cfg.session.nVoxels = cfg.session.roiInds.size
-        print("Using mask {}".format(maskFileName))
         super().initSession(cfg)
 
     def doRuns(self):
         # Process each run
         for runId in self.cfg.session.Runs:
             self.runRun(runId)
-            if self.stopRun:
-                return
 
     def runRun(self, runId, scanNum=-1):
         # Setup output directory and output file
@@ -199,34 +191,25 @@ class RtAttenClient(RtfMRIClient):
             os.makedirs(outputInfo.classOutputDir)
         outputInfo.logFilename = os.path.join(runDataDir, 'fileprocessing_py.txt')
         outputInfo.logFileHandle = open(outputInfo.logFilename, 'w+')
-        outputInfo.webInterface = self.webInterface
-        if self.webInterface is not None:
+        if self.webpipes is not None:
+            outputInfo.webpipes = self.webpipes
             remoteRunDataDir = os.path.join(self.dirs.remoteDataDir, 'run' + str(runId))
             outputInfo.remoteClassOutputDir = os.path.join(remoteRunDataDir, 'classoutput')
             outputInfo.remoteLogFilename = os.path.join(remoteRunDataDir, 'fileprocessing_py.txt')
-
         # Get patterns design file for this run
-        if self.useWeb:
-            if self.cfg.session.getPatternsFromControlRoom:
-                fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId, addRunDir=True)
-                logging.info("Getting Remote Patterns file: %s", fileRegex)
-                patterns, errVal = self.webInterface.getNewestFile(fileRegex)
-                if errVal is not None:
-                    fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId)
-                    logging.info("Getting Remote Patterns file: %s", fileRegex)
-                    patterns, errVal = self.webInterface.getNewestFile(fileRegex)
-                    if errVal is not None:
-                        self.webInterface.setUserError("Get Remote Patterns Design file {}: {}".format(fileRegex, errVal))
-                        raise errVal
-            else:
-                # Using pre-configured patterns file, and copy them to the directory
-                patternsSource = os.path.join(patternsDir, 'patternsdesign_'+str(runId)+'*')
-                copyFileWildcard(patternsSource, runDataDir)
-                patternsFilename = findPatternsDesignFile(self.cfg.session, self.dirs.dataDir, runId)
-                logging.info("Using Local Patterns file: %s", patternsFilename)
-                patterns = loadMatFile(patternsFilename)
+        patterns = None
+        if self.webpipes and self.cfg.session.getPatternsFromControlRoom:
+            fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId, addRunDir=True)
+            getNewestFileCmd = wcutils.getNewestFileReqStruct(fileRegex)
+            retVals = wcutils.clientWebpipeCmd(self.webpipes, getNewestFileCmd)
+            if retVals.statusCode != 200:
+                raise RequestError('runRun: statusCode not 200: {}'.format(retVals.statusCode))
+            patterns = retVals.data
+            logging.info("Using Remote Patterns file: %s", retVals.filename)
+            print("Using remote patterns {}".format(retVals.filename))
         else:
-            patterns = getLocalPatternsFile(self.cfg.session, runId)
+            patterns, filename = getLocalPatternsFile(self.cfg.session, self.dirs.dataDir, runId)
+            print("Using patterns {}".format(filename))
         run = createRunConfig(self.cfg.session, patterns, runId, scanNum)
         validateRunCfg(run)
         self.id_fields.runId = run.runId
@@ -287,9 +270,6 @@ class RtAttenClient(RtfMRIClient):
                 reply = self.sendCmdExpectSuccess(MsgEvent.StartBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputInfo)
                 for TR in block.TRs:
-                    if self.stopRun:
-                        outputInfo.logFileHandle.close()
-                        return
                     self.id_fields.trId = TR.trId
                     fileNum = TR.vol + run.disdaqs // run.TRTime
                     logging.log(DebugLevels.L3, "TR: %d, fileNum %d", TR.trId, fileNum)
@@ -429,20 +409,15 @@ class RtAttenClient(RtfMRIClient):
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        if self.useWeb:
-            assert self.webInterface is not None
-            while not self.stopRun:
-                data, errVal = self.webInterface.watchFile(specificFileName)
-                if errVal is None:
-                    break
-                elif isinstance(errVal, RequestError) and '408' in str(errVal):
-                    # 408 timeout returned from fileWatcher, keep waiting
-                    continue
-                else:
-                    self.webInterface.setUserError("getNextTR {}: {}".format(specificFileName, errVal))
-                    raise errVal
-            if self.stopRun:
-                return None
+        if self.webpipes:
+            statusCode = 408  # loop while filewatch timeout 408 occurs
+            while statusCode == 408:
+                watchCmd = wcutils.watchFileReqStruct(specificFileName)
+                retVals = wcutils.clientWebpipeCmd(self.webpipes, watchCmd)
+                statusCode = retVals.statusCode
+                data = retVals.data
+            if statusCode != 200:
+                raise StateError('getNextTRData: statusCode not 200: {}'.format(statusCode))
         else:
             self.fileWatcher.waitForFile(specificFileName)
             data = self.loadImageData(specificFileName)
@@ -461,7 +436,8 @@ class RtAttenClient(RtfMRIClient):
             data = utils.loadMatFile(filename)
         else:
             # Dicom file:
-            assert fileExtension == '.dcm'
+            if fileExtension != '.dcm':
+                raise StateError('loadImageData: fileExtension not .dcm: {}'.format(fileExtension))
             data = readDicomFromFile(filename)
         return data
 
@@ -483,7 +459,7 @@ class RtAttenClient(RtfMRIClient):
         fileInfo = StructDict()
         fileInfo.filePattern = filePattern
         reply = self.sendCmdExpectSuccess(MsgEvent.DeleteData, fileInfo)
-        self.webInterface.userLog(reply.fields.outputlns)
+        outputReplyLines(reply.fields.outputlns, None)
 
     def ping(self):
         processingStartTime = time.time()
@@ -498,26 +474,18 @@ def outputReplyLines(lines, outputInfo):
         for line in lines:
             print(line)
             concatedLines += line + '\n'
-        if outputInfo.logFileHandle is not None:
+        if outputInfo is not None and outputInfo.logFileHandle is not None:
             outputInfo.logFileHandle.write(concatedLines)
-        if outputInfo.webInterface is not None:
-            outputInfo.webInterface.userLog(concatedLines)
-            # outputInfo.webInterface.dataLog(outputInfo.remoteLogFilename, concatedLines)
 
 
 def outputPredictionFile(predict, outputInfo):
     if predict is None or predict.vol is None:
         return
-    if outputInfo.webInterface is not None:
+    if outputInfo.webpipes is not None:
         remoteFilename = os.path.join(outputInfo.remoteClassOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
-        outputInfo.webInterface.putTextFile(remoteFilename, str(predict.catsep))
-    filename = os.path.join(outputInfo.classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
-    with open(filename, 'w+') as volFile:
-        volFile.write(str(predict.catsep))
-
-
-def writeFile(filename, data):
-    with open(filename, 'wb') as fh:
-        bytesWritten = fh.write(data)
-        if bytesWritten != len(data):
-            raise InterruptedError("Write file %s wrote %d of %d bytes" % (filename, bytesWritten, len(data)))
+        putFileCmd = wcutils.putTextFileReqStruct(remoteFilename, str(predict.catsep))
+        wcutils.clientWebpipeCmd(outputInfo.webpipes, putFileCmd)
+    else:
+        filename = os.path.join(outputInfo.classOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
+        with open(filename, 'w+') as volFile:
+            volFile.write(str(predict.catsep))
