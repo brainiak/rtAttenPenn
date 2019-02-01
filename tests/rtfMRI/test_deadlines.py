@@ -48,6 +48,7 @@ class TestDeadlines:
         cls.server = threading.Thread(name='server', target=ServerMain, args=(cls.serverPort, 20))
         cls.server.setDaemon(True)
         cls.server.start()
+        time.sleep(0.5)
 
         # Start client
         cls.cfg = loadConfigFile(cfgFilePath)

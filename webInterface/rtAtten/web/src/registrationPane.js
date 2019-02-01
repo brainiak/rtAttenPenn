@@ -47,13 +47,13 @@ class RegistrationPane extends React.Component {
   render() {
     var errorStr
     var day1Input
+    var hiddenIfNotFilesRemote = (this.props.filesRemote) ? "" : "hidden"
     if (this.props.error != '') {
       errorStr = "Error: " + this.props.error
     }
     if (this.props.getRegConfigItem('dayNum') != 1) {
       day1Input = "disabled"
     }
-
     return (
       <div>
         <p>
@@ -68,13 +68,13 @@ class RegistrationPane extends React.Component {
                 value={this.props.getRegConfigItem('highresScan')}
                 onChange={this.inputOnChange}
               />
-              <label className="cell5p">Num Dicoms:</label>
-              <input className="cell5p" size="5"
+              <label className={"cell5p " + hiddenIfNotFilesRemote}>Num Dicoms:</label>
+              <input className={"cell5p " + hiddenIfNotFilesRemote} size="5"
                 name='NumHighresDicoms'
                 value={this.props.getRegConfigItem('NumHighresDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button className="cell5p"
+              <button className={"cell5p " + hiddenIfNotFilesRemote}
                 name="highres"
                 onClick={this.uploadBttnOnClick}>Upload Highres Images</button>
               <label className="cell5p">{this.props.regInfo['highres']}</label>
@@ -87,13 +87,13 @@ class RegistrationPane extends React.Component {
                 value={this.props.getRegConfigItem('functionalScan')}
                 onChange={this.inputOnChange}
               />
-              <label className="cell5p">Num Dicoms: </label>
-              <input className="cell5p" size="5"
+              <label className={"cell5p " + hiddenIfNotFilesRemote}>Num Dicoms: </label>
+              <input className={"cell5p " + hiddenIfNotFilesRemote} size="5"
                 name='NumFuncDicoms'
                 value={this.props.getRegConfigItem('NumFuncDicoms')}
                 onChange={this.inputOnChange}
               />
-              <button className="cell5p"
+              <button className={"cell5p " + hiddenIfNotFilesRemote}
                 name="functional"
                 onClick={this.uploadBttnOnClick}>Upload Functional Images</button>
               <label className="cell5p">{this.props.regInfo['functional']}</label>

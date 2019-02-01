@@ -24,6 +24,7 @@ class RtAtten extends React.Component {
       regConfig: {fParam: '0.6', makenii: true},
       regInfo: {},
       runStatus: '',
+      filesRemote: true,  // whether the webserver gets image files from a remote server or locally
       connected: false,
       error: '',
       logLines: [],  // image classification log
@@ -315,7 +316,11 @@ class RtAtten extends React.Component {
       var cmd = request['cmd']
       if (cmd == 'config') {
         var config = request['value']
-        this.setState({config: config})
+        var filesremote = this.state.filesRemote
+        if ('filesremote' in request) {
+          filesremote = request['filesremote']
+        }
+        this.setState({config: config, filesRemote: filesremote})
         this.createRegConfig();
       } else if (cmd == 'userLog') {
         var logItem = request['value'].trim()
@@ -394,6 +399,7 @@ class RtAtten extends React.Component {
            {error: this.state.error,
             regLines: this.state.regLines,
             regInfo: this.state.regInfo,
+            filesRemote: this.state.filesRemote,
             uploadImages: this.uploadImages,
             runRegistration: this.runRegistration,
             getRegConfigItem: this.getRegConfigItem,

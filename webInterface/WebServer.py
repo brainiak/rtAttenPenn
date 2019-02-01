@@ -124,8 +124,8 @@ class Web():
         Web.sendUserMessage(json.dumps(response))
 
     @staticmethod
-    def sendUserConfig(config):
-        response = {'cmd': 'config', 'value': config}
+    def sendUserConfig(config, filesremote=True):
+        response = {'cmd': 'config', 'value': config, 'filesremote': filesremote}
         Web.sendUserMessage(json.dumps(response))
 
     @staticmethod

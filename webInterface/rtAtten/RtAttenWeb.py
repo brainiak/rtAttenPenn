@@ -20,11 +20,13 @@ from webInterface.WebClientUtils import getFileReqStruct
 
 
 moduleDir = os.path.dirname(os.path.realpath(__file__))
-rootDir = os.path.join(moduleDir, "../..")
-confDir = os.path.join(moduleDir, 'conf/')
+rootDir = os.path.join(moduleDir, "../../")
 registrationDir = os.path.join(moduleDir, 'registration/')
-patternsDir = os.path.join(moduleDir, 'patterns')
+patternsDir = os.path.join(moduleDir, 'patterns/')
 htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
+confDir = os.path.join(moduleDir, 'conf/')
+if not os.path.exists(confDir):
+    os.makedirs(confDir)
 
 
 class RtAttenWeb():
@@ -76,7 +78,7 @@ class RtAttenWeb():
             if 'session' in RtAttenWeb.cfg:
                 # remove the roiInds ndarray because it can't be Jsonified.
                 del RtAttenWeb.cfg.session.roiInds
-            RtAttenWeb.webServer.sendUserConfig(RtAttenWeb.cfg)
+            RtAttenWeb.webServer.sendUserConfig(RtAttenWeb.cfg, filesremote=RtAttenWeb.filesremote)
         elif cmd == "run":
             if RtAttenWeb.runSessionThread is not None:
                 RtAttenWeb.runSessionThread.join(timeout=1)
@@ -126,9 +128,10 @@ class RtAttenWeb():
         with open(globalsFilename, 'w') as fp:
             fp.write('#!/bin/bash\n')
             for key, val in regGlobals.items():
-                if re.search('folder|dir|path', key, flags=re.IGNORECASE) is not None:
-                    # prepend common writable directory to value
-                    val = os.path.normpath(CommonOutputDir + val)
+                if RtAttenWeb.filesremote is True:
+                    # prepend directories with commonOutputDir
+                    if re.search('folder|dir|path', key, flags=re.IGNORECASE) is not None:
+                        val = os.path.normpath(CommonOutputDir + val)
                 fp.write(key + '=' + str(val) + '\n')
             fp.write('code_path=' + registrationDir)
 
@@ -171,6 +174,7 @@ class RtAttenWeb():
             cmdStr += ' -a {} -p {}'.format(server, port)
         # set option for remote file requests
         fifoThread = None
+        webpipes = None
         if RtAttenWeb.filesremote is True:
             webpipes = makeFifo()
             cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
@@ -206,7 +210,8 @@ class RtAttenWeb():
         response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
         RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         # make sure fifo thread has exited
-        resignalFifoThreadExit(fifoThread, webpipes)
+        if fifoThread is not None:
+            resignalFifoThreadExit(fifoThread, webpipes)
         return outputLineCount
 
     @staticmethod

@@ -214,6 +214,10 @@ class InotifyFileWatcher():
                 #   swamped with unrelated events
                 fileExists = os.path.exists(specificFileName)
                 timeToCheckForFile = time.time() + 1
+        if exitWithFileEvent is False:
+            # We didn't get a close event because the file already existed,
+            # sleep for 200ms in case it is still being written to.
+            time.sleep(0.2)
         logging.log(DebugLevels.L6,
                     "File avail: eventLoopCount %d, fileEventCaptured %s, "
                     "fileName %s, eventTimeStamp %d", eventLoopCount,
