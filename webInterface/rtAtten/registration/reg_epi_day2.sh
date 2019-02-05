@@ -48,7 +48,7 @@ if [ -z $dryrun ] || [ $dryrun != true ]; then
   move_window $VIEWCMD
 
   # now check on past mask again
-  export DISPLAY=localhost:1; $VIEWCMD $functional2FN'.'nii.gz $functional2FN'_'brain_mask.nii.gz mask12func2.nii.gz &
+  export DISPLAY=localhost:1; ( $VIEWCMD $functional2FN'.'nii.gz $functional2FN'_'brain_mask.nii.gz mask12func2.nii.gz & )
   move_window $VIEWCMD
 fi
 

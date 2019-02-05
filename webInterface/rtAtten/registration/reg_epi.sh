@@ -55,7 +55,7 @@ then
 fi
 if [ -z $dryrun ] || [ $dryrun != true ]; then
   bet $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz -R -m -v
-  export DISPLAY=localhost:1; $VIEWCMD $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz $functionalFN'_'brain_mask.nii.gz &
+  export DISPLAY=localhost:1; ( $VIEWCMD $functionalFN'.'nii.gz $functionalFN'_'brain.nii.gz $functionalFN'_'brain_mask.nii.gz & )
   move_window $VIEWCMD
 fi
 

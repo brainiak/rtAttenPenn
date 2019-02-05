@@ -40,6 +40,7 @@ class RtAtten extends React.Component {
     this.getRegConfigItem = this.getRegConfigItem.bind(this);
     this.setRegConfigItem = this.setRegConfigItem.bind(this);
     this.runRegistration = this.runRegistration.bind(this);
+    this.stopRegistration = this.stopRegistration.bind(this);
     this.requestDefaultConfig = this.requestDefaultConfig.bind(this)
     this.createRegConfig = this.createRegConfig.bind(this)
     this.startRun = this.startRun.bind(this);
@@ -208,6 +209,11 @@ class RtAtten extends React.Component {
                    config: this.state.config,
                    regConfig: this.state.regConfig,
                   }
+    this.webSocket.send(JSON.stringify(request))
+  }
+
+  stopRegistration(regType) {
+    var request = {cmd: 'stopReg', regType: regType}
     this.webSocket.send(JSON.stringify(request))
   }
 
@@ -402,6 +408,7 @@ class RtAtten extends React.Component {
             filesRemote: this.state.filesRemote,
             uploadImages: this.uploadImages,
             runRegistration: this.runRegistration,
+            stopRegistration: this.stopRegistration,
             getRegConfigItem: this.getRegConfigItem,
             setRegConfigItem: this.setRegConfigItem,
            }

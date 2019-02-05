@@ -23,7 +23,7 @@ def getNewestFileReqStruct(filename, writefile=False):
     return cmd
 
 
-def watchFileReqStruct(filename, timeout=10, writefile=False):
+def watchFileReqStruct(filename, timeout=5, writefile=False):
     cmd = {'cmd': 'watchFile', 'filename': filename, 'timeout': timeout}
     if writefile is True:
         cmd['writefile'] = True

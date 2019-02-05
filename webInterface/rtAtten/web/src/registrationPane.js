@@ -26,7 +26,7 @@ class RegistrationPane extends React.Component {
   }
 
   stopBttnOnClick(event) {
-    // this.props.stopRun()
+    this.props.stopRegistration(event.target.name)
   }
 
   uploadBttnOnClick(event) {
@@ -116,6 +116,7 @@ class RegistrationPane extends React.Component {
               onChange={this.inputOnChange}
             />
             <button className="cell5p" name="skullstrip" onClick={this.runBttnOnClick}>Run</button>
+            <button className="cell5p" name="skullstrip" onClick={this.stopBttnOnClick}>Stop</button>
             <label className="cell5p">{this.props.regInfo['skullstrip']}</label>
           </p>
           <p className="row">
@@ -125,6 +126,7 @@ class RegistrationPane extends React.Component {
             <label className="cell5p"></label>
             <input className="cell5p hidden" type="checkbox" />
             <button className="cell5p" name="registration" onClick={this.runBttnOnClick}>Run</button>
+            <button className="cell5p" name="registration" onClick={this.stopBttnOnClick}>Stop</button>
             <label className="cell5p">{this.props.regInfo['registration']}</label>
           </p>
           <p className="row">
@@ -134,6 +136,7 @@ class RegistrationPane extends React.Component {
             <label className="cell5p"></label>
             <input className="cell5p hidden" type="checkbox" />
             <button className="cell5p" name="makemask" onClick={this.runBttnOnClick}>Run</button>
+            <button className="cell5p" name="makemask" onClick={this.stopBttnOnClick}>Stop</button>
             <label className="cell5p">{this.props.regInfo['makemask']}</label>
           </p>
         </div>

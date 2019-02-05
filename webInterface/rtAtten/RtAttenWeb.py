@@ -2,6 +2,7 @@ import os
 import threading
 import subprocess
 import psutil
+import queue
 import asyncio
 import time
 import logging
@@ -36,6 +37,8 @@ class RtAttenWeb():
     filesremote = False
     cfg = None
     initialized = False
+    stopRun = False
+    stopReg = False
     runSessionThread = None
     registrationThread = None
     uploadImageThread = None
@@ -48,6 +51,7 @@ class RtAttenWeb():
         RtAttenWeb.filesremote = params.filesremote
         RtAttenWeb.cfg = cfg
         RtAttenWeb.stopRun = False
+        RtAttenWeb.stopReg = False
         RtAttenWeb.initialized = True
         RtAttenWeb.webServer.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
 
@@ -103,11 +107,19 @@ class RtAttenWeb():
                 if RtAttenWeb.registrationThread.is_alive():
                     RtAttenWeb.webServer.setUserError("Registraion thread already runnning, skipping new request")
                     return
+            RtAttenWeb.stopReg = False
             RtAttenWeb.registrationThread = threading.Thread(name='registrationThread',
                                                              target=RtAttenWeb.runRegistration,
                                                              args=(request,))
             RtAttenWeb.registrationThread.setDaemon(True)
             RtAttenWeb.registrationThread.start()
+        elif cmd == "stopReg":
+            if RtAttenWeb.registrationThread is not None:
+                RtAttenWeb.stopReg = True
+                RtAttenWeb.registrationThread.join(timeout=1)
+                if not RtAttenWeb.registrationThread.is_alive():
+                    RtAttenWeb.registrationThread = None
+                    RtAttenWeb.stopReg = False
         elif cmd == "uploadImages":
             if RtAttenWeb.uploadImageThread is not None:
                 RtAttenWeb.uploadImageThread.join(timeout=1)
@@ -190,29 +202,49 @@ class RtAttenWeb():
         # send running status to user web page
         response = {'cmd': 'runStatus', 'status': 'running'}
         RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
-        outputLineCount = 0
+        # start a separate thread to read the process output
+        lineQueue = queue.Queue()
+        outputThread = threading.Thread(target=RtAttenWeb.procOutputReader, args=(proc, lineQueue))
+        outputThread.setDaemon(True)
+        outputThread.start()
         line = 'start'
-        # subprocess poll returns None while subprocess is running
         while(proc.poll() is None or line != ''):
+            # subprocess poll returns None while subprocess is running
             if RtAttenWeb.stopRun is True:
                 # signal the process to exit by closing stdin
                 proc.stdin.close()
-            line = proc.stdout.readline().decode('utf-8')
+            try:
+                line = lineQueue.get(block=True, timeout=1)
+            except queue.Empty:
+                line = ''
             if line != '':
-                # check if line has error in it and print to console
-                if re.search('error', line, re.IGNORECASE):
-                    print(line)
-                # send output to web interface
                 response = {'cmd': 'userLog', 'value': line}
                 RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
-                outputLineCount += 1
         # processing complete, set status
-        response = {'cmd': 'runStatus', 'status': 'complete \u2714'}
+        endStatus = 'complete \u2714'
+        if RtAttenWeb.stopRun is True:
+            endStatus = 'stopped'
+        response = {'cmd': 'runStatus', 'status': endStatus}
         RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        outputThread.join(timeout=1)
+        if outputThread.is_alive():
+            print("OutputThread failed to exit")
         # make sure fifo thread has exited
         if fifoThread is not None:
             resignalFifoThreadExit(fifoThread, webpipes)
-        return outputLineCount
+        return
+
+    @staticmethod
+    def procOutputReader(proc, lineQueue):
+        for bline in iter(proc.stdout.readline, b''):
+            line = bline.decode('utf-8')
+            # check if line has error in it and print to console
+            if re.search('error', line, re.IGNORECASE):
+                print(line)
+            # send to output queue
+            lineQueue.put(line)
+            if line == '':
+                break
 
     @staticmethod
     def runRegistration(request, test=None):
@@ -250,6 +282,10 @@ class RtAttenWeb():
             return
 
         proc = subprocess.Popen(cmd, cwd=registrationDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        lineQueue = queue.Queue()
+        outputThread = threading.Thread(target=RtAttenWeb.procOutputReader, args=(proc, lineQueue))
+        outputThread.setDaemon(True)
+        outputThread.start()
         outputLineCount = 0
         line = 'start'
         statusInterval = 0.5  # interval (sec) for sending status updates
@@ -257,6 +293,9 @@ class RtAttenWeb():
         # subprocess poll returns None while subprocess is running
         while(proc.poll() is None or line != ''):
             currTime = time.time()
+            if RtAttenWeb.stopReg is True:
+                killPid(proc.pid)
+                break
             if currTime >= statusTime + statusInterval:
                 # send status
                 statusTime = currTime
@@ -264,7 +303,10 @@ class RtAttenWeb():
                 procInfo = getProcessInfo(proc.pid, str(cmd))
                 response = {'cmd': 'regStatus', 'type': regType, 'status': procInfo}
                 RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
-            line = proc.stdout.readline().decode('utf-8')
+            try:
+                line = lineQueue.get(block=True, timeout=1)
+            except queue.Empty:
+                line = ''
             if line != '':
                 # send output to web interface
                 if test:
@@ -273,8 +315,14 @@ class RtAttenWeb():
                     response = {'cmd': 'regLog', 'value': line}
                     RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
                 outputLineCount += 1
+        outputThread.join(timeout=1)
+        if outputThread.is_alive():
+            print("OutputThread failed to exit")
         # processing complete, clear status
-        response = {'cmd': 'regStatus', 'type': regType, 'status': 'complete \u2714'}
+        endStatus = 'complete \u2714'
+        if RtAttenWeb.stopReg is True:
+            endStatus = 'stopped'
+        response = {'cmd': 'regStatus', 'type': regType, 'status': endStatus}
         RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
         return outputLineCount
 
@@ -337,3 +385,10 @@ def getProcessInfo(pid, name):
     except Exception as err:
         logging.log(logging.INFO, "psutil error: %s", err)
         return []
+
+
+def killPid(pid):
+    proc = psutil.Process(pid)
+    for childproc in proc.children(recursive=True):
+        childproc.kill()
+    proc.kill()

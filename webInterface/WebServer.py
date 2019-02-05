@@ -371,7 +371,7 @@ def handleFifoRequests(webServer, webpipes):
             response.filename = CommonOutputDir
         else:
             try:
-                response = webServer.sendDataMessage(cmd, timeout=5)
+                response = webServer.sendDataMessage(cmd, timeout=10)
                 if response is None:
                     raise StateError('handleFifoRequests: Response None from sendDataMessage')
                 if 'status' not in response:
@@ -387,7 +387,11 @@ def handleFifoRequests(webServer, webpipes):
                 webServer.setUserError(errStr)
                 logging.error('handleFifo Excpetion: {}'.format(errStr))
                 raise err
-        webpipes.fd_out.write(json.dumps(response) + os.linesep)
+        try:
+            webpipes.fd_out.write(json.dumps(response) + os.linesep)
+        except BrokenPipeError:
+            print('handleFifoRequests: pipe broken')
+            break
     # End while loop
     logging.info('handleFifo thread exit')
     webpipes.fd_in.close()
