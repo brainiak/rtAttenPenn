@@ -71,7 +71,7 @@ def clientWebpipeCmd(webpipes, cmd):
                 raise StateError('clientWebpipeCmd: filename field is None')
             retVals.data = formatFileData(retVals.filename, decodedData)
     elif retVals.statusCode not in (200, 408):
-        raise RequestError('WebRequest error: ' + response['error'])
+        raise RequestError('WebRequest error: status {}: {}'.format(retVals.statusCode, response['error']))
     return retVals
 
 

@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import websocket
+import threading
 from base64 import b64encode
 from pathlib import Path
 from rtfMRI.fileWatcher import FileWatcher
@@ -22,6 +23,9 @@ class WebSocketFileWatcher:
     fileWatcher = FileWatcher()
     allowedDirs = None
     allowedTypes = None
+    # Synchronizing across threads
+    clientLock = threading.Lock()
+    fileWatchLock = threading.Lock()
 
     @staticmethod
     def runFileWatcher(serverAddr, retryInterval=10, allowedDirs=defaultAllowedDirs,
@@ -46,6 +50,7 @@ class WebSocketFileWatcher:
             except Exception as err:
                 logging.log(logging.INFO, "WSFileWatcher Exception: %s", str(err))
             time.sleep(retryInterval)
+
 
     @staticmethod
     def on_message(client, message):
@@ -72,7 +77,11 @@ class WebSocketFileWatcher:
                     response = {'status': 400, 'error': errStr}
                     logging.log(logging.WARNING, errStr)
                 else:
-                    fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
+                    WebSocketFileWatcher.fileWatchLock.acquire()
+                    try:
+                        fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
+                    finally:
+                        WebSocketFileWatcher.fileWatchLock.release()
                     response = {'status': 200}
             elif cmd == 'watchFile':
                 filename = request['filename']
@@ -87,7 +96,11 @@ class WebSocketFileWatcher:
                     response = {'status': 400, 'error': errStr}
                     logging.log(logging.WARNING, errStr)
                 else:
-                    retVal = fileWatcher.waitForFile(filename, timeout=timeout)
+                    WebSocketFileWatcher.fileWatchLock.acquire()
+                    try:
+                        retVal = fileWatcher.waitForFile(filename, timeout=timeout)
+                    finally:
+                        WebSocketFileWatcher.fileWatchLock.release()
                     if retVal is None:
                         errStr = "WatchFile: 408 Timeout {}s: {}".format(timeout, filename)
                         response = {'status': 408, 'error': errStr}
@@ -100,7 +113,7 @@ class WebSocketFileWatcher:
                         response = {'status': 200, 'filename': filename, 'data': b64StrData}
             elif cmd == 'getFile':
                 filename = request['filename']
-                if not os.path.isabs(filename):
+                if filename is not None and not os.path.isabs(filename):
                     # relative path to the watch dir
                     filename = os.path.join(fileWatcher.watchDir, filename)
                 logging.log(DebugLevels.L3, "getFile: %s", filename)
@@ -210,7 +223,11 @@ class WebSocketFileWatcher:
         # merge response into the request dictionary
         request.update(response)
         response = request
-        client.send(json.dumps(response))
+        WebSocketFileWatcher.clientLock.acquire()
+        try:
+            client.send(json.dumps(response))
+        finally:
+            WebSocketFileWatcher.clientLock.release()
 
     @staticmethod
     def validateRequestedFile(dir, file, textFileTypeOnly=False):
