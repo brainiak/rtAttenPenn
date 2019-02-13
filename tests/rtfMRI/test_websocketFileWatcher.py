@@ -44,6 +44,7 @@ class TestFileWatcher:
         time.sleep(1)
 
     def teardown_class(cls):
+        Web.stop()
         time.sleep(1)
         pass
 
@@ -53,7 +54,7 @@ class TestFileWatcher:
         # Send a ping request from webServer to fileWatcher
         assert Web.wsDataConn is not None
         cmd = {'cmd': 'ping'}
-        Web.sendDataMessage(cmd, timeout=2)
+        Web.sendDataMsgFromThread(cmd, timeout=2)
 
     def test_validateRequestedFile(cls):
         print("test_validateRequestedFile")
@@ -82,42 +83,42 @@ class TestFileWatcher:
         assert Web.wsDataConn is not None
         # Try to initialize file watcher with non-allowed directory
         cmd = wcutils.initWatchReqStruct('/', '*', 0)
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         # we expect an error because '/' directory not allowed
         assert response['status'] == 400
 
         # Initialize with allowed directory
         cmd = wcutils.initWatchReqStruct(testDir, '*', 0)
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert response['status'] == 200
 
         with open(dicomTestFilename, 'rb') as fp:
             data = fp.read()
 
         cmd = wcutils.watchFileReqStruct(dicomTestFilename)
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert response['status'] == 200
         responseData = b64decode(response['data'])
         assert responseData == data
 
         cmd = wcutils.getFileReqStruct(dicomTestFilename)
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert response['status'] == 200
         responseData = b64decode(response['data'])
         assert responseData == data
 
         cmd = wcutils.getNewestFileReqStruct(dicomTestFilename)
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert response['status'] == 200
         responseData = b64decode(response['data'])
         assert responseData == data
 
         # Try to get a non-allowed file
         cmd = wcutils.getFileReqStruct('/tmp/file.nope')
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert(response['status'] == 400)
 
         # try from a non-allowed directory
         cmd = wcutils.getFileReqStruct('/nope/file.dcm')
-        response = Web.sendDataMessage(cmd)
+        response = Web.sendDataMsgFromThread(cmd)
         assert(response['status'] == 400)

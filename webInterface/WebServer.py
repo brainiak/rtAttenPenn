@@ -14,7 +14,6 @@ from rtfMRI.Messaging import getCertPath, getKeyPath
 from rtfMRI.utils import DebugLevels, writeFile
 from rtfMRI.Errors import StateError, RTError
 
-
 certsDir = 'certs'
 sslCertFile = 'rtAtten.crt'
 sslPrivateKey = 'rtAtten_private.key'
@@ -40,8 +39,10 @@ class Web():
     webIndexPage = 'index.html'
     dataCallbacks = {}
     dataSequenceNum = 0
+    cbPruneTime = 0
     # Synchronizing across threads
     threadLock = threading.Lock()
+    ioLoopInst = None
 
     @staticmethod
     def start(index='index.html', userCallback=defaultCallback,
@@ -80,7 +81,13 @@ class Web():
         print("Listening on: http://localhost:{}".format(port))
         Web.httpServer = tornado.httpserver.HTTPServer(Web.app, ssl_options=ssl_ctx)
         Web.httpServer.listen(port)
-        tornado.ioloop.IOLoop.current().start()
+        Web.ioLoopInst = tornado.ioloop.IOLoop.current()
+        Web.ioLoopInst.start()
+
+    @staticmethod
+    def stop():
+        Web.ioLoopInst.add_callback(Web.ioLoopInst.stop)
+        Web.app = None
 
     @staticmethod
     def close():
@@ -107,7 +114,7 @@ class Web():
     def dataLog(filename, logStr):
         cmd = {'cmd': 'dataLog', 'logLine': logStr, 'filename': filename}
         try:
-            Web.sendDataMessage(cmd, timeout=5)
+            Web.sendDataMsgFromThread(cmd, timeout=5)
         except Exception as err:
             logging.warn('Web: dataLog: error {}'.format(err))
             return False
@@ -116,35 +123,34 @@ class Web():
     @staticmethod
     def userLog(logStr):
         cmd = {'cmd': 'userLog', 'value': logStr}
-        Web.sendUserMessage(json.dumps(cmd))
+        Web.sendUserMsgFromThread(json.dumps(cmd))
 
     @staticmethod
     def setUserError(errStr):
         response = {'cmd': 'error', 'error': errStr}
-        Web.sendUserMessage(json.dumps(response))
+        Web.sendUserMsgFromThread(json.dumps(response))
 
     @staticmethod
     def sendUserConfig(config, filesremote=True):
         response = {'cmd': 'config', 'value': config, 'filesremote': filesremote}
-        Web.sendUserMessage(json.dumps(response))
+        Web.sendUserMsgFromThread(json.dumps(response))
 
     @staticmethod
-    def sendDataMessage(cmd, timeout=None):
+    def sendDataMessage(cmd, callbackStruct):
         if Web.wsDataConn is None:
             raise StateError("WebServer: No Data Websocket Connection")
+        if callbackStruct is None or callbackStruct.event is None:
+            raise StateError("sendDataMessage: No threading.event attribute in callbackStruct")
         Web.threadLock.acquire()
         try:
             Web.dataSequenceNum += 1
             seqNum = Web.dataSequenceNum
             cmd['seqNum'] = seqNum
             msg = json.dumps(cmd)
-            callbackStruct = StructDict()
             callbackStruct.seqNum = seqNum
             callbackStruct.timeStamp = time.time()
-            callbackStruct.event = threading.Event()
             callbackStruct.status = 0
             callbackStruct.error = None
-            # callbackStruct.fileData = b''
             Web.dataCallbacks[seqNum] = callbackStruct
             Web.wsDataConn.write_message(msg)
         except Exception as err:
@@ -152,14 +158,6 @@ class Web():
             raise RTError(errStr)
         finally:
             Web.threadLock.release()
-        callbackStruct.event.wait(timeout)
-        if callbackStruct.event.is_set() is False:
-            raise TimeoutError("sendDataMessage: Data Request Timed Out({}) {}".format(timeout, msg))
-        if callbackStruct.response is None:
-            raise StateError('sendDataMessage: callbackStruct.response is None for command {}'.format(cmd))
-        if callbackStruct.status == 200 and 'writefile' in callbackStruct.response:
-            writeResponseDataToFile(callbackStruct.response)
-        return callbackStruct.response
 
     @staticmethod
     def dataCallback(client, message):
@@ -204,7 +202,9 @@ class Web():
             raise err
         finally:
             Web.threadLock.release()
-        Web.pruneCallbacks()
+        if time.time() > Web.cbPruneTime:
+            Web.cbPruneTime = time.time() + 60
+            Web.pruneCallbacks()
 
     @staticmethod
     def pruneCallbacks():
@@ -240,6 +240,26 @@ class Web():
                 client.write_message(msg)
         finally:
             Web.threadLock.release()
+
+    @staticmethod
+    def sendDataMsgFromThread(msg, timeout=None):
+        callbackStruct = StructDict()
+        callbackStruct.event = threading.Event()
+        # schedule the call
+        Web.ioLoopInst.add_callback(Web.sendDataMessage, msg, callbackStruct)
+        # wait for completion of call
+        callbackStruct.event.wait(timeout)
+        if callbackStruct.event.is_set() is False:
+            raise TimeoutError("sendDataMessage: Data Request Timed Out({}) {}".format(timeout, msg))
+        if callbackStruct.response is None:
+            raise StateError('sendDataMessage: callbackStruct.response is None for command {}'.format(msg))
+        if callbackStruct.status == 200 and 'writefile' in callbackStruct.response:
+            writeResponseDataToFile(callbackStruct.response)
+        return callbackStruct.response
+
+    @staticmethod
+    def sendUserMsgFromThread(msg):
+        Web.ioLoopInst.add_callback(Web.sendUserMessage, msg)
 
     class UserHttp(tornado.web.RequestHandler):
         def get(self):
@@ -353,7 +373,6 @@ def handleFifoRequests(webServer, webpipes):
     Listens on an fd_in pipe for requests and writes the results back on the fd_out pipe.
     '''
     global CommonOutputDir
-    asyncio.set_event_loop(asyncio.new_event_loop())
     webpipes.fd_out = open(webpipes.name_out, mode='w', buffering=1)
     webpipes.fd_in = open(webpipes.name_in, mode='r')
     while True:
@@ -371,7 +390,7 @@ def handleFifoRequests(webServer, webpipes):
             response.filename = CommonOutputDir
         else:
             try:
-                response = webServer.sendDataMessage(cmd, timeout=10)
+                response = webServer.sendDataMsgFromThread(cmd, timeout=10)
                 if response is None:
                     raise StateError('handleFifoRequests: Response None from sendDataMessage')
                 if 'status' not in response:

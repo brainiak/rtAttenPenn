@@ -1,7 +1,9 @@
 import pytest
 import os
 import sys
+import threading
 import dateutil
+import time
 scriptPath = os.path.dirname(os.path.realpath(__file__))
 rootPath = os.path.join(scriptPath, "../..")
 sys.path.append(rootPath)
@@ -17,19 +19,6 @@ def configData():
     currentDir = os.path.dirname(os.path.realpath(__file__))
     cfg = loadConfigFile(os.path.join(currentDir, '../rtfMRI/syntheticDataCfg.toml'))
     return cfg
-
-
-# TODO - run the web server in a thread and connect with an HTTPConnection client
-# Then run the commands you want to test.
-def startRtAttenWeb(configData):
-    global webIsStarted
-    params = StructDict()
-    params.rtserver = 'localhost:5200'
-    params.rtlocal = False
-    params.filesremote = False
-    if not webIsStarted:
-        RtAttenWeb.init(params, configData)
-        webIsStarted = True
 
 
 def localCreateRegConfig(cfg):
@@ -49,19 +38,42 @@ def localCreateRegConfig(cfg):
     return regGlobals
 
 
-def test_createRegConfig(configData):
-    regGlobals = localCreateRegConfig(configData)
-    RtAttenWeb.writeRegConfigFile(regGlobals, '/tmp')
-    assert os.path.exists(os.path.join('/tmp', 'globals.sh'))
-
-
-def test_runRegistration(configData):
+def webHandler(configData):
+    global webIsStarted
     params = StructDict()
-    params.cfg = configData
-    regGlobals = localCreateRegConfig(params.cfg)
-    request = {'cmd': 'runReg',
-               'regConfig': regGlobals,
-               'regType': 'test',
-               'dayNum': 1}
-    lineCount = RtAttenWeb.runRegistration(request, test=['ping', 'localhost', '-c', '3'])
-    assert lineCount == 8
+    params.rtserver = 'localhost:5200'
+    params.rtlocal = False
+    params.filesremote = False
+    if not webIsStarted:
+        webIsStarted = True
+        RtAttenWeb.init(params, configData)
+
+
+class TestRtAttenWeb:
+    def setup_class(cls):
+        print("starting web server")
+        webThread = threading.Thread(name='webThread', target=webHandler, args=(configData(),))
+        webThread.setDaemon(True)
+        webThread.start()
+        time.sleep(1)
+
+    def teardown_class(cls):
+        RtAttenWeb.webServer.stop()
+        time.sleep(1)
+
+    def test_createRegConfig(cls, configData):
+        regGlobals = localCreateRegConfig(configData)
+        RtAttenWeb.writeRegConfigFile(regGlobals, '/tmp')
+        assert os.path.exists(os.path.join('/tmp', 'globals.sh'))
+
+
+    def test_runRegistration(cls, configData):
+        params = StructDict()
+        params.cfg = configData
+        regGlobals = localCreateRegConfig(params.cfg)
+        request = {'cmd': 'runReg',
+                   'regConfig': regGlobals,
+                   'regType': 'test',
+                   'dayNum': 1}
+        lineCount = RtAttenWeb.runRegistration(request, test=['ping', 'localhost', '-c', '3'])
+        assert lineCount == 8

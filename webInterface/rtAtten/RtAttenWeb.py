@@ -3,7 +3,6 @@ import threading
 import subprocess
 import psutil
 import queue
-import asyncio
 import time
 import logging
 import json
@@ -149,7 +148,6 @@ class RtAttenWeb():
 
     @staticmethod
     def runSession():
-        asyncio.set_event_loop(asyncio.new_event_loop())
         cfg = RtAttenWeb.cfg
         # override confirmation for files already existing if needed
         if (cfg.session.skipConfirmForReprocess is None or
@@ -201,7 +199,7 @@ class RtAttenWeb():
                                 stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
         # send running status to user web page
         response = {'cmd': 'runStatus', 'status': 'running'}
-        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
         # start a separate thread to read the process output
         lineQueue = queue.Queue()
         outputThread = threading.Thread(target=RtAttenWeb.procOutputReader, args=(proc, lineQueue))
@@ -218,14 +216,13 @@ class RtAttenWeb():
             except queue.Empty:
                 line = ''
             if line != '':
-                response = {'cmd': 'userLog', 'value': line}
-                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.userLog(line)
         # processing complete, set status
         endStatus = 'complete \u2714'
         if RtAttenWeb.stopRun is True:
             endStatus = 'stopped'
         response = {'cmd': 'runStatus', 'status': endStatus}
-        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
         outputThread.join(timeout=1)
         if outputThread.is_alive():
             print("OutputThread failed to exit")
@@ -248,7 +245,6 @@ class RtAttenWeb():
 
     @staticmethod
     def runRegistration(request, test=None):
-        asyncio.set_event_loop(asyncio.new_event_loop())
         if 'cmd' not in request or request['cmd'] != "runReg":
             raise StateError('runRegistration: incorrect cmd request: {}'.format(request))
         try:
@@ -302,7 +298,7 @@ class RtAttenWeb():
                 # logging.log(logging.INFO, "psutil pid %d", proc.pid)
                 procInfo = getProcessInfo(proc.pid, str(cmd))
                 response = {'cmd': 'regStatus', 'type': regType, 'status': procInfo}
-                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
             try:
                 line = lineQueue.get(block=True, timeout=1)
             except queue.Empty:
@@ -313,7 +309,7 @@ class RtAttenWeb():
                     print(line, end='')
                 else:
                     response = {'cmd': 'regLog', 'value': line}
-                    RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+                    RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
                 outputLineCount += 1
         outputThread.join(timeout=1)
         if outputThread.is_alive():
@@ -323,12 +319,11 @@ class RtAttenWeb():
         if RtAttenWeb.stopReg is True:
             endStatus = 'stopped'
         response = {'cmd': 'regStatus', 'type': regType, 'status': endStatus}
-        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
         return outputLineCount
 
     @staticmethod
     def uploadImages(request):
-        asyncio.set_event_loop(asyncio.new_event_loop())
         if 'cmd' not in request or request['cmd'] != "uploadImages":
             raise StateError('uploadImages: incorrect cmd request: {}'.format(request))
         if RtAttenWeb.webServer.wsDataConn is None:
@@ -349,13 +344,13 @@ class RtAttenWeb():
         intervalCount = 1
         # send periodic progress reports to front-end
         response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'in-progress'}
-        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
         for i in range(1, numDicoms+1):
             filename = "001_{:06d}_{:06d}{}".format(scanNum, i, fileType)
             fullFilename = os.path.join(scanFolder, filename)
             try:
                 cmd = getFileReqStruct(fullFilename, writefile=True)
-                response = RtAttenWeb.webServer.sendDataMessage(cmd)
+                response = RtAttenWeb.webServer.sendDataMsgFromThread(cmd)
                 if response['status'] != 200:
                     raise RequestError(response['error'])
             except Exception as err:
@@ -365,10 +360,10 @@ class RtAttenWeb():
             if i > intervalCount * dicomsInProgressInterval:
                 val = "{:.0f}%".format(1/4 * intervalCount * 100)  # convert to a percentage
                 response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': val}
-                RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+                RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
                 intervalCount += 1
         response = {'cmd': 'uploadProgress', 'type': uploadType, 'progress': 'complete \u2714'}
-        RtAttenWeb.webServer.sendUserMessage(json.dumps(response))
+        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(response))
 
 
 def getProcessInfo(pid, name):
