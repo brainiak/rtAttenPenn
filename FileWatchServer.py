@@ -21,6 +21,10 @@ if __name__ == "__main__":
                         help="Allowed directories to server files from - comma separated list")
     parser.add_argument('-f', action="store", dest="allowedFileTypes", default=defaultAllowedTypes,
                         help="Allowed file types - comma separated list")
+    parser.add_argument('-u', '--username', action="store", dest="username", default=None,
+                        help="rtAtten website username")
+    parser.add_argument('-p', '--password', action="store", dest="password", default=None,
+                        help="rtAtten website password")
     args = parser.parse_args()
 
     if not re.match(".*:\d+", args.server):
@@ -40,4 +44,6 @@ if __name__ == "__main__":
     WebSocketFileWatcher.runFileWatcher(args.server,
                                         retryInterval=args.interval,
                                         allowedDirs=args.allowedDirs,
-                                        allowedTypes=args.allowedFileTypes)
+                                        allowedTypes=args.allowedFileTypes,
+                                        username=args.username,
+                                        password=args.password)

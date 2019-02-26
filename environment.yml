@@ -23,6 +23,8 @@ dependencies:
   - pip
   - tornado
   - websocket-client
+  - bcrypt
+  - requests
   - pip:
     - clickutil
     - watchdog

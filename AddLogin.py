@@ -1,0 +1,36 @@
+import sys
+import getpass
+import bcrypt
+from webInterface.WebServer import loadPasswdFile, storePasswdFile
+
+passwordFile = 'certs/passwd'
+
+
+def addUserPassword(username, passwdDict):
+    password = getpass.getpass('New Password:')
+    password1 = getpass.getpass('Retype Password:')
+    if password != password1:
+        print("Passwords don't match")
+        sys.exit()
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    passwdDict[username] = hashed.decode()
+    storePasswdFile(passwordFile, passwdDict)
+    print('password updated')
+    return
+
+
+# Main Function
+passwdDict = loadPasswdFile(passwordFile)
+username = input('Username: ')
+if username in passwdDict:
+    print('Changing password for {}'.format(username))
+    password = getpass.getpass('Old Password:')
+    hashed_passwd = passwdDict[username]
+    if bcrypt.checkpw(password.encode(), hashed_passwd.encode()) is True:
+        addUserPassword(username, passwdDict)
+    else:
+        print('Incorrect password')
+        sys.exit()
+else:
+    print("{} doesn't exist, adding as new user".format(username))
+    addUserPassword(username, passwdDict)

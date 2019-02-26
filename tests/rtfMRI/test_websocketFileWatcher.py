@@ -26,7 +26,7 @@ class TestFileWatcher:
     def setup_class(cls):
         installLoggers(logging.DEBUG, logging.DEBUG, filename='logs/tests.log')
         # Start a webServer thread running
-        webKwArgs = {'index': 'rtAtten/html/index.html', 'port': 8921}
+        webKwArgs = {'htmlDir': 'rtAtten/web/html', 'port': 8921, 'test': True}
         cls.webThread = threading.Thread(name='webThread', target=Web.start, kwargs=webKwArgs)
         cls.webThread.setDaemon(True)
         cls.webThread.start()
@@ -37,7 +37,13 @@ class TestFileWatcher:
             name='fileThread',
             target=WebSocketFileWatcher.runFileWatcher,
             args=('localhost:8921',),
-            kwargs={'retryInterval': 0.5, 'allowedDirs':['/tmp', testDir], 'allowedTypes':['.dcm', '.mat']}
+            kwargs={
+                'retryInterval': 0.5,
+                'allowedDirs': ['/tmp', testDir],
+                'allowedTypes': ['.dcm', '.mat'],
+                'username': 'test',
+                'password': 'test'
+            }
         )
         cls.fileThread.setDaemon(True)
         cls.fileThread.start()

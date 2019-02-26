@@ -23,7 +23,7 @@ moduleDir = os.path.dirname(os.path.realpath(__file__))
 rootDir = os.path.join(moduleDir, "../../")
 registrationDir = os.path.join(moduleDir, 'registration/')
 patternsDir = os.path.join(moduleDir, 'patterns/')
-htmlIndex = os.path.join(moduleDir, 'web/html/index.html')
+htmlDir = os.path.join(moduleDir, 'web/html')
 confDir = os.path.join(moduleDir, 'conf/')
 if not os.path.exists(confDir):
     os.makedirs(confDir)
@@ -52,7 +52,7 @@ class RtAttenWeb():
         RtAttenWeb.stopRun = False
         RtAttenWeb.stopReg = False
         RtAttenWeb.initialized = True
-        RtAttenWeb.webServer.start(htmlIndex, RtAttenWeb.webUserCallback, None, 8888)
+        RtAttenWeb.webServer.start(htmlDir, RtAttenWeb.webUserCallback, None, 8888)
 
     @staticmethod
     def webUserCallback(client, message):

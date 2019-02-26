@@ -1,19 +1,21 @@
 import os
-import ssl
+import sys
 import time
 import json
 import logging
-import websocket
 import threading
+import getpass
+import requests
+import websocket
 from base64 import b64encode
 from pathlib import Path
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.utils import DebugLevels, findNewestFile
 from rtfMRI.Errors import StateError
 
-
 defaultAllowedDirs = ['/data']
 defaultAllowedTypes = ['.dcm', '.mat']
+certFile = 'certs/rtAtten.crt'
 
 
 class WebSocketFileWatcher:
@@ -23,34 +25,41 @@ class WebSocketFileWatcher:
     fileWatcher = FileWatcher()
     allowedDirs = None
     allowedTypes = None
+    serverAddr = None
+    sessionCookie = None
+    needLogin = True
+    shouldExit = False
     # Synchronizing across threads
     clientLock = threading.Lock()
     fileWatchLock = threading.Lock()
 
     @staticmethod
     def runFileWatcher(serverAddr, retryInterval=10, allowedDirs=defaultAllowedDirs,
-                       allowedTypes=defaultAllowedTypes):
+                       allowedTypes=defaultAllowedTypes, username=None, password=None):
+        WebSocketFileWatcher.serverAddr = serverAddr
         WebSocketFileWatcher.allowedDirs = allowedDirs
         for i in range(len(allowedTypes)):
             if not allowedTypes[i].startswith('.'):
                 allowedTypes[i] = '.' + allowedTypes[i]
         WebSocketFileWatcher.allowedTypes = allowedTypes
         # go into loop trying to do webSocket connection periodically
-        while True:
+        while not WebSocketFileWatcher.shouldExit:
+            if WebSocketFileWatcher.needLogin or WebSocketFileWatcher.sessionCookie is None:
+                WebSocketFileWatcher.login(username, password)
             try:
                 wsAddr = os.path.join('wss://', serverAddr, 'wsData')
                 logging.log(DebugLevels.L6, "Trying connection: %s", wsAddr)
                 ws = websocket.WebSocketApp(wsAddr,
                                             on_message=WebSocketFileWatcher.on_message,
-                                            on_error=WebSocketFileWatcher.on_error)
+                                            on_close=WebSocketFileWatcher.on_close,
+                                            on_error=WebSocketFileWatcher.on_error,
+                                            cookie="login="+WebSocketFileWatcher.sessionCookie)
                 logging.log(DebugLevels.L1, "Connected to: %s", wsAddr)
-                # TODO - I don't really like setting this CERT_NONE option,
-                #   it'd be better to somehow recognize the certificate
-                ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+                ws.run_forever(sslopt={"ca_certs": certFile})
             except Exception as err:
                 logging.log(logging.INFO, "WSFileWatcher Exception: %s", str(err))
-            time.sleep(retryInterval)
-
+            if not WebSocketFileWatcher.needLogin:
+                time.sleep(retryInterval)
 
     @staticmethod
     def on_message(client, message):
@@ -193,25 +202,33 @@ class WebSocketFileWatcher:
                         volFile.write(text)
                     response = {'status': 200}
             elif cmd == 'dataLog':
-                    filename = request['filename']
-                    logging.log(DebugLevels.L3, "dataLog: %s", filename)
-                    logLine = request['logLine']
-                    if filename is None:
-                        errStr = 'DataLog: Missing filename field'
-                        response = {'status': 400, 'error': errStr}
-                        logging.log(logging.WARNING, errStr)
-                    elif logLine is None:
-                        errStr = 'DataLog: Missing logLine field'
-                        response = {'status': 400, 'error': errStr}
-                        logging.log(logging.WARNING, errStr)
-                    elif WebSocketFileWatcher.validateRequestedFile(None, filename, textFileTypeOnly=True) is False:
-                        errStr = 'DataLog: Non-allowed file {}'.format(filename)
-                        response = {'status': 400, 'error': errStr}
-                        logging.log(logging.WARNING, errStr)
-                    else:
-                        with open(filename, 'a+') as logFile:
-                            logFile.write(logLine + '\n')
-                        response = {'status': 200}
+                filename = request['filename']
+                logging.log(DebugLevels.L3, "dataLog: %s", filename)
+                logLine = request['logLine']
+                if filename is None:
+                    errStr = 'DataLog: Missing filename field'
+                    response = {'status': 400, 'error': errStr}
+                    logging.log(logging.WARNING, errStr)
+                elif logLine is None:
+                    errStr = 'DataLog: Missing logLine field'
+                    response = {'status': 400, 'error': errStr}
+                    logging.log(logging.WARNING, errStr)
+                elif WebSocketFileWatcher.validateRequestedFile(None, filename, textFileTypeOnly=True) is False:
+                    errStr = 'DataLog: Non-allowed file {}'.format(filename)
+                    response = {'status': 400, 'error': errStr}
+                    logging.log(logging.WARNING, errStr)
+                else:
+                    with open(filename, 'a+') as logFile:
+                        logFile.write(logLine + '\n')
+                    response = {'status': 200}
+            elif cmd == 'error':
+                errorCode = request['status']
+                if errorCode == 401:
+                    WebSocketFileWatcher.needLogin = True
+                    WebSocketFileWatcher.sessionCookie = None
+                errStr = 'Error {}: {}'.format(errorCode, request['error'])
+                logging.log(logging.ERROR, request['error'])
+                return
             else:
                 errStr = 'OnMessage: Unrecognized command {}'.format(cmd)
                 response = {'status': 400, 'error': errStr}
@@ -220,6 +237,8 @@ class WebSocketFileWatcher:
             errStr = "OnMessage Exception: {}: {}".format(cmd, err)
             logging.log(logging.WARNING, errStr)
             response = {'status': 400, 'error': errStr}
+            if cmd == 'error':
+                sys.exit()
         # merge response into the request dictionary
         request.update(response)
         response = request
@@ -228,6 +247,36 @@ class WebSocketFileWatcher:
             client.send(json.dumps(response))
         finally:
             WebSocketFileWatcher.clientLock.release()
+
+    @staticmethod
+    def on_close(client):
+        logging.info('connection closed')
+
+    @staticmethod
+    def on_error(client, error):
+        if type(error) is KeyboardInterrupt:
+            WebSocketFileWatcher.shouldExit = True
+        else:
+            logging.log(logging.WARNING, "on_error: WSFileWatcher: {} {}".
+                        format(type(error), str(error)))
+
+    @staticmethod
+    def login(username, password):
+        if username is None or password is None:
+            print('Login required...')
+            username = input('Username: ')
+            password = getpass.getpass()
+        loginURL = os.path.join('https://', WebSocketFileWatcher.serverAddr, 'login')
+        session = requests.Session()
+        session.verify = certFile
+        getResp = session.get(loginURL)
+        if getResp.status_code != 200:
+            raise requests.HTTPError('Get URL: {}, returned {}'.format(loginURL, getResp.status_code))
+        postData = {'name': username, 'password': password, '_xsrf': session.cookies['_xsrf']}
+        postResp = session.post(loginURL, postData)
+        if postResp.status_code != 200:
+            raise requests.HTTPError('Post URL: {}, returned'.format(loginURL, getResp.status_code))
+        WebSocketFileWatcher.sessionCookie = session.cookies['login']
 
     @staticmethod
     def validateRequestedFile(dir, file, textFileTypeOnly=False):
@@ -257,7 +306,3 @@ class WebSocketFileWatcher:
             return False
         # default case
         return True
-
-    @staticmethod
-    def on_error(client, error):
-        logging.log(logging.WARNING, "on_error: WSFileWatcher: %s", error)

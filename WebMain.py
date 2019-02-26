@@ -7,7 +7,7 @@ from rtfMRI.StructDict import StructDict
 
 
 def WebMain(params):
-    installLoggers(logging.INFO, logging.DEBUG+1, filename='logs/webServer.log')
+    installLoggers(logging.INFO, logging.INFO, filename='logs/webServer.log')
     cfg = loadConfigFile(params.experiment)
 
     if cfg.experiment.model == 'rtAtten':
@@ -20,10 +20,14 @@ def WebMain(params):
 
 if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
-    argParser.add_argument('--rtserver', '-s', default='localhost:5200', type=str, help='rtAtten server hostname:port')
-    argParser.add_argument('--rtlocal', '-l', default=False, action='store_true', help='run client and server together locally')
-    argParser.add_argument('--filesremote', '-r', default=False, action='store_true', help='dicom files retrieved from remote server')
-    argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
+    argParser.add_argument('--rtserver', '-s', default='localhost:5200', type=str,
+                           help='rtAtten server hostname:port')
+    argParser.add_argument('--rtlocal', '-l', default=False, action='store_true',
+                           help='run client and server together locally')
+    argParser.add_argument('--filesremote', '-r', default=False, action='store_true',
+                           help='dicom files retrieved from remote server')
+    argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str,
+                           help='experiment file (.json or .toml)')
     args = argParser.parse_args()
     params = StructDict({'rtserver': args.rtserver,
                          'rtlocal': args.rtlocal,

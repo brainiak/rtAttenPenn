@@ -56,6 +56,9 @@ def clientWebpipeCmd(webpipes, cmd):
     '''
     webpipes.fd_out.write(json.dumps(cmd) + os.linesep)
     msg = webpipes.fd_in.readline()
+    if len(msg) == 0:
+        # fifo closed
+        raise StateError('WebPipe closed')
     response = json.loads(msg)
     retVals = StructDict()
     decodedData = None

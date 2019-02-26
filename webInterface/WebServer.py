@@ -4,6 +4,8 @@ import os
 import time
 import ssl
 import json
+import uuid
+import bcrypt
 import asyncio
 import threading
 import logging
@@ -36,29 +38,40 @@ class Web():
     userWidnowCallback = defaultCallback
     subjWindowCallback = defaultCallback
     # Main html page to load
+    htmlDir = None
     webIndexPage = 'index.html'
+    webLoginPage = 'login.html'
     dataCallbacks = {}
     dataSequenceNum = 0
     cbPruneTime = 0
     # Synchronizing across threads
     threadLock = threading.Lock()
     ioLoopInst = None
+    test = False
 
     @staticmethod
-    def start(index='index.html', userCallback=defaultCallback,
-              subjCallback=defaultCallback, port=8888):
+    def start(htmlDir='html', userCallback=defaultCallback,
+              subjCallback=defaultCallback, port=8888, test=False):
         if Web.app is not None:
             raise RuntimeError("Web Server already running.")
-        Web.webIndexPage = index
+        Web.test = test
+        Web.htmlDir = htmlDir
         Web.subjWindowCallback = subjCallback
         Web.userWidnowCallback = userCallback
-        webDir = Path(os.path.dirname(index)).parent
+        webDir = Path(htmlDir).parent
         src_root = os.path.join(webDir, 'src')
         css_root = os.path.join(webDir, 'css')
         img_root = os.path.join(webDir, 'img')
         build_root = os.path.join(webDir, 'build')
+        cookieSecret = getCookieSecret(certsDir)
+        settings = {
+            "cookie_secret": cookieSecret,
+            "login_url": "/login",
+            "xsrf_cookies": True,
+        }
         Web.app = tornado.web.Application([
             (r'/', Web.UserHttp),
+            (r'/login', Web.LoginHandler),
             (r'/wsUser', Web.UserWebSocket),
             (r'/wsSubject', Web.SubjectWebSocket),
             (r'/wsData', Web.DataWebSocket),
@@ -66,7 +79,7 @@ class Web():
             (r'/css/(.*)', tornado.web.StaticFileHandler, {'path': css_root}),
             (r'/img/(.*)', tornado.web.StaticFileHandler, {'path': img_root}),
             (r'/build/(.*)', tornado.web.StaticFileHandler, {'path': build_root}),
-        ])
+        ], **settings)
         # start event loop if needed
         try:
             asyncio.get_event_loop()
@@ -78,7 +91,7 @@ class Web():
         ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_ctx.load_cert_chain(getCertPath(certsDir, sslCertFile),
                                 getKeyPath(certsDir, sslPrivateKey))
-        print("Listening on: http://localhost:{}".format(port))
+        print("Listening on: https://localhost:{}".format(port))
         Web.httpServer = tornado.httpserver.HTTPServer(Web.app, ssl_options=ssl_ctx)
         Web.httpServer.listen(port)
         Web.ioLoopInst = tornado.ioloop.IOLoop.current()
@@ -137,8 +150,6 @@ class Web():
 
     @staticmethod
     def sendDataMessage(cmd, callbackStruct):
-        if Web.wsDataConn is None:
-            raise StateError("WebServer: No Data Websocket Connection")
         if callbackStruct is None or callbackStruct.event is None:
             raise StateError("sendDataMessage: No threading.event attribute in callbackStruct")
         Web.threadLock.acquire()
@@ -243,9 +254,11 @@ class Web():
 
     @staticmethod
     def sendDataMsgFromThread(msg, timeout=None):
+        if Web.wsDataConn is None:
+            raise StateError("WebServer: No Data Websocket Connection")
         callbackStruct = StructDict()
         callbackStruct.event = threading.Event()
-        # schedule the call
+        # schedule the call with io thread
         Web.ioLoopInst.add_callback(Web.sendDataMessage, msg, callbackStruct)
         # wait for completion of call
         callbackStruct.event.wait(timeout)
@@ -262,8 +275,12 @@ class Web():
         Web.ioLoopInst.add_callback(Web.sendUserMessage, msg)
 
     class UserHttp(tornado.web.RequestHandler):
+        def get_current_user(self):
+            return self.get_secure_cookie("login", max_age_days=0.2)
+
+        @tornado.web.authenticated
         def get(self):
-            full_path = os.path.join(os.getcwd(), Web.webIndexPage)
+            full_path = os.path.join(Web.htmlDir, Web.webIndexPage)
             logging.log(DebugLevels.L6, 'Index request: pwd: {}'.format(full_path))
             Web.threadLock.acquire()
             try:
@@ -271,8 +288,49 @@ class Web():
             finally:
                 Web.threadLock.release()
 
+    class LoginHandler(tornado.web.RequestHandler):
+        error = ''
+
+        def get(self):
+            full_path = os.path.join(Web.htmlDir, Web.webLoginPage)
+            self.render(full_path, error_msg=Web.LoginHandler.error)
+
+        def post(self):
+            # TODO - prevent more than 5 password attempts
+            Web.LoginHandler.error = ''
+            try:
+                login_name = self.get_argument("name")
+                login_passwd = self.get_argument("password")
+                if Web.test is True:
+                    if login_name == login_passwd == 'test':
+                        self.set_secure_cookie("login", login_name, expires_days=0.2)
+                        self.redirect("/")
+                        return
+                passwdFilename = os.path.join(certsDir, 'passwd')
+                passwdDict = loadPasswdFile(passwdFilename)
+                if login_name in passwdDict:
+                    hashed_passwd = passwdDict[login_name]
+                    # checkpw expects bytes array rather than string so use .encode()
+                    if bcrypt.checkpw(login_passwd.encode(), hashed_passwd.encode()) is True:
+                        self.set_secure_cookie("login", login_name, expires_days=0.2)
+                        self.redirect("/")
+                        return
+                    else:
+                        Web.LoginHandler.error = 'Login Error: Incorrect Password'
+                else:
+                    Web.LoginHandler.error = 'Login Error: Invalid Username'
+            except Exception as err:
+                Web.LoginHandler.error = str(err)
+            self.redirect("/login")
+
     class SubjectWebSocket(tornado.websocket.WebSocketHandler):
         def open(self):
+            user_id = self.get_secure_cookie("login")
+            if not user_id:
+                response = {'cmd': 'error', 'error': 'Websocket authentication failed'}
+                self.write_message(json.dumps(response))
+                self.close()
+                return
             logging.log(DebugLevels.L1, "Subject WebSocket opened")
             Web.threadLock.acquire()
             try:
@@ -284,7 +342,8 @@ class Web():
             logging.log(DebugLevels.L1, "Subject WebSocket closed")
             Web.threadLock.acquire()
             try:
-                Web.wsSubjConns.remove(self)
+                if self in Web.wsSubjConns:
+                    Web.wsSubjConns.remove(self)
             finally:
                 Web.threadLock.release()
 
@@ -292,7 +351,20 @@ class Web():
             Web.subjWindowCallback(self, message)
 
     class UserWebSocket(tornado.websocket.WebSocketHandler):
+        # def get(self, *args, **kwargs):
+        #     if self.get_secure_cookie("login"):
+        #         super(Web.SubjectWebSocket, self).get(*args, **kwargs)
+        #     else:
+        #         What to do here when authentication fails?
+        #         return
+
         def open(self):
+            user_id = self.get_secure_cookie("login")
+            if not user_id:
+                response = {'cmd': 'error', 'error': 'Websocket authentication failed'}
+                self.write_message(json.dumps(response))
+                self.close()
+                return
             logging.log(DebugLevels.L1, "User WebSocket opened")
             Web.threadLock.acquire()
             try:
@@ -304,7 +376,10 @@ class Web():
             logging.log(DebugLevels.L1, "User WebSocket closed")
             Web.threadLock.acquire()
             try:
-                Web.wsUserConns.remove(self)
+                if self in Web.wsUserConns:
+                    Web.wsUserConns.remove(self)
+                else:
+                    logging.log(DebugLevels.L1, "on_close: connection not in list")
             finally:
                 Web.threadLock.release()
 
@@ -313,6 +388,13 @@ class Web():
 
     class DataWebSocket(tornado.websocket.WebSocketHandler):
         def open(self):
+            user_id = self.get_secure_cookie("login")
+            if not user_id:
+                logging.warn('Data websocket authentication failed')
+                response = {'cmd': 'error', 'status': 401, 'error': 'Websocket authentication failed'}
+                self.write_message(json.dumps(response))
+                self.close()
+                return
             logging.log(DebugLevels.L1, "Data WebSocket opened")
             Web.threadLock.acquire()
             try:
@@ -327,6 +409,9 @@ class Web():
                 Web.threadLock.release()
 
         def on_close(self):
+            if Web.wsDataConn != self:
+                logging.log(DebugLevels.L1, "on_close: Data Socket mismatch")
+                return
             logging.log(DebugLevels.L1, "Data WebSocket closed")
             Web.threadLock.acquire()
             try:
@@ -343,6 +428,31 @@ class Web():
 
         def on_message(self, message):
             Web.dataCallback(self, message)
+
+
+def loadPasswdFile(filename):
+    with open(filename, 'r') as fh:
+        entries = fh.readlines()
+    passwdDict = {k: v for (k, v) in [line.strip().split(',') for line in entries]}
+    return passwdDict
+
+
+def storePasswdFile(filename, passwdDict):
+    with open(filename, 'w') as fh:
+        for k, v in passwdDict.items():
+            fh.write('{},{}\n'.format(k, v))
+
+
+def getCookieSecret(dir):
+    filename = os.path.join(dir, 'cookie-secret')
+    if os.path.exists(filename):
+        with open(filename, mode='rb') as fh:
+            cookieSecret = fh.read()
+    else:
+        cookieSecret = uuid.uuid4().bytes
+        with open(filename, mode='wb') as fh:
+            fh.write(cookieSecret)
+    return cookieSecret
 
 
 def makeFifo():
@@ -375,46 +485,48 @@ def handleFifoRequests(webServer, webpipes):
     global CommonOutputDir
     webpipes.fd_out = open(webpipes.name_out, mode='w', buffering=1)
     webpipes.fd_in = open(webpipes.name_in, mode='r')
-    while True:
-        msg = webpipes.fd_in.readline()
-        if len(msg) == 0:
-            # fifo closed
-            break
-        # parse command
-        cmd = json.loads(msg)
-        if 'cmd' not in cmd:
-            raise StateError('handleFifoRequests: cmd field not in command: {}'.format(cmd))
-        reqType = cmd['cmd']
-        response = StructDict({'status': 200})
-        if reqType == 'webCommonDir':
-            response.filename = CommonOutputDir
-        else:
+    try:
+        while True:
+            msg = webpipes.fd_in.readline()
+            if len(msg) == 0:
+                # fifo closed
+                break
+            # parse command
+            cmd = json.loads(msg)
+            if 'cmd' not in cmd:
+                raise StateError('handleFifoRequests: cmd field not in command: {}'.format(cmd))
+            reqType = cmd['cmd']
+            response = StructDict({'status': 200})
+            if reqType == 'webCommonDir':
+                response.filename = CommonOutputDir
+            else:
+                try:
+                    response = webServer.sendDataMsgFromThread(cmd, timeout=10)
+                    if response is None:
+                        raise StateError('handleFifoRequests: Response None from sendDataMessage')
+                    if 'status' not in response:
+                        raise StateError('handleFifoRequests: status field missing from response: {}'.format(response))
+                    if response['status'] not in (200, 408):
+                        if 'error' not in response:
+                            raise StateError('handleFifoRequests: error field missing from response: {}'.format(response))
+                        webServer.setUserError(response['error'])
+                        logging.error('handleFifo status {}: {}'.format(response['status'], response['error']))
+                except Exception as err:
+                    errStr = 'SendDataMessage Exception type {}: error {}:'.format(type(err), str(err))
+                    response = {'status': 400, 'error': errStr}
+                    webServer.setUserError(errStr)
+                    logging.error('handleFifo Excpetion: {}'.format(errStr))
+                    raise err
             try:
-                response = webServer.sendDataMsgFromThread(cmd, timeout=10)
-                if response is None:
-                    raise StateError('handleFifoRequests: Response None from sendDataMessage')
-                if 'status' not in response:
-                    raise StateError('handleFifoRequests: status field missing from response: {}'.format(response))
-                if response['status'] not in (200, 408):
-                    if 'error' not in response:
-                        raise StateError('handleFifoRequests: error field missing from response: {}'.format(response))
-                    webServer.setUserError(response['error'])
-                    logging.error('handleFifo status {}: {}'.format(response['status'], response['error']))
-            except Exception as err:
-                errStr = 'SendDataMessage Exception type {}: error {}:'.format(type(err), str(err))
-                response = {'status': 400, 'error': errStr}
-                webServer.setUserError(errStr)
-                logging.error('handleFifo Excpetion: {}'.format(errStr))
-                raise err
-        try:
-            webpipes.fd_out.write(json.dumps(response) + os.linesep)
-        except BrokenPipeError:
-            print('handleFifoRequests: pipe broken')
-            break
-    # End while loop
-    logging.info('handleFifo thread exit')
-    webpipes.fd_in.close()
-    webpipes.fd_out.close()
+                webpipes.fd_out.write(json.dumps(response) + os.linesep)
+            except BrokenPipeError:
+                print('handleFifoRequests: pipe broken')
+                break
+        # End while loop
+    finally:
+        logging.info('handleFifo thread exit')
+        webpipes.fd_in.close()
+        webpipes.fd_out.close()
 
 
 def resignalFifoThreadExit(fifoThread, webpipes):
