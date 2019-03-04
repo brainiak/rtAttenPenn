@@ -44,9 +44,9 @@ class WebSocketFileWatcher:
         WebSocketFileWatcher.allowedTypes = allowedTypes
         # go into loop trying to do webSocket connection periodically
         while not WebSocketFileWatcher.shouldExit:
-            if WebSocketFileWatcher.needLogin or WebSocketFileWatcher.sessionCookie is None:
-                WebSocketFileWatcher.login(username, password)
             try:
+                if WebSocketFileWatcher.needLogin or WebSocketFileWatcher.sessionCookie is None:
+                    WebSocketFileWatcher.login(username, password)
                 wsAddr = os.path.join('wss://', serverAddr, 'wsData')
                 logging.log(DebugLevels.L6, "Trying connection: %s", wsAddr)
                 ws = websocket.WebSocketApp(wsAddr,
@@ -57,8 +57,7 @@ class WebSocketFileWatcher:
                 logging.log(DebugLevels.L1, "Connected to: %s", wsAddr)
                 ws.run_forever(sslopt={"ca_certs": certFile})
             except Exception as err:
-                logging.log(logging.INFO, "WSFileWatcher Exception: %s", str(err))
-            if not WebSocketFileWatcher.needLogin:
+                logging.log(logging.INFO, "WSFileWatcher Exception {}: {}".format(type(err).__name__, str(err)))
                 time.sleep(retryInterval)
 
     @staticmethod
@@ -262,20 +261,25 @@ class WebSocketFileWatcher:
 
     @staticmethod
     def login(username, password):
-        if username is None or password is None:
-            print('Login required...')
-            username = input('Username: ')
-            password = getpass.getpass()
         loginURL = os.path.join('https://', WebSocketFileWatcher.serverAddr, 'login')
         session = requests.Session()
         session.verify = certFile
-        getResp = session.get(loginURL)
+        try:
+            getResp = session.get(loginURL)
+        except Exception as err:
+            raise ConnectionError('Connection error: {}'.format(loginURL))
         if getResp.status_code != 200:
             raise requests.HTTPError('Get URL: {}, returned {}'.format(loginURL, getResp.status_code))
+        if username is None:
+            print('Login required...')
+            username = input('Username: ')
+            password = getpass.getpass()
+        elif password is None:
+            password = getpass.getpass()
         postData = {'name': username, 'password': password, '_xsrf': session.cookies['_xsrf']}
         postResp = session.post(loginURL, postData)
         if postResp.status_code != 200:
-            raise requests.HTTPError('Post URL: {}, returned'.format(loginURL, getResp.status_code))
+            raise requests.HTTPError('Post URL: {}, returned {}'.format(loginURL, postResp.status_code))
         WebSocketFileWatcher.sessionCookie = session.cookies['login']
 
     @staticmethod

@@ -321,7 +321,8 @@ class Web():
                     Web.LoginHandler.error = 'Login Error: Invalid Username'
             except Exception as err:
                 Web.LoginHandler.error = str(err)
-            self.redirect("/login")
+            assert Web.LoginHandler.error != '', "Assert: Web.LoginHandler.error not empty"
+            self.set_status(401, Web.LoginHandler.error)
 
     class SubjectWebSocket(tornado.websocket.WebSocketHandler):
         def open(self):

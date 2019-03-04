@@ -11,12 +11,6 @@ do
   shift
 done
 
-if [ -z $IP ]; then
-  echo "Warning: no ip address supplied, credentials won't be updated"
-else
-  bash scripts/make-sslcert.sh $IP
-fi
-
 # build javascritp files
 pushd webInterface/rtAtten/web
 npm run build
@@ -31,6 +25,11 @@ source ~/.bashrc
 conda deactivate
 conda activate rtAtten
 
+if [ -z $IP ]; then
+  echo "Warning: no ip address supplied, credentials won't be updated"
+else
+  bash scripts/make-sslcert.sh -ip $IP
+fi
 
 # check if experiment file is supplied with -e filename
 EXP_PARAM=''

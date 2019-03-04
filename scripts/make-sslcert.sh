@@ -1,14 +1,95 @@
 #!/bin/bash
 
-if [ ! $# == 1 ]; then
-    echo "Usage: $0 ip_address"
-    exit
+while test $# -gt 0
+do
+  case "$1" in
+    -ip) IP=$2
+      ;;
+    -url) URL=$2
+      ;;
+  esac
+  shift
+done
+
+if [[ -z $IP && -z $URL ]]; then
+  echo "Usage: $0 <-ip ip_address | -url url_address>"
+  exit
 fi
 
-IP_ADDRESS=$1
+if [ -z $IP ]; then
+  IP='127.0.0.1'
+fi
 
-SUBJ_ALT_NAME="subjectAltName=DNS.1:princeton.edu,DNS.2:localhost,IP.1:$IP_ADDRESS"
+if [ -z $URL ]; then
+  URL='localhost'
+fi
 
-echo $SUBJ_ALT_NAME
+START_DATE='20190101120000Z'
+END_DATE='20240101120000Z'
 
-openssl req -x509 -key certs/rtAtten_private.key -sha256 -days 3650 -nodes -out certs/rtAtten.crt -extensions san -config <(echo '[req]'; echo 'distinguished_name=req'; echo '[san]'; echo $SUBJ_ALT_NAME) -subj '/C=US/ST=New Jersey/L=Princeton/O=Princeton University/OU=PNI/CN=rtAtten.princeton.edu'
+pushd certs
+mkdir -p tmp
+# create empty certs index
+cat /dev/null > tmp/index.txt
+# initialize serial number of certs
+echo '01' > tmp/serial.txt
+
+# create the openssl ca config file
+cat <<EOF >tmp/ca.config
+[ca]
+default_ca=CA_default
+
+[CA_default]
+database=tmp/index.txt
+serial=tmp/serial.txt
+policy=policy_match
+# new_certs_dir=./
+
+[policy_match]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = supplied
+organizationalUnitName  = supplied
+commonName              = supplied
+emailAddress            = optional
+
+[req]
+distinguished_name=req_distinguished_name
+req_extensions=v3_req
+prompt=no
+
+[v3_req]
+subjectAltName = @alt_names
+#subjectAltName=DNS.1:princeton.edu,DNS.2:localhost,DNS.3:$URL,IP.1:$IP
+
+[alt_names]
+DNS.1 = princeton.edu
+DNS.2 = localhost
+DNS.3 = $URL
+IP.1 = $IP
+
+[req_distinguished_name]
+C  = "US"
+ST = "New Jersey"
+L  = "Princeton"
+O  = "Princeton University"
+OU = "PNI"
+CN = "rtAtten.princeton.edu"
+
+EOF
+
+# Note - we need to do this in two steps in order to be able to specify
+#  a starting and ending date. Using openssl req -x509 doesn't allow specifying
+#  a start date. So we must first create the signing request and then sign with
+#  openssl ca -selfsign -new which does allow specifying a start date.
+
+# First create a certificate signing request
+openssl req -new -key rtAtten_private.key -sha256 -config tmp/ca.config -out tmp/rtAtten.csr
+
+# Next sign the request
+openssl ca -selfsign -md sha256 -batch -outdir ./ -keyfile rtAtten_private.key \
+   -config tmp/ca.config -extensions v3_req -startdate $START_DATE -enddate $END_DATE \
+   -in tmp/rtAtten.csr -out rtAtten.crt \
+
+popd

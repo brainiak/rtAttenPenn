@@ -1,7 +1,9 @@
+import sys
 import re
 import logging
 import argparse
-from rtfMRI.utils import installLoggers
+import subprocess
+from rtfMRI.utils import installLoggers, runCmdCheckOutput
 from webInterface.webSocketFileWatcher import WebSocketFileWatcher
 
 
@@ -30,12 +32,25 @@ if __name__ == "__main__":
     if not re.match(".*:\d+", args.server):
         print("Usage: Expecting server address in the form <servername:port>")
         parser.print_help()
+        sys.exit()
 
     if type(args.allowedDirs) is str:
         args.allowedDirs = args.allowedDirs.split(',')
 
     if type(args.allowedFileTypes) is str:
         args.allowedFileTypes = args.allowedFileTypes.split(',')
+
+    # create a ssl certificate valid for the server address
+    cmd = 'bash scripts/make-sslcert.sh '
+    addr, port = args.server.split(':')
+    if re.match('^[0-9*]+\.', addr):
+        cmd += '-ip ' + addr
+    else:
+        cmd += '-url ' + addr
+    success = runCmdCheckOutput(cmd.split(), 'certified until')
+    if not success:
+        print('Failed to make certificate:')
+        sys.exit()
 
     print("Server: {}, interval {}".format(args.server, args.interval))
     print("Allowed file types {}".format(args.allowedFileTypes))

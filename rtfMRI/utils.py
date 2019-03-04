@@ -4,6 +4,7 @@ Utils - various utilites for rtfMRI
 
 import os
 import io
+import re
 import time
 import glob
 import shutil
@@ -112,6 +113,18 @@ def writeFile(filename, data):
         bytesWritten = fh.write(data)
         if bytesWritten != len(data):
             raise InterruptedError("Write file %s wrote %d of %d bytes" % (filename, bytesWritten, len(data)))
+
+
+def runCmdCheckOutput(cmd, outputRegex):
+    match = False
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for bline in iter(proc.stdout.readline, b''):
+        line = bline.decode('utf-8').rstrip()
+        print(line)
+        # check if line has the search string in it
+        if re.search(outputRegex, line, re.IGNORECASE):
+            match = True
+    return match
 
 
 class DebugLevels:

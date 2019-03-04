@@ -127,6 +127,9 @@ venv.bak/
 # certs
 *.private
 *.crt
+*.key
+passwd
+cookie-secret
 
 # logs
 logs/*
@@ -138,4 +141,3 @@ build/
 .key
 .crt
 globals.sh
-

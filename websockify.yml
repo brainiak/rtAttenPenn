@@ -16,6 +16,7 @@ dependencies:
   - setuptools
   - sqlite
   - tk
+  - tornado
   - wheel
   - xz
   - zlib

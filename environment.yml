@@ -25,6 +25,7 @@ dependencies:
   - websocket-client
   - bcrypt
   - requests
+  - openssl
   - pip:
     - clickutil
     - watchdog
