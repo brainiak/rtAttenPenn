@@ -38,6 +38,7 @@ class RtAttenClient(RtfMRIClient):
         self.webpipes = None
         self.webCommonDir = None
         self.webPatternsDir = None
+        self.webUseRemoteFiles = False
 
     def __del__(self):
         logging.log(DebugLevels.L1, "## Stop Client")
@@ -45,9 +46,11 @@ class RtAttenClient(RtfMRIClient):
             self.ttlPulseClient.close()
         super().__del__()
 
-    def setWebpipes(self, webpipes):
+    def setWeb(self, webpipes, useRemoteFiles):
         self.webpipes = webpipes
-        self.fileWatcher = None
+        self.webUseRemoteFiles = useRemoteFiles
+        if useRemoteFiles:
+            self.fileWatcher = None
 
     def cfgValidation(self, cfg):
         # some model specific validations
@@ -106,7 +109,7 @@ class RtAttenClient(RtfMRIClient):
 
         # Set Directories
         self.dirs.dataDir = getSubjectDataDir(cfg.session.dataDir, cfg.session.subjectNum, cfg.session.subjectDay)
-        if self.webpipes:
+        if self.webUseRemoteFiles:
             # Remote fileWatcher dataDir will be the same, but locally we want
             # the data directory to be a subset of a common output directory.
             self.dirs.remoteDataDir = self.dirs.dataDir
@@ -134,7 +137,7 @@ class RtAttenClient(RtfMRIClient):
         else:
             self.dirs.imgDir = cfg.session.imgDir
         print("fMRI files being read from: {}".format(self.dirs.imgDir))
-        if self.webpipes:
+        if self.webUseRemoteFiles:
             # send initWatch via webpipe
             initWatchCmd = wcutils.initWatchReqStruct(self.dirs.imgDir,
                                                       cfg.session.watchFilePattern,
@@ -152,7 +155,7 @@ class RtAttenClient(RtfMRIClient):
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskData = None
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'
-        if self.webpipes and cfg.session.getMasksFromControlRoom:
+        if self.webUseRemoteFiles and cfg.session.getMasksFromControlRoom:
             # get the mask from remote site
             maskFileName = os.path.join(self.dirs.remoteDataDir, maskFileName)
             logging.info("Getting Remote Mask file: %s", maskFileName)
@@ -193,12 +196,14 @@ class RtAttenClient(RtfMRIClient):
         outputInfo.logFileHandle = open(outputInfo.logFilename, 'w+')
         if self.webpipes is not None:
             outputInfo.webpipes = self.webpipes
+        if self.webUseRemoteFiles:
+            outputInfo.webUseRemoteFiles = True
             remoteRunDataDir = os.path.join(self.dirs.remoteDataDir, 'run' + str(runId))
             outputInfo.remoteClassOutputDir = os.path.join(remoteRunDataDir, 'classoutput')
             outputInfo.remoteLogFilename = os.path.join(remoteRunDataDir, 'fileprocessing_py.txt')
         # Get patterns design file for this run
         patterns = None
-        if self.webpipes and self.cfg.session.getPatternsFromControlRoom:
+        if self.webUseRemoteFiles and self.cfg.session.getPatternsFromControlRoom:
             fileRegex = getPatternsFileRegex(self.cfg.session, self.dirs.remoteDataDir, runId, addRunDir=True)
             getNewestFileCmd = wcutils.getNewestFileReqStruct(fileRegex)
             retVals = wcutils.clientWebpipeCmd(self.webpipes, getNewestFileCmd)
@@ -410,7 +415,7 @@ class RtAttenClient(RtfMRIClient):
         if self.printFirstFilename:
             print("Loading first file: {}".format(specificFileName))
             self.printFirstFilename = False
-        if self.webpipes:
+        if self.webUseRemoteFiles:
             statusCode = 408  # loop while filewatch timeout 408 occurs
             while statusCode == 408:
                 watchCmd = wcutils.watchFileReqStruct(specificFileName)
@@ -489,7 +494,7 @@ def outputPredictionFile(predict, outputInfo):
         wcutils.clientWebpipeCmd(outputInfo.webpipes, cmd)
     if predict is None or predict.vol is None:
         return
-    if outputInfo.webpipes is not None:
+    if outputInfo.webUseRemoteFiles:
         # Send classification result to data server
         remoteFilename = os.path.join(outputInfo.remoteClassOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
         putFileCmd = wcutils.putTextFileReqStruct(remoteFilename, str(predict.catsep))

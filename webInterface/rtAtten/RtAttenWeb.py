@@ -285,16 +285,17 @@ class RtAttenWeb():
             (server, port) = RtAttenWeb.rtserver.split(':')
             cmdStr += ' -a {} -p {}'.format(server, port)
         # set option for remote file requests
-        fifoThread = None
-        webpipes = None
         if RtAttenWeb.filesremote is True:
-            webpipes = makeFifo()
-            cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
-            # start thread listening for remote file requests on fifo queue
-            fifoThread = threading.Thread(name='fifoThread', target=handleFifoRequests,
-                                          args=(webpipes, RtAttenWeb.webPipeCallback))
-            fifoThread.setDaemon(True)
-            fifoThread.start()
+            cmdStr += ' -x'
+        # Always create a webpipe session even if using local files so we can send
+        #  classification results to the subject feedback window
+        webpipes = makeFifo()
+        cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
+        # start thread listening for remote file requests on fifo queue
+        fifoThread = threading.Thread(name='fifoThread', target=handleFifoRequests,
+                                      args=(webpipes, RtAttenWeb.webPipeCallback))
+        fifoThread.setDaemon(True)
+        fifoThread.start()
         # print(cmdStr)
         cmd = shlex.split(cmdStr)
         proc = subprocess.Popen(cmd, cwd=rootDir, stdout=subprocess.PIPE,

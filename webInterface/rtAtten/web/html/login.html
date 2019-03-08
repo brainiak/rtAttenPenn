@@ -13,7 +13,7 @@
 
     <p>RtAtten Login</p>
     {{ error_msg }}
-    <form action="/login" method="post">
+    <form action="/login?next={{nextpage}}" method="post">
       {% module xsrf_form_html() %}
       <div class="table">
         <div class="row">

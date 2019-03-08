@@ -20,6 +20,7 @@ certsDir = 'certs'
 sslCertFile = 'rtAtten.crt'
 sslPrivateKey = 'rtAtten_private.key'
 CommonOutputDir = '/rtfmriData/'
+maxDaysLoginCookieValid = 1.0
 
 
 def defaultCallback(client, message):
@@ -295,7 +296,7 @@ class Web():
 
     class UserHttp(tornado.web.RequestHandler):
         def get_current_user(self):
-            return self.get_secure_cookie("login", max_age_days=0.2)
+            return self.get_secure_cookie("login", max_age_days=maxDaysLoginCookieValid)
 
         @tornado.web.authenticated
         def get(self):
@@ -309,7 +310,7 @@ class Web():
 
     class SubjectHttp(tornado.web.RequestHandler):
         def get_current_user(self):
-            return self.get_secure_cookie("login", max_age_days=0.2)
+            return self.get_secure_cookie("login", max_age_days=maxDaysLoginCookieValid)
 
         @tornado.web.authenticated
         def get(self):
@@ -325,10 +326,15 @@ class Web():
         error = ''
 
         def get(self):
+            params = {
+                "error_msg": Web.LoginHandler.error,
+                "nextpage": self.get_argument("next", "/")
+            }
             full_path = os.path.join(Web.htmlDir, Web.webLoginPage)
-            self.render(full_path, error_msg=Web.LoginHandler.error)
+            self.render(full_path,  **params)
 
         def post(self):
+            # print("%r %s" % (self.request, self.request.body.decode()))
             # TODO - prevent more than 5 password attempts
             Web.LoginHandler.error = ''
             try:
@@ -336,8 +342,8 @@ class Web():
                 login_passwd = self.get_argument("password")
                 if Web.test is True:
                     if login_name == login_passwd == 'test':
-                        self.set_secure_cookie("login", login_name, expires_days=0.2)
-                        self.redirect("/")
+                        self.set_secure_cookie("login", login_name, expires_days=maxDaysLoginCookieValid)
+                        self.redirect(self.get_query_argument('next', '/'))
                         return
                 passwdFilename = os.path.join(certsDir, 'passwd')
                 passwdDict = loadPasswdFile(passwdFilename)
@@ -345,8 +351,8 @@ class Web():
                     hashed_passwd = passwdDict[login_name]
                     # checkpw expects bytes array rather than string so use .encode()
                     if bcrypt.checkpw(login_passwd.encode(), hashed_passwd.encode()) is True:
-                        self.set_secure_cookie("login", login_name, expires_days=0.2)
-                        self.redirect("/")
+                        self.set_secure_cookie("login", login_name, expires_days=maxDaysLoginCookieValid)
+                        self.redirect(self.get_query_argument('next', '/'))
                         return
                     else:
                         Web.LoginHandler.error = 'Login Error: Incorrect Password'

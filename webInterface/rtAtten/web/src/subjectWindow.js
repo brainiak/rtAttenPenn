@@ -73,7 +73,7 @@ class SubjectDisplay extends React.Component {
 
     return (
       <div>
-        <img src={imgData} alt={`No Image ${this.state.feedbackImage}`} />
+        <img src={imgData} alt="Waiting for feedback images ..." />
       </div>
     )
     // <img src={this.state.feedbackImage} alt={`No Image ${this.state.feedbackImage}`} />

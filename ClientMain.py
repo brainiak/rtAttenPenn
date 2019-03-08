@@ -18,7 +18,7 @@ from rtfMRI.StructDict import StructDict
 
 
 def ClientMain(params):
-    installLoggers(logging.INFO, logging.DEBUG+1, filename='logs/rtAttenClient.log')
+    installLoggers(logging.INFO, logging.INFO, filename='logs/rtAttenClient.log')
 
     # Create a thread reading from stdin to detect if parent process exited and if so then exit this process
     exitThread = threading.Thread(name='exitThread', target=processShouldExitThread, args=(params,))
@@ -51,7 +51,7 @@ def ClientMain(params):
     elif params.cfg.experiment.model == 'rtAtten':
         client = RtAttenClient()
         if params.webpipe is not None:
-            client.setWebpipes(webpipes)
+            client.setWeb(webpipes, params.webfilesremote)
     else:
         raise InvocationError("Unsupported model %s" % (params.cfg.experiment.model))
     try:
@@ -118,14 +118,22 @@ if __name__ == "__main__":
     argParser = argparse.ArgumentParser()
     argParser.add_argument('--addr', '-a', default='localhost', type=str, help='server ip address')
     argParser.add_argument('--port', '-p', default=5200, type=int, help='server port')
-    argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str, help='experiment file (.json or .toml)')
+    argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str,
+                           help='experiment file (.json or .toml)')
     argParser.add_argument('--model', '-m', default=None, type=str, help='model name')
-    argParser.add_argument('--runs', '-r', default=None, type=str, help='Comma separated list of run numbers')
-    argParser.add_argument('--scans', '-s', default=None, type=str, help='Comma separated list of scan number')
-    argParser.add_argument('--run-local', '-l', default=False, action='store_true', help='run client and server together locally')
-    argParser.add_argument('--webpipe', '-w', default=None, type=str, help='Named pipe to request remote files from webServer')
+    argParser.add_argument('--runs', '-r', default=None, type=str,
+                           help='Comma separated list of run numbers')
+    argParser.add_argument('--scans', '-s', default=None, type=str,
+                           help='Comma separated list of scan number')
+    argParser.add_argument('--run-local', '-l', default=False, action='store_true',
+                           help='run client and server together locally')
+    argParser.add_argument('--webpipe', '-w', default=None, type=str,
+                           help='Named pipe to communicate with webServer')
+    argParser.add_argument('--webfilesremote', '-x', default=False, action='store_true',
+                           help='dicom files retrieved from remote server')
     args = argParser.parse_args()
-    params = StructDict({'addr': args.addr, 'port': args.port, 'experiment': args.experiment,
-                         'run_local': args.run_local, 'model': args.model, 'runs': args.runs,
-                         'scans': args.scans, 'webpipe': args.webpipe})
+    params = StructDict({'addr': args.addr, 'port': args.port, 'run_local': args.run_local,
+                         'model': args.model, 'experiment': args.experiment,
+                         'runs': args.runs, 'scans': args.scans,
+                         'webpipe': args.webpipe, 'webfilesremote': args.webfilesremote})
     ClientMain(params)

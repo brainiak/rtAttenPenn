@@ -29,7 +29,7 @@ if __name__ == "__main__":
     argParser.add_argument('--experiment', '-e', default='conf/example.toml', type=str,
                            help='experiment file (.json or .toml)')
     argParser.add_argument('--feedbackdir', '-f', default='webInterface/images', type=str,
-                          help='Directory with feedback image files')
+                           help='Directory with feedback image files')
     args = argParser.parse_args()
     params = StructDict({'rtserver': args.rtserver,
                          'rtlocal': args.rtlocal,
