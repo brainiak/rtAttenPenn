@@ -44,6 +44,7 @@ def webHandler(configData):
     params.rtserver = 'localhost:5200'
     params.rtlocal = False
     params.filesremote = False
+    params.feedbackdir = 'tmp/images'
     if not webIsStarted:
         webIsStarted = True
         RtAttenWeb.init(params, configData)

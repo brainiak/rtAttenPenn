@@ -1,30 +1,38 @@
 import os
+import sys
+import re
 import json
+import logging
+import getpass
+import requests
 from pathlib import Path
 from base64 import b64decode
 import rtfMRI.utils as utils
 from rtfMRI.StructDict import StructDict
 from rtfMRI.ReadDicom import readDicomFromBuffer
 from rtfMRI.Errors import RequestError, StateError
+from requests.packages.urllib3.contrib import pyopenssl
+
+certFile = 'certs/rtAtten.crt'
 
 
 # Set of helper functions for creating remote file requests
 def getFileReqStruct(filename, writefile=False):
-    cmd = {'cmd': 'getFile', 'filename': filename}
+    cmd = {'cmd': 'getFile', 'route': 'dataserver', 'filename': filename}
     if writefile is True:
         cmd['writefile'] = True
     return cmd
 
 
 def getNewestFileReqStruct(filename, writefile=False):
-    cmd = {'cmd': 'getNewestFile', 'filename': filename}
+    cmd = {'cmd': 'getNewestFile', 'route': 'dataserver', 'filename': filename}
     if writefile is True:
         cmd['writefile'] = True
     return cmd
 
 
 def watchFileReqStruct(filename, timeout=5, writefile=False):
-    cmd = {'cmd': 'watchFile', 'filename': filename, 'timeout': timeout}
+    cmd = {'cmd': 'watchFile', 'route': 'dataserver', 'filename': filename, 'timeout': timeout}
     if writefile is True:
         cmd['writefile'] = True
     return cmd
@@ -33,6 +41,7 @@ def watchFileReqStruct(filename, timeout=5, writefile=False):
 def initWatchReqStruct(dir, filePattern, minFileSize):
     cmd = {
         'cmd': 'initWatch',
+        'route': 'dataserver',
         'dir': dir,
         'filePattern': filePattern,
         'minFileSize': minFileSize
@@ -43,6 +52,7 @@ def initWatchReqStruct(dir, filePattern, minFileSize):
 def putTextFileReqStruct(filename, str):
     cmd = {
         'cmd': 'putTextFile',
+        'route': 'dataserver',
         'filename': filename,
         'text': str,
     }
@@ -90,3 +100,50 @@ def formatFileData(filename, data):
     else:
         result = data
     return result
+
+
+def login(serverAddr, username, password):
+    loginURL = os.path.join('https://', serverAddr, 'login')
+    session = requests.Session()
+    session.verify = certFile
+    try:
+        getResp = session.get(loginURL)
+    except Exception as err:
+        raise ConnectionError('Connection error: {}'.format(loginURL))
+    if getResp.status_code != 200:
+        raise requests.HTTPError('Get URL: {}, returned {}'.format(loginURL, getResp.status_code))
+    if username is None:
+        print('Login required...')
+        username = input('Username: ')
+        password = getpass.getpass()
+    elif password is None:
+        password = getpass.getpass()
+    postData = {'name': username, 'password': password, '_xsrf': session.cookies['_xsrf']}
+    postResp = session.post(loginURL, postData)
+    if postResp.status_code != 200:
+        raise requests.HTTPError('Post URL: {}, returned {}'.format(loginURL, postResp.status_code))
+    return session.cookies['login']
+
+
+def checkSSLCertAltName(certFilename, altName):
+    with open(certFilename, 'r') as fh:
+        certData = fh.read()
+    x509 = pyopenssl.OpenSSL.crypto.load_certificate(pyopenssl.OpenSSL.crypto.FILETYPE_PEM, certData)
+    altNames = pyopenssl.get_subj_alt_name(x509)
+    for _, name in altNames:
+        if altName == name:
+            return True
+    return False
+
+
+def makeSSLCertFile(serverName):
+    logging.info('create sslCert')
+    cmd = 'bash scripts/make-sslcert.sh '
+    if re.match('^[0-9*]+\.', serverName):
+        cmd += ' -ip ' + serverName
+    else:
+        cmd += ' -url ' + serverName
+    success = utils.runCmdCheckOutput(cmd.split(), 'certified until')
+    if not success:
+        print('Failed to make certificate:')
+        sys.exit()

@@ -1,18 +1,22 @@
 import os
+import io
 import threading
 import subprocess
 import psutil
 import queue
 import time
 import logging
+import random
 import json
 import re
 import toml
 import shlex
+from PIL import Image
 from pathlib import Path
+from base64 import b64encode
 from rtfMRI.utils import DebugLevels, copyFileWildcard
-from rtfMRI.StructDict import recurseCreateStructDict
-from rtfMRI.Errors import RequestError, StateError
+from rtfMRI.StructDict import StructDict, recurseCreateStructDict
+from rtfMRI.Errors import RequestError, StateError, InvocationError
 from rtAtten.RtAttenModel import getRunDir
 from webInterface.WebServer import Web, CommonOutputDir
 from webInterface.WebServer import makeFifo, handleFifoRequests, resignalFifoThreadExit
@@ -23,6 +27,7 @@ moduleDir = os.path.dirname(os.path.realpath(__file__))
 rootDir = os.path.join(moduleDir, "../../")
 registrationDir = os.path.join(moduleDir, 'registration/')
 patternsDir = os.path.join(moduleDir, 'patterns/')
+webDir = os.path.join(moduleDir, 'web')
 htmlDir = os.path.join(moduleDir, 'web/html')
 confDir = os.path.join(moduleDir, 'conf/')
 if not os.path.exists(confDir):
@@ -34,6 +39,7 @@ class RtAttenWeb():
     rtserver = 'localhost:5200'
     rtlocal = True
     filesremote = False
+    feedbackdir = 'webInterface/images'
     cfg = None
     initialized = False
     stopRun = False
@@ -42,17 +48,34 @@ class RtAttenWeb():
     registrationThread = None
     uploadImageThread = None
     fifoFileThread = None
+    numFaceFiles = 0
+    numSceneFiles = 0
 
     @staticmethod
     def init(params, cfg):
-        RtAttenWeb.rtserver = params.rtserver
-        RtAttenWeb.rtlocal = params.rtlocal
-        RtAttenWeb.filesremote = params.filesremote
+        RtAttenWeb.rtserver = params.rtserver or RtAttenWeb.rtserver
+        RtAttenWeb.rtlocal = params.rtlocal or RtAttenWeb.rtlocal
+        RtAttenWeb.filesremote = params.filesremote or RtAttenWeb.filesremote
+        RtAttenWeb.feedbackdir = params.feedbackdir or RtAttenWeb.feedbackdir
         RtAttenWeb.cfg = cfg
         RtAttenWeb.stopRun = False
         RtAttenWeb.stopReg = False
+        # Get number of image files in FACE and SCENE directories
+        faceImagesDir = os.path.join(RtAttenWeb.feedbackdir, 'FACE')
+        sceneImagesDir = os.path.join(RtAttenWeb.feedbackdir, 'SCENE')
+        if not os.path.exists(faceImagesDir) or not os.path.exists(sceneImagesDir):
+            raise InvocationError('Directory for FACE or SCENE missing: {}, {}'.format(faceImagesDir, sceneImagesDir))
+        # TODO - list only .jpg files when doing count
+        RtAttenWeb.numFaceFiles = len(os.listdir(faceImagesDir))
+        RtAttenWeb.numSceneFiles = len(os.listdir(sceneImagesDir))
+        if RtAttenWeb.numFaceFiles == 0 or RtAttenWeb.numSceneFiles == 0:
+            raise StateError('FACE or SCENE image directory empty')
         RtAttenWeb.initialized = True
-        RtAttenWeb.webServer.start(htmlDir, RtAttenWeb.webUserCallback, None, 8888)
+        RtAttenWeb.webServer.start(htmlDir=htmlDir,
+                                   userCallback=RtAttenWeb.webUserCallback,
+                                   subjCallback=RtAttenWeb.webSubjCallback,
+                                   eventCallback=RtAttenWeb.eventCallback,
+                                   port=8888)
 
     @staticmethod
     def webUserCallback(client, message):
@@ -76,7 +99,7 @@ class RtAttenWeb():
                 return
 
         cmd = request['cmd']
-        logging.log(DebugLevels.L3, "WEB CMD: %s", cmd)
+        logging.log(DebugLevels.L3, "WEB USER CMD: %s", cmd)
         if cmd == "getDefaultConfig":
             if 'session' in RtAttenWeb.cfg:
                 # remove the roiInds ndarray because it can't be Jsonified.
@@ -132,6 +155,85 @@ class RtAttenWeb():
             RtAttenWeb.uploadImageThread.start()
         else:
             RtAttenWeb.webServer.setUserError("unknown command " + cmd)
+
+    @staticmethod
+    def webSubjCallback(client, message):
+        if RtAttenWeb.initialized is not True:
+            raise StateError('webUserCallback: RtAttenWeb not initialized')
+        request = json.loads(message)
+        cmd = request['cmd']
+        logging.log(DebugLevels.L3, "WEB SUBJ CMD: %s", cmd)
+        print('Subject Callback: {}'.format(cmd))
+
+    @staticmethod
+    def eventCallback(client, message):
+        if RtAttenWeb.initialized is not True:
+            raise StateError('webUserCallback: RtAttenWeb not initialized')
+        request = json.loads(message)
+        cmd = request['cmd']
+        logging.log(DebugLevels.L3, "WEB EVENT CMD: %s", cmd)
+        if cmd == 'ttlPulse':
+            # forward the ttlPulse to the subjectWindow
+            cmd = {'cmd': 'ttlPulse'}
+            RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
+
+    @staticmethod
+    def webPipeCallback(request):
+        if 'cmd' not in request:
+            raise StateError('handleFifoRequests: cmd field not in request: {}'.format(request))
+        cmd = request['cmd']
+        route = request.get('route')
+        response = StructDict({'status': 200})
+        if route == 'dataserver':
+            try:
+                response = RtAttenWeb.webServer.sendDataMsgFromThread(request, timeout=10)
+                if response is None:
+                    raise StateError('handleFifoRequests: Response None from sendDataMessage')
+                if 'status' not in response:
+                    raise StateError('handleFifoRequests: status field missing from response: {}'.format(response))
+                if response['status'] not in (200, 408):
+                    if 'error' not in response:
+                        raise StateError('handleFifoRequests: error field missing from response: {}'.format(response))
+                    RtAttenWeb.webServer.setUserError(response['error'])
+                    logging.error('handleFifo status {}: {}'.format(response['status'], response['error']))
+            except Exception as err:
+                errStr = 'SendDataMessage Exception type {}: error {}:'.format(type(err), str(err))
+                response = {'status': 400, 'error': errStr}
+                RtAttenWeb.webServer.setUserError(errStr)
+                logging.error('handleFifo Excpetion: {}'.format(errStr))
+                raise err
+        else:
+            if cmd == 'webCommonDir':
+                response.filename = CommonOutputDir
+            elif cmd == 'classificationResult':
+                predict = request['value']
+                # predict has {'catsep': val, 'vol': val}
+                classVal = predict.get('catsep')
+                # vol = predict.get('vol')
+                # Test for NaN by comparing value to itself, if not equal then it is NaN
+                if classVal is not None and classVal == classVal:
+                    # change classification value range to 0 to 1 instead of -1 to 1
+                    classVal = classVal+1 / 2
+                    # Choose random number for which images to use
+                    faceRndNum = random.randint(1, RtAttenWeb.numFaceFiles)
+                    sceneRndNum = random.randint(1, RtAttenWeb.numSceneFiles)
+                    faceFilename = os.path.join(RtAttenWeb.feedbackdir, 'FACE/{}.jpg'.format(faceRndNum))
+                    sceneFilename = os.path.join(RtAttenWeb.feedbackdir, 'SCENE/{}.jpg'.format(sceneRndNum))
+                    faceImg = Image.open(faceFilename)
+                    sceneImg = Image.open(sceneFilename)
+                    # Blend the images together using the classification result value
+                    # When alpha is closer to 0 then 1st img param (face) will be move visible
+                    # and conversely when alpha is closer to 1 then 2nd img param (scene) will be more visible
+                    blendImg = Image.blend(faceImg, sceneImg, alpha=classVal)
+                    # convert it to jpeg format and get the bytes to send
+                    jpgBuf = io.BytesIO()
+                    blendImg.save(jpgBuf, format='jpeg')
+                    jpgBytes = jpgBuf.getvalue()
+                    b64Data = b64encode(jpgBytes)
+                    b64StrData = b64Data.decode('utf-8')
+                    cmd = {'cmd': 'feedbackImage', 'data': b64StrData}
+                    RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
+        return response
 
     @staticmethod
     def writeRegConfigFile(regGlobals, scriptPath):
@@ -190,7 +292,7 @@ class RtAttenWeb():
             cmdStr += ' --webpipe {}'.format(webpipes.fifoname)
             # start thread listening for remote file requests on fifo queue
             fifoThread = threading.Thread(name='fifoThread', target=handleFifoRequests,
-                                          args=(RtAttenWeb.webServer, webpipes))
+                                          args=(webpipes, RtAttenWeb.webPipeCallback))
             fifoThread.setDaemon(True)
             fifoThread.start()
         # print(cmdStr)

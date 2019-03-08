@@ -318,6 +318,7 @@ class RtAttenClient(RtfMRIClient):
                         # TODO - add a message type that retrieves previous thread results
                         missedDeadline = True
                     else:
+                        # classification result
                         outputPredictionFile(reply.fields.predict, outputInfo)
 
                     # log the TR processing time
@@ -479,9 +480,17 @@ def outputReplyLines(lines, outputInfo):
 
 
 def outputPredictionFile(predict, outputInfo):
+    if outputInfo.webpipes is not None:
+        # send classification result to RtAttenWeb for subject window display
+        vals = predict
+        if predict is None or predict.catsep is None:
+            vals = {'catsep': 0.0, 'vol': 'train'}
+        cmd = {'cmd': 'classificationResult', 'value': vals}
+        wcutils.clientWebpipeCmd(outputInfo.webpipes, cmd)
     if predict is None or predict.vol is None:
         return
     if outputInfo.webpipes is not None:
+        # Send classification result to data server
         remoteFilename = os.path.join(outputInfo.remoteClassOutputDir, 'vol_' + str(predict.vol) + '_py.txt')
         putFileCmd = wcutils.putTextFileReqStruct(remoteFilename, str(predict.catsep))
         wcutils.clientWebpipeCmd(outputInfo.webpipes, putFileCmd)

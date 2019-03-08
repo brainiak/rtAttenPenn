@@ -23,7 +23,7 @@ CommonOutputDir = '/rtfmriData/'
 
 
 def defaultCallback(client, message):
-    print("client({}): msg({})".format(client, message))
+    print("defaultCallback: client({}): msg({})".format(client, message))
 
 
 class Web():
@@ -31,16 +31,19 @@ class Web():
     app = None
     httpServer = None
     # Arrays of WebSocket connections that have been established from client windows
-    wsSubjConns = []  # type: ignore
     wsUserConns = []  # type: ignore
+    wsSubjConns = []  # type: ignore
+    wsEventConns = []  # type: ignore
     wsDataConn = None  # type: ignore  # Only one data connection
     # Callback functions to invoke when message received from client window connection
     userWidnowCallback = defaultCallback
     subjWindowCallback = defaultCallback
+    eventCallback = defaultCallback
     # Main html page to load
     htmlDir = None
     webIndexPage = 'index.html'
     webLoginPage = 'login.html'
+    webSubjectPage = 'subject.html'
     dataCallbacks = {}
     dataSequenceNum = 0
     cbPruneTime = 0
@@ -50,14 +53,15 @@ class Web():
     test = False
 
     @staticmethod
-    def start(htmlDir='html', userCallback=defaultCallback,
-              subjCallback=defaultCallback, port=8888, test=False):
+    def start(htmlDir='html', userCallback=defaultCallback, subjCallback=defaultCallback,
+              eventCallback=defaultCallback, port=8888, test=False):
         if Web.app is not None:
             raise RuntimeError("Web Server already running.")
         Web.test = test
         Web.htmlDir = htmlDir
-        Web.subjWindowCallback = subjCallback
         Web.userWidnowCallback = userCallback
+        Web.subjWindowCallback = subjCallback
+        Web.eventCallback = eventCallback
         webDir = Path(htmlDir).parent
         src_root = os.path.join(webDir, 'src')
         css_root = os.path.join(webDir, 'css')
@@ -72,9 +76,11 @@ class Web():
         Web.app = tornado.web.Application([
             (r'/', Web.UserHttp),
             (r'/login', Web.LoginHandler),
+            (r'/feedback', Web.SubjectHttp),  # shows image
             (r'/wsUser', Web.UserWebSocket),
             (r'/wsSubject', Web.SubjectWebSocket),
             (r'/wsData', Web.DataWebSocket),
+            (r'/wsEvents', Web.EventWebSocket),  # gets signal to change image
             (r'/src/(.*)', tornado.web.StaticFileHandler, {'path': src_root}),
             (r'/css/(.*)', tornado.web.StaticFileHandler, {'path': css_root}),
             (r'/img/(.*)', tornado.web.StaticFileHandler, {'path': img_root}),
@@ -253,6 +259,15 @@ class Web():
             Web.threadLock.release()
 
     @staticmethod
+    def sendSubjMessage(msg):
+        Web.threadLock.acquire()
+        try:
+            for client in Web.wsSubjConns:
+                client.write_message(msg)
+        finally:
+            Web.threadLock.release()
+
+    @staticmethod
     def sendDataMsgFromThread(msg, timeout=None):
         if Web.wsDataConn is None:
             raise StateError("WebServer: No Data Websocket Connection")
@@ -274,6 +289,10 @@ class Web():
     def sendUserMsgFromThread(msg):
         Web.ioLoopInst.add_callback(Web.sendUserMessage, msg)
 
+    @staticmethod
+    def sendSubjMsgFromThread(msg):
+        Web.ioLoopInst.add_callback(Web.sendSubjMessage, msg)
+
     class UserHttp(tornado.web.RequestHandler):
         def get_current_user(self):
             return self.get_secure_cookie("login", max_age_days=0.2)
@@ -282,6 +301,20 @@ class Web():
         def get(self):
             full_path = os.path.join(Web.htmlDir, Web.webIndexPage)
             logging.log(DebugLevels.L6, 'Index request: pwd: {}'.format(full_path))
+            Web.threadLock.acquire()
+            try:
+                self.render(full_path)
+            finally:
+                Web.threadLock.release()
+
+    class SubjectHttp(tornado.web.RequestHandler):
+        def get_current_user(self):
+            return self.get_secure_cookie("login", max_age_days=0.2)
+
+        @tornado.web.authenticated
+        def get(self):
+            full_path = os.path.join(Web.htmlDir, Web.webSubjectPage)
+            logging.log(DebugLevels.L6, 'Subject feedback http request: pwd: {}'.format(full_path))
             Web.threadLock.acquire()
             try:
                 self.render(full_path)
@@ -325,6 +358,7 @@ class Web():
             self.set_status(401, Web.LoginHandler.error)
 
     class SubjectWebSocket(tornado.websocket.WebSocketHandler):
+        # TODO - combine these in-common setups into helper functions
         def open(self):
             user_id = self.get_secure_cookie("login")
             if not user_id:
@@ -386,6 +420,33 @@ class Web():
 
         def on_message(self, message):
             Web.userWidnowCallback(self, message)
+
+    class EventWebSocket(tornado.websocket.WebSocketHandler):
+        def open(self):
+            user_id = self.get_secure_cookie("login")
+            if not user_id:
+                response = {'cmd': 'error', 'error': 'Websocket authentication failed'}
+                self.write_message(json.dumps(response))
+                self.close()
+                return
+            logging.log(DebugLevels.L1, "Event WebSocket opened")
+            Web.threadLock.acquire()
+            try:
+                Web.wsEventConns.append(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_close(self):
+            logging.log(DebugLevels.L1, "Event WebSocket closed")
+            Web.threadLock.acquire()
+            try:
+                if self in Web.wsEventConns:
+                    Web.wsEventConns.remove(self)
+            finally:
+                Web.threadLock.release()
+
+        def on_message(self, message):
+            Web.eventCallback(self, message)
 
     class DataWebSocket(tornado.websocket.WebSocketHandler):
         def open(self):
@@ -477,13 +538,12 @@ def makeFifo():
     return webpipes
 
 
-def handleFifoRequests(webServer, webpipes):
+def handleFifoRequests(webpipes, callback):
     '''A thread routine that listens for web requests through a pair of named pipes.
     This allows another process to send web requests without directly integrating
     the web server into the process.
     Listens on an fd_in pipe for requests and writes the results back on the fd_out pipe.
     '''
-    global CommonOutputDir
     webpipes.fd_out = open(webpipes.name_out, mode='w', buffering=1)
     webpipes.fd_in = open(webpipes.name_in, mode='r')
     try:
@@ -494,30 +554,7 @@ def handleFifoRequests(webServer, webpipes):
                 break
             # parse command
             cmd = json.loads(msg)
-            if 'cmd' not in cmd:
-                raise StateError('handleFifoRequests: cmd field not in command: {}'.format(cmd))
-            reqType = cmd['cmd']
-            response = StructDict({'status': 200})
-            if reqType == 'webCommonDir':
-                response.filename = CommonOutputDir
-            else:
-                try:
-                    response = webServer.sendDataMsgFromThread(cmd, timeout=10)
-                    if response is None:
-                        raise StateError('handleFifoRequests: Response None from sendDataMessage')
-                    if 'status' not in response:
-                        raise StateError('handleFifoRequests: status field missing from response: {}'.format(response))
-                    if response['status'] not in (200, 408):
-                        if 'error' not in response:
-                            raise StateError('handleFifoRequests: error field missing from response: {}'.format(response))
-                        webServer.setUserError(response['error'])
-                        logging.error('handleFifo status {}: {}'.format(response['status'], response['error']))
-                except Exception as err:
-                    errStr = 'SendDataMessage Exception type {}: error {}:'.format(type(err), str(err))
-                    response = {'status': 400, 'error': errStr}
-                    webServer.setUserError(errStr)
-                    logging.error('handleFifo Excpetion: {}'.format(errStr))
-                    raise err
+            response = callback(cmd)
             try:
                 webpipes.fd_out.write(json.dumps(response) + os.linesep)
             except BrokenPipeError:

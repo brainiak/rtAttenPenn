@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "browserify src/tabs.js -o build/tabsBundle.js -t [ babelify --presets [ @babel/preset-env @babel/preset-react ] ]"
+    "build": "browserify src/tabs.js -o build/tabsBundle.js -t [ babelify --presets [ @babel/preset-env @babel/preset-react ] ]",
+    "buildSubj": "browserify src/subjectWindow.js -o build/subjBundle.js -t [ babelify --presets [ @babel/preset-env @babel/preset-react ] ]"
   },
   "keywords": [],
   "author": "",

@@ -4,18 +4,16 @@ import time
 import json
 import logging
 import threading
-import getpass
-import requests
 import websocket
 from base64 import b64encode
 from pathlib import Path
 from rtfMRI.fileWatcher import FileWatcher
 from rtfMRI.utils import DebugLevels, findNewestFile
 from rtfMRI.Errors import StateError
+from webInterface.WebClientUtils import login, certFile
 
 defaultAllowedDirs = ['/data']
 defaultAllowedTypes = ['.dcm', '.mat']
-certFile = 'certs/rtAtten.crt'
 
 
 class WebSocketFileWatcher:
@@ -46,7 +44,7 @@ class WebSocketFileWatcher:
         while not WebSocketFileWatcher.shouldExit:
             try:
                 if WebSocketFileWatcher.needLogin or WebSocketFileWatcher.sessionCookie is None:
-                    WebSocketFileWatcher.login(username, password)
+                    WebSocketFileWatcher.sessionCookie = login(serverAddr, username, password)
                 wsAddr = os.path.join('wss://', serverAddr, 'wsData')
                 logging.log(DebugLevels.L6, "Trying connection: %s", wsAddr)
                 ws = websocket.WebSocketApp(wsAddr,
@@ -258,29 +256,6 @@ class WebSocketFileWatcher:
         else:
             logging.log(logging.WARNING, "on_error: WSFileWatcher: {} {}".
                         format(type(error), str(error)))
-
-    @staticmethod
-    def login(username, password):
-        loginURL = os.path.join('https://', WebSocketFileWatcher.serverAddr, 'login')
-        session = requests.Session()
-        session.verify = certFile
-        try:
-            getResp = session.get(loginURL)
-        except Exception as err:
-            raise ConnectionError('Connection error: {}'.format(loginURL))
-        if getResp.status_code != 200:
-            raise requests.HTTPError('Get URL: {}, returned {}'.format(loginURL, getResp.status_code))
-        if username is None:
-            print('Login required...')
-            username = input('Username: ')
-            password = getpass.getpass()
-        elif password is None:
-            password = getpass.getpass()
-        postData = {'name': username, 'password': password, '_xsrf': session.cookies['_xsrf']}
-        postResp = session.post(loginURL, postData)
-        if postResp.status_code != 200:
-            raise requests.HTTPError('Post URL: {}, returned {}'.format(loginURL, postResp.status_code))
-        WebSocketFileWatcher.sessionCookie = session.cookies['login']
 
     @staticmethod
     def validateRequestedFile(dir, file, textFileTypeOnly=False):

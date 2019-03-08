@@ -1,28 +1,30 @@
 import sys
 import re
+import time
+import json
+import threading
 import logging
 import argparse
 from rtfMRI.utils import installLoggers
-from webInterface.webSocketFileWatcher import WebSocketFileWatcher
+from webInterface.EventNotifier import EventNotifier
 from webInterface.WebClientUtils import certFile, checkSSLCertAltName, makeSSLCertFile
 
 
-defaultAllowedDirs = ['/tmp', '/data']
-defaultAllowedTypes = ['.dcm', '.mat']
+def sendTTLPulses():
+    cmd = {'cmd': 'ttlPulse'}
+    while True:
+        time.sleep(2)
+        EventNotifier.sendMessage(json.dumps(cmd))
 
 
 if __name__ == "__main__":
-    installLoggers(logging.INFO, logging.INFO, filename='logs/fileWatcher.log')
+    installLoggers(logging.DEBUG+1, logging.DEBUG+1, filename='logs/EventServer.log')
     # do arg parse for server to connect to
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', action="store", dest="server", default="localhost:8888",
                         help="Server Address")
     parser.add_argument('-i', action="store", dest="interval", type=int, default=5,
                         help="Retry connection interval (seconds)")
-    parser.add_argument('-d', action="store", dest="allowedDirs", default=defaultAllowedDirs,
-                        help="Allowed directories to server files from - comma separated list")
-    parser.add_argument('-f', action="store", dest="allowedFileTypes", default=defaultAllowedTypes,
-                        help="Allowed file types - comma separated list")
     parser.add_argument('-u', '--username', action="store", dest="username", default=None,
                         help="rtAtten website username")
     parser.add_argument('-p', '--password', action="store", dest="password", default=None,
@@ -34,25 +36,19 @@ if __name__ == "__main__":
         parser.print_help()
         sys.exit()
 
-    if type(args.allowedDirs) is str:
-        args.allowedDirs = args.allowedDirs.split(',')
-
-    if type(args.allowedFileTypes) is str:
-        args.allowedFileTypes = args.allowedFileTypes.split(',')
-
     addr, port = args.server.split(':')
     # Check if the ssl certificate is valid for this server address
     if checkSSLCertAltName(certFile, addr) is False:
         # Addr not listed in sslCert, recreate ssl Cert
         makeSSLCertFile(addr)
 
-    print("Server: {}, interval {}".format(args.server, args.interval))
-    print("Allowed file types {}".format(args.allowedFileTypes))
-    print("Allowed directories {}".format(args.allowedDirs))
+    # start a thread that sends TTL pulses every 2 seconds
+    ttlThread = threading.Thread(name='ttlThread', target=sendTTLPulses)
+    ttlThread.setDaemon(True)
+    ttlThread.start()
 
-    WebSocketFileWatcher.runFileWatcher(args.server,
-                                        retryInterval=args.interval,
-                                        allowedDirs=args.allowedDirs,
-                                        allowedTypes=args.allowedFileTypes,
-                                        username=args.username,
-                                        password=args.password)
+    print("Server: {}, interval {}".format(args.server, args.interval))
+    EventNotifier.runNotifier(args.server,
+                              retryInterval=args.interval,
+                              username=args.username,
+                              password=args.password)

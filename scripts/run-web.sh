@@ -1,44 +1,47 @@
 #!/usr/bin/env bash
 
+# Save command line params
+PARAMS=$@
+
 while test $# -gt 0
 do
   case "$1" in
-    -ip) IP=$2
+    -h)
+      echo "$0 [-e <toml_file>] [-ip <local_ip_or_hostname] [--localfiles] [--filewatcher [-u <username> -p <password>]]"
+      exit 0
       ;;
-    -e) CFG=$2
+    --filewatcher) RUNFILEWATCHER=1
+      ;;
+    -u) USERNAME=$2
+      ;;
+    -p) PASSWORD=$2
       ;;
   esac
   shift
 done
 
-# build javascritp files
-pushd webInterface/rtAtten/web
-npm run build
-popd
-
 # start vnc server
 bash scripts/run-vnc.sh &
 VNCPID=$!
 
-# activate conda python env
-source ~/.bashrc
-conda deactivate
-conda activate rtAtten
+FILEWATCHER_PID=''
+if [ ! -z $RUNFILEWATCHER ]; then
+  # Run filewatcher
+  if [ ! -z $USERNAME && ! -z $PASSWORD ]; then
+    python fileWatchServer.py -s localhost:8888 -i 5 -u $USERNAME -p $PASSWORD &
+    FILEWATCHER_PID=$!
+  else
+    echo "Must specify -u username -p password for use with --filewatcher"
+    exit -1
+  fi
 
-if [ -z $IP ]; then
-  echo "Warning: no ip address supplied, credentials won't be updated"
-else
-  bash scripts/make-sslcert.sh -ip $IP
 fi
 
-# check if experiment file is supplied with -e filename
-EXP_PARAM=''
-if [ ! -z $CFG ]; then
-  EXP_PARAM="-e $CFG"
-fi
+scriptDir=`dirname $0`
+bash $scriptDir/run-web-core.sh $PARAMS
 
-# run rtAtten web server
-echo "python WebMain.py -l -r $EXP_PARAM"
-python WebMain.py -l -r $EXP_PARAM
+if [ ! -z $FILEWATCHER_PID ]; then
+  kill -15 $FILEWATCHER_PID
+fi
 
 kill -15 $VNCPID
