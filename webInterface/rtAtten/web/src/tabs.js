@@ -6,6 +6,7 @@ const SettingsPane = require('./settingsPane.js')
 const StatusPane = require('./statusPane.js')
 const RegistrationPane = require('./registrationPane.js')
 const VNCViewerPane = require('./vncViewerPane.js')
+const XYPlotPane = require('./xyplotPane.js')
 const { Tab, Tabs, TabList, TabPanel } = require('react-tabs')
 
 
@@ -27,11 +28,12 @@ class RtAtten extends React.Component {
       filesRemote: true,  // whether the webserver gets image files from a remote server or locally
       connected: false,
       error: '',
+      classVals: [{x: 0, y: 0}], // classification results
       logLines: [],  // image classification log
       regLines: [],  // registration processing log
     }
     this.webSocket = null
-    this.registrationTabIndex = 1
+    this.registrationTabIndex = 2
     this.onTabSelected = this.onTabSelected.bind(this);
     this.setConfigFileName = this.setConfigFileName.bind(this);
     this.setConfig = this.setConfig.bind(this);
@@ -364,6 +366,15 @@ class RtAtten extends React.Component {
         var progress = request['progress']
         var regInfo = Object.assign({}, this.state.regInfo, { [uploadType]: progress })
         this.setState({regInfo: regInfo})
+      } else if (cmd == 'classificationResult') {
+        var classVal = request['classVal']
+        var vol = request['vol']
+        // console.log(`classificationResult: ${classVal} ${vol}`)
+        if (typeof(vol) == 'number') {
+          var itemPos = this.state.classVals.length + 1
+          var classVals = this.state.classVals.concat({x: itemPos, y: classVal})
+          this.setState({classVals: classVals})
+        }
       } else if (cmd == 'error') {
         console.log("## Got Error: " + request['error'])
         this.setState({error: request['error']})
@@ -381,6 +392,7 @@ class RtAtten extends React.Component {
      elem(Tabs, {onSelect: this.onTabSelected},
        elem(TabList, {},
          elem(Tab, {}, 'Run'),
+         elem(Tab, {}, 'Convergence'),
          elem(Tab, {}, 'Registration'),
          elem(Tab, {}, 'Settings'),
        ),
@@ -397,6 +409,12 @@ class RtAtten extends React.Component {
             getConfigItem: this.getConfigItem,
             setConfigItem: this.setConfigItem,
             clearRunStatus: this.clearRunStatus,
+           }
+         ),
+       ),
+       elem(TabPanel, {},
+         elem(XYPlotPane,
+           {classVals: this.state.classVals,
            }
          ),
        ),

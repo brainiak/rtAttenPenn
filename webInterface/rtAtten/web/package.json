@@ -19,6 +19,7 @@
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
     "react-tabs": "^2.3.0",
+    "react-vis": "^1.11.6",
     "toml": "^2.3.3"
   },
   "devDependencies": {

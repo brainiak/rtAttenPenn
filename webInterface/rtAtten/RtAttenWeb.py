@@ -209,11 +209,11 @@ class RtAttenWeb():
                 predict = request['value']
                 # predict has {'catsep': val, 'vol': val}
                 classVal = predict.get('catsep')
-                # vol = predict.get('vol')
+                vol = predict.get('vol')
                 # Test for NaN by comparing value to itself, if not equal then it is NaN
                 if classVal is not None and classVal == classVal:
                     # change classification value range to 0 to 1 instead of -1 to 1
-                    classVal = classVal+1 / 2
+                    classVal = (classVal + 1) / 2
                     # Choose random number for which images to use
                     faceRndNum = random.randint(1, RtAttenWeb.numFaceFiles)
                     sceneRndNum = random.randint(1, RtAttenWeb.numSceneFiles)
@@ -233,6 +233,10 @@ class RtAttenWeb():
                     b64StrData = b64Data.decode('utf-8')
                     cmd = {'cmd': 'feedbackImage', 'data': b64StrData}
                     RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
+                    # also update clinician window
+                    cmd = {'cmd': 'classificationResult', 'classVal': classVal, 'vol': vol}
+                    RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(cmd))
+
         return response
 
     @staticmethod

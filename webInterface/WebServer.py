@@ -20,7 +20,7 @@ certsDir = 'certs'
 sslCertFile = 'rtAtten.crt'
 sslPrivateKey = 'rtAtten_private.key'
 CommonOutputDir = '/rtfmriData/'
-maxDaysLoginCookieValid = 1.0
+maxDaysLoginCookieValid = 0.5
 
 
 def defaultCallback(client, message):
