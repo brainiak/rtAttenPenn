@@ -69,6 +69,7 @@ class WebSocketFileWatcher:
                 dir = request['dir']
                 filePattern = request['filePattern']
                 minFileSize = request['minFileSize']
+                demoStep = request.get('demoStep')
                 logging.log(DebugLevels.L3, "initWatch: %s, %s, %d", dir, filePattern, minFileSize)
                 if dir is None or filePattern is None or minFileSize is None:
                     errStr = "InitWatch: Missing file information: {} {}".format(dir, filePattern)
@@ -85,7 +86,7 @@ class WebSocketFileWatcher:
                 else:
                     WebSocketFileWatcher.fileWatchLock.acquire()
                     try:
-                        fileWatcher.initFileNotifier(dir, filePattern, minFileSize)
+                        fileWatcher.initFileNotifier(dir, filePattern, minFileSize, demoStep)
                     finally:
                         WebSocketFileWatcher.fileWatchLock.release()
                     response = {'status': 200}
@@ -112,6 +113,9 @@ class WebSocketFileWatcher:
                         response = {'status': 408, 'error': errStr}
                         logging.log(logging.WARNING, errStr)
                     else:
+                        # TODO - may need some retry logic here if the file was read
+                        #  before it was completely written. Maybe checking filesize
+                        #  against data size.
                         with open(filename, 'rb') as fp:
                             data = fp.read()
                         b64Data = b64encode(data)

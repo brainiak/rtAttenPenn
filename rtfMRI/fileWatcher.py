@@ -5,7 +5,7 @@ import logging
 import threading
 from queue import Queue, Empty
 from watchdog.events import PatternMatchingEventHandler  # type: ignore
-from rtfMRI.utils import DebugLevels
+from rtfMRI.utils import DebugLevels, demoDelay
 from rtfMRI.Errors import StateError
 
 
@@ -32,7 +32,7 @@ class FileWatcher():
     def __del__(self):
         logging.log(logging.ERROR, "FileWatcher is abstract class. __del__ not implemented")
 
-    def initFileNotifier(self, dir, filePattern, minFileSize):
+    def initFileNotifier(self, dir, filePattern, minFileSize, demoStep=0):
         logging.log(logging.ERROR, "FileWatcher is abstract class. initFileNotifier not implemented")
 
     def waitForFile(self, specificFileName, timeout=0):
@@ -52,6 +52,8 @@ class WatchdogFileWatcher():
         self.filePattern = None
         self.watchDir = None
         self.minFileSize = 0
+        self.demoStep = 0
+        self.prevEventTime = 0
 
     def __del__(self):
         if self.observer is not None:
@@ -60,7 +62,8 @@ class WatchdogFileWatcher():
             except Exception as err:
                 logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
 
-    def initFileNotifier(self, dir, filePattern, minFileSize):
+    def initFileNotifier(self, dir, filePattern, minFileSize, demoStep=0):
+        self.demoStep = demoStep
         self.minFileSize = minFileSize
         if self.observer is not None:
             self.observer.stop()
@@ -126,6 +129,8 @@ class WatchdogFileWatcher():
                     "fileEventCaptured %s, fileName %s, eventTimeStamp %.5f",
                     eventLoopCount, totalWriteWait,
                     exitWithFileEvent, specificFileName, eventTimeStamp)
+        if self.demoStep is not None and self.demoStep > 0:
+            self.prevEventTime = demoDelay(self.demoStep, self.prevEventTime)
         return specificFileName
 
 
@@ -153,6 +158,8 @@ class InotifyFileWatcher():
         self.watchDir = None
         self.minFileSize = 0
         self.shouldExit = False
+        self.demoStep = 0
+        self.prevEventTime = 0
         # create a listening thread
         self.fileNotifyQ = Queue()  # type: None
         self.notifier = inotify.adapters.Inotify()
@@ -164,8 +171,9 @@ class InotifyFileWatcher():
         self.shouldExit = True
         self.notify_thread.join(timeout=2)
 
-    def initFileNotifier(self, dir, filePattern, minFileSize):
+    def initFileNotifier(self, dir, filePattern, minFileSize, demoStep=0):
         # inotify doesn't use filepatterns
+        self.demoStep = demoStep
         self.minFileSize = minFileSize
         if dir is None:
             raise StateError('initFileNotifier: dir is None')
@@ -230,6 +238,8 @@ class InotifyFileWatcher():
                     "File avail: eventLoopCount %d, fileEventCaptured %s, "
                     "fileName %s, eventTimeStamp %d", eventLoopCount,
                     exitWithFileEvent, specificFileName, eventTimeStamp)
+        if self.demoStep is not None and self.demoStep > 0:
+            self.prevEventTime = demoDelay(self.demoStep, self.prevEventTime)
         return specificFileName
 
     def notifyEventLoop(self):

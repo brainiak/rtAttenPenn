@@ -38,7 +38,7 @@ def watchFileReqStruct(filename, timeout=5, writefile=False):
     return cmd
 
 
-def initWatchReqStruct(dir, filePattern, minFileSize):
+def initWatchReqStruct(dir, filePattern, minFileSize, demoStep=0):
     cmd = {
         'cmd': 'initWatch',
         'route': 'dataserver',
@@ -46,6 +46,8 @@ def initWatchReqStruct(dir, filePattern, minFileSize):
         'filePattern': filePattern,
         'minFileSize': minFileSize
     }
+    if demoStep is not None and demoStep > 0:
+        cmd['demoStep'] = demoStep
     return cmd
 
 

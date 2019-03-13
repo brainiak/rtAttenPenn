@@ -28,10 +28,11 @@ class RtAtten extends React.Component {
       filesRemote: true,  // whether the webserver gets image files from a remote server or locally
       connected: false,
       error: '',
-      classVals: [{x: 0, y: 0}], // classification results
+      classVals: [[]], // classification results
       logLines: [],  // image classification log
       regLines: [],  // registration processing log
     }
+    this.classVals = [[], []]
     this.webSocket = null
     this.registrationTabIndex = 2
     this.onTabSelected = this.onTabSelected.bind(this);
@@ -369,11 +370,26 @@ class RtAtten extends React.Component {
       } else if (cmd == 'classificationResult') {
         var classVal = request['classVal']
         var vol = request['vol']
-        // console.log(`classificationResult: ${classVal} ${vol}`)
+        var runId = request['runId']
+        // Make sure classVals has at least as many arrays as runIds
+        for (let i = this.classVals.length; i < runId; i++) {
+          this.classVals.push([])
+        }
+        // clear plots with runId greater than the current one
+        for (let i = runId; i < this.classVals.length; i++) {
+          this.classVals[i] = []
+        }
+        // console.log(`classificationResult: ${classVal} ${vol} ${runId}`)
         if (typeof(vol) == 'number') {
-          var itemPos = this.state.classVals.length + 1
-          var classVals = this.state.classVals.concat({x: itemPos, y: classVal})
-          this.setState({classVals: classVals})
+          // ClassVals is zero-based and runId is 1-based, so classVal index will be runId-1
+          // add new data point to classVals for this runId
+          var runClassVals = this.classVals[runId-1]
+          var itemPos = runClassVals.length + 1
+          runClassVals.push({x: itemPos, y: classVal})
+          this.setState({classVals: this.classVals})
+        } else {
+          // vol is not a number, clear the classVals for this run
+          this.classVals[runId-1] = []
         }
       } else if (cmd == 'error') {
         console.log("## Got Error: " + request['error'])
@@ -392,7 +408,7 @@ class RtAtten extends React.Component {
      elem(Tabs, {onSelect: this.onTabSelected},
        elem(TabList, {},
          elem(Tab, {}, 'Run'),
-         elem(Tab, {}, 'Convergence'),
+         elem(Tab, {}, 'Data Plots'),
          elem(Tab, {}, 'Registration'),
          elem(Tab, {}, 'Settings'),
        ),

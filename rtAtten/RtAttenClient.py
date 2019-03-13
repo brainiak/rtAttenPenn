@@ -141,7 +141,8 @@ class RtAttenClient(RtfMRIClient):
             # send initWatch via webpipe
             initWatchCmd = wcutils.initWatchReqStruct(self.dirs.imgDir,
                                                       cfg.session.watchFilePattern,
-                                                      cfg.session.minExpectedDicomSize)
+                                                      cfg.session.minExpectedDicomSize,
+                                                      cfg.session.demoStep)
             wcutils.clientWebpipeCmd(self.webpipes, initWatchCmd)
         else:
             if not os.path.exists(self.dirs.imgDir):
@@ -150,8 +151,8 @@ class RtAttenClient(RtfMRIClient):
                 raise StateError('initSession: fileWatcher is None')
             self.fileWatcher.initFileNotifier(self.dirs.imgDir,
                                               cfg.session.watchFilePattern,
-                                              cfg.session.minExpectedDicomSize)
-
+                                              cfg.session.minExpectedDicomSize,
+                                              cfg.session.demoStep)
         # Load ROI mask - an array with 1s indicating the voxels of interest
         maskData = None
         maskFileName = 'mask_' + str(cfg.session.subjectNum) + '_' + str(cfg.session.subjectDay) + '.mat'

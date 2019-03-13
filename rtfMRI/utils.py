@@ -127,6 +127,27 @@ def runCmdCheckOutput(cmd, outputRegex):
     return match
 
 
+def demoDelay(demoStep, prevEventTime):
+    '''Given demoStep in seconds, calculate how long to sleep until the next
+       clock cycle will be reached that is an even value of demoStep.
+       Then sleep that amount of time.
+       If prevEventTime is specified and we are more than 1 demo step since the
+       prevEvent then don't sleep.
+    '''
+    now = time.time()
+    if (now > prevEventTime + demoStep) or (demoStep == 0):
+        return now
+    # Calculate and sleep until next even demoStep
+    # Convert to miliseconds
+    step_ms = demoStep * 1000
+    now_ms = now * 1000
+    sleep_ms = step_ms - (now_ms % step_ms)
+    sleep_sec = sleep_ms / 1000
+    nextEventTime = now + sleep_sec
+    time.sleep(sleep_sec)
+    return nextEventTime
+
+
 class DebugLevels:
     L1  = 19 # least verbose
     L2  = 18
