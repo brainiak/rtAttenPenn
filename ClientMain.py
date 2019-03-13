@@ -4,6 +4,7 @@ Top level routine for client side rtfMRI processing
 """
 import os
 import sys
+import time
 import traceback
 import threading
 import logging
@@ -20,22 +21,23 @@ from rtfMRI.StructDict import StructDict
 def ClientMain(params):
     installLoggers(logging.INFO, logging.INFO, filename='logs/rtAttenClient.log')
 
-    # Create a thread reading from stdin to detect if parent process exited and if so then exit this process
-    exitThread = threading.Thread(name='exitThread', target=processShouldExitThread, args=(params,))
-    exitThread.setDaemon(True)
-    exitThread.start()
-
     webpipes = None
     if params.webpipe is not None:
+        # This process was opened by a webserver which will communicate using webpipes.
         # Open the in and out named pipes and pass to RtAttenClient for communication
-        # with the webserver process. Open command on a pipe blocks until the other
-        # end opens it as well. Therefore open the reader first here and the writer
+        # with the webserver process. Pipe.Open() blocks until the other end opens
+        # it as well. Therefore open the reader first here and the writer
         # first within the webserver.
         webpipes = StructDict()
         webpipes.name_in = params.webpipe + '.toclient'
         webpipes.name_out = params.webpipe + '.fromclient'
         webpipes.fd_in = open(webpipes.name_in, mode='r')
         webpipes.fd_out = open(webpipes.name_out, mode='w', buffering=1)
+        # Create a thread which will detect if the parent process exited by
+        #  reading from stdin, when stdin is closed exit this process
+        exitThread = threading.Thread(name='exitThread', target=processShouldExitThread, args=(params,))
+        exitThread.setDaemon(True)
+        exitThread.start()
 
     cfg = loadConfigFile(params.experiment)
     params = mergeParamsConfigs(params, cfg)
@@ -107,11 +109,13 @@ def processShouldExitThread(params):
     '''
     print('processShouldExitThread: starting', flush=True)
     while True:
+        # logging.info('process should exit loop')
         data = sys.stdin.read()
         if len(data) == 0:
             print('processShouldExitThread: stdin closed, exiting', flush=True)
             os._exit(0)  # - this kills everything immediately
             break
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":

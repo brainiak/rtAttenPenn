@@ -113,11 +113,11 @@ class WatchdogFileWatcher():
                 fileExists = os.path.exists(specificFileName)
                 timeToCheckForFile = time.time() + 1
 
-        # wait for the full file to be written, wait at most 200 ms
-        fileSize = 0
+        # wait for the full file to be written, wait at most 300 ms
+        waitIncrement = 0.1
         totalWriteWait = 0.0
-        waitIncrement = 0.01
-        while fileSize < self.minFileSize and totalWriteWait <= 0.3:
+        fileSize = os.path.getsize(specificFileName)
+        while fileSize < self.minFileSize and totalWriteWait < 0.3:
             time.sleep(waitIncrement)
             totalWriteWait += waitIncrement
             fileSize = os.path.getsize(specificFileName)
@@ -151,6 +151,7 @@ if sys.platform in ("linux", "linux2"):
 class InotifyFileWatcher():
     def __init__(self):
         self.watchDir = None
+        self.minFileSize = 0
         self.shouldExit = False
         # create a listening thread
         self.fileNotifyQ = Queue()  # type: None
@@ -165,6 +166,7 @@ class InotifyFileWatcher():
 
     def initFileNotifier(self, dir, filePattern, minFileSize):
         # inotify doesn't use filepatterns
+        self.minFileSize = minFileSize
         if dir is None:
             raise StateError('initFileNotifier: dir is None')
         if not os.path.exists(dir):
@@ -215,9 +217,15 @@ class InotifyFileWatcher():
                 fileExists = os.path.exists(specificFileName)
                 timeToCheckForFile = time.time() + 1
         if exitWithFileEvent is False:
-            # We didn't get a close event because the file already existed,
-            # sleep for 200ms in case it is still being written to.
-            time.sleep(0.2)
+            # We didn't get a file-close event because the file already existed.
+            # Check the file size and sleep up to 300 ms waitig for full size
+            waitIncrement = 0.1
+            totalWriteWait = 0.0
+            fileSize = os.path.getsize(specificFileName)
+            while fileSize < self.minFileSize and totalWriteWait < 0.3:
+                time.sleep(waitIncrement)
+                totalWriteWait += waitIncrement
+                fileSize = os.path.getsize(specificFileName)
         logging.log(DebugLevels.L6,
                     "File avail: eventLoopCount %d, fileEventCaptured %s, "
                     "fileName %s, eventTimeStamp %d", eventLoopCount,

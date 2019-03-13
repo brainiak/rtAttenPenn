@@ -16,7 +16,7 @@ from rtfMRI.ReadDicom import readDicomFromFile, applyMask, parseDicomVolume
 from rtfMRI.ttlPulse import TTLPulseClient
 from rtfMRI.utils import dateStr30, DebugLevels, writeFile
 from rtfMRI.fileWatcher import FileWatcher
-from rtfMRI.Errors import InvocationError, ValidationError, StateError, RequestError
+from rtfMRI.Errors import InvocationError, ValidationError, StateError, RequestError, RTError
 from .PatternsDesign2Config import createRunConfig, getRunIndex, getLocalPatternsFile
 from .PatternsDesign2Config import getPatternsFileRegex
 from .RtAttenModel import getBlkGrpFilename, getModelFilename, getSubjectDataDir
@@ -189,6 +189,7 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(runDataDir):
             os.makedirs(runDataDir)
         outputInfo = StructDict()
+        outputInfo.runId = runId
         outputInfo.classOutputDir = os.path.join(runDataDir, 'classoutput')
         if not os.path.exists(outputInfo.classOutputDir):
             os.makedirs(outputInfo.classOutputDir)
@@ -282,6 +283,12 @@ class RtAttenClient(RtfMRIClient):
                         # Assuming the output file volumes are still 1's based
                         trVolumeData = self.getNextTRData(run, fileNum)
                         if trVolumeData is None:
+                            if TR.trId == 0:
+                                errStr = "First TR {} of run {} missing data, aborting...".format(TR.trId, runId)
+                                raise RTError(errStr)
+                            logging.warn("TR {} missing data, sending empty data".format(TR.trId))
+                            TR.data = np.full((self.cfg.session.nVoxels), np.nan)
+                            reply = self.sendCmdExpectSuccess(MsgEvent.TRData, TR)
                             continue
                         TR.data = applyMask(trVolumeData, self.cfg.session.roiInds)
                     else:
@@ -426,7 +433,19 @@ class RtAttenClient(RtfMRIClient):
                 raise StateError('getNextTRData: statusCode not 200: {}'.format(statusCode))
         else:
             self.fileWatcher.waitForFile(specificFileName)
-            data = self.loadImageData(specificFileName)
+            # Load the file, retry if necessary taking up to 500ms
+            retries = 0
+            while retries < 5:
+                retries += 1
+                try:
+                    data = self.loadImageData(specificFileName)
+                    # successful
+                    break
+                except Exception as err:
+                    logging.warn("LoadImage error, retry in 100 ms: {} ".format(err))
+                    time.sleep(0.1)
+            if data is None:
+                return None
         fileExtension = Path(specificFileName).suffix
         if fileExtension == '.mat':
             trVol = data.vol
@@ -445,6 +464,8 @@ class RtAttenClient(RtfMRIClient):
             if fileExtension != '.dcm':
                 raise StateError('loadImageData: fileExtension not .dcm: {}'.format(fileExtension))
             data = readDicomFromFile(filename)
+            # Check that pixeldata can be read, will throw exception if not
+            _ = data.pixel_array
         return data
 
     def getDicomFileName(self, scanNum, fileNum):
@@ -490,7 +511,7 @@ def outputPredictionFile(predict, outputInfo):
         vals = predict
         if predict is None or predict.catsep is None:
             vals = {'catsep': 0.0, 'vol': 'train'}
-        cmd = {'cmd': 'classificationResult', 'value': vals}
+        cmd = {'cmd': 'classificationResult', 'value': vals, 'runId': outputInfo.runId}
         wcutils.clientWebpipeCmd(outputInfo.webpipes, cmd)
     if predict is None or predict.vol is None:
         return
