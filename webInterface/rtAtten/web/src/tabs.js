@@ -285,10 +285,17 @@ class RtAtten extends React.Component {
               modified = true
               break;
           }
-          // check if the string should be a number
-          var regex = /^\d+$/;
-          if (regex.test(value) == true) {
+          var regexInt = /^\d+$/;
+          var regexFloat = /^[\d\.]+$/;
+          var regexIP = /\d+\.\d+.\d+\.\d+/;
+          if (regexInt.test(value) == true) {
+            // string should be an integer
             section[key] = parseInt(value, 10)
+            modified = true
+          } else if (regexFloat.test(value) == true &&
+                     regexIP.test(value) == false) {
+            // string should be a float
+            section[key] = parseFloat(value)
             modified = true
           }
         }

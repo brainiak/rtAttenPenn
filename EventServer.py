@@ -31,7 +31,7 @@ if __name__ == "__main__":
                         help="rtAtten website password")
     args = parser.parse_args()
 
-    if not re.match(".*:\d+", args.server):
+    if not re.match(r'.*:\d+', args.server):
         print("Usage: Expecting server address in the form <servername:port>")
         parser.print_help()
         sys.exit()

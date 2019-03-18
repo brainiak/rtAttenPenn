@@ -12,7 +12,7 @@ import json
 import re
 import toml
 import shlex
-from PIL import Image
+from PIL import Image, ImageDraw
 from pathlib import Path
 from base64 import b64encode
 from rtfMRI.utils import DebugLevels, copyFileWildcard
@@ -214,35 +214,8 @@ class RtAttenWeb():
                 vol = predict.get('vol')
                 # Test for NaN by comparing value to itself, if not equal then it is NaN
                 if catsep is not None and catsep == catsep:
-                    alpha = 0.5
-                    if vol == 'train':
-                        # for training set image as 60% face, 40% scene
-                        alpha = 0.4
-                    else:
-                        # calculate the biased alpha value
-                        gain = 2.3
-                        x_shift = 0.2
-                        y_shift = 0.12
-                        steepness = 0.9
-                        alpha = steepness / (1 + math.exp(-gain*(catsep-x_shift))) + y_shift
-                    # Choose random number for which images to use
-                    faceRndNum = random.randint(1, RtAttenWeb.numFaceFiles)
-                    sceneRndNum = random.randint(1, RtAttenWeb.numSceneFiles)
-                    faceFilename = os.path.join(RtAttenWeb.feedbackdir, 'FACE/{}.jpg'.format(faceRndNum))
-                    sceneFilename = os.path.join(RtAttenWeb.feedbackdir, 'SCENE/{}.jpg'.format(sceneRndNum))
-                    faceImg = Image.open(faceFilename)
-                    sceneImg = Image.open(sceneFilename)
-                    # Blend the images together using the classification result value
-                    # When alpha is closer to 0 then 1st img param (face) will be move visible
-                    # and conversely when alpha is closer to 1 then 2nd img param (scene) will be more visible
-                    blendImg = Image.blend(faceImg, sceneImg, alpha=alpha)
-                    # convert it to jpeg format and get the bytes to send
-                    jpgBuf = io.BytesIO()
-                    blendImg.save(jpgBuf, format='jpeg')
-                    jpgBytes = jpgBuf.getvalue()
-                    b64Data = b64encode(jpgBytes)
-                    b64StrData = b64Data.decode('utf-8')
-                    cmd = {'cmd': 'feedbackImage', 'data': b64StrData}
+                    image_b64Str = RtAttenWeb.createFeedbackImage(vol, catsep)
+                    cmd = {'cmd': 'feedbackImage', 'data': image_b64Str}
                     RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
                     # also update clinician window
                     # change classification value range to 0 to 1 instead of -1 to 1
@@ -250,6 +223,46 @@ class RtAttenWeb():
                     cmd = {'cmd': 'classificationResult', 'classVal': catsep, 'vol': vol, 'runId': runId}
                     RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(cmd))
         return response
+
+    @staticmethod
+    def createFeedbackImage(vol, catsep):
+        alpha = 0.5
+        if vol == 'train':
+            # for training set image as 60% face, 40% scene
+            alpha = 0.4
+        else:
+            # calculate the biased alpha value
+            gain = 2.3
+            x_shift = 0.2
+            y_shift = 0.12
+            steepness = 0.9
+            alpha = steepness / (1 + math.exp(-gain*(catsep-x_shift))) + y_shift
+        # Choose random number for which images to use
+        faceRndNum = random.randint(1, RtAttenWeb.numFaceFiles)
+        sceneRndNum = random.randint(1, RtAttenWeb.numSceneFiles)
+        faceFilename = os.path.join(RtAttenWeb.feedbackdir, 'FACE/{}.jpg'.format(faceRndNum))
+        sceneFilename = os.path.join(RtAttenWeb.feedbackdir, 'SCENE/{}.jpg'.format(sceneRndNum))
+        faceImg = Image.open(faceFilename)
+        sceneImg = Image.open(sceneFilename)
+        # Blend the images together using the classification result value
+        # When alpha is closer to 0 then 1st img param (face) will be move visible
+        # and conversely when alpha is closer to 1 then 2nd img param (scene) will be more visible
+        blendImg = Image.blend(faceImg, sceneImg, alpha=alpha)
+        # add circle in center
+        width, height = blendImg.size
+        x_center = width / 2
+        y_center = height / 2
+        radius = 3
+        draw = ImageDraw.Draw(blendImg)
+        draw.ellipse((x_center-radius, y_center-radius, x_center+radius, y_center+radius),
+                     fill="black", outline="black")
+        # convert it to jpeg format and get the bytes to send
+        jpgBuf = io.BytesIO()
+        blendImg.save(jpgBuf, format='jpeg')
+        jpgBytes = jpgBuf.getvalue()
+        b64Data = b64encode(jpgBytes)
+        b64StrData = b64Data.decode('utf-8')
+        return b64StrData
 
     @staticmethod
     def writeRegConfigFile(regGlobals, scriptPath):

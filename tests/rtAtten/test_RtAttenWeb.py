@@ -53,7 +53,7 @@ def webHandler(configData):
 class TestRtAttenWeb:
     def setup_class(cls):
         print("starting web server")
-        webThread = threading.Thread(name='webThread', target=webHandler, args=(configData(),))
+        webThread = threading.Thread(name='webThread', target=webHandler, args=(configData,))
         webThread.setDaemon(True)
         webThread.start()
         time.sleep(1)

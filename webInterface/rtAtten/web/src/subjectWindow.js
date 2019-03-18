@@ -12,6 +12,7 @@ class SubjectDisplay extends React.Component {
     this.state = {
       connected: false,
       imageData: '',
+      message: 'Waiting for images...',
       error: '',
     }
     this.onDeckImageData = ''
@@ -60,7 +61,19 @@ class SubjectDisplay extends React.Component {
   }
 
   render() {
-    var imgData = "data:image/jpeg;base64," + this.state.imageData
+    var mainItem
+    if (this.state.imageData == '') {
+      const pstyle = {textalign: 'center', fontSize: '1.5em'}
+      mainItem = (
+        <div className="pageCenter">
+          <p style={pstyle}> {this.state.message} </p>
+        </div>
+      )
+    } else {
+      var imgData = "data:image/jpeg;base64," + this.state.imageData
+      mainItem = (<img src={imgData} alt="Waiting for feedback images ..." />)
+      // <img src={this.state.feedbackImage} alt={`No Image ${this.state.feedbackImage}`} />
+    }
 
     if (refreshCount == 0) {
       startTime = Date.now()
@@ -73,10 +86,9 @@ class SubjectDisplay extends React.Component {
 
     return (
       <div>
-        <img src={imgData} alt="Waiting for feedback images ..." />
+        {mainItem}
       </div>
     )
-    // <img src={this.state.feedbackImage} alt={`No Image ${this.state.feedbackImage}`} />
   }
 }
 

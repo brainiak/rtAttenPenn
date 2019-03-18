@@ -60,7 +60,8 @@ class WatchdogFileWatcher():
             try:
                 self.observer.stop()
             except Exception as err:
-                logging.log(logging.INFO, "FileWatcher: oberver.stop(): %s", str(err))
+                # TODO - change back to log once can figure out what the observer.stop streamRef error is
+                print("FileWatcher: oberver.stop(): %s", str(err))
 
     def initFileNotifier(self, dir, filePattern, minFileSize, demoStep=0):
         self.demoStep = demoStep

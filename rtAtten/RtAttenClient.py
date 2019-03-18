@@ -41,7 +41,7 @@ class RtAttenClient(RtfMRIClient):
         self.webUseRemoteFiles = False
 
     def __del__(self):
-        logging.log(DebugLevels.L1, "## Stop Client")
+        # logging.log(DebugLevels.L1, "## Stop Client")
         if self.ttlPulseClient is not None:
             self.ttlPulseClient.close()
         super().__del__()
@@ -400,7 +400,7 @@ class RtAttenClient(RtfMRIClient):
         fileInfo.subjectDay = self.id_fields.subjectDay
         fileInfo.filename = filename
         if self.cfg.session.useSessionTimestamp is True:
-            fileInfo.findNewestPattern = re.sub('T\d{6}', 'T*', filename)
+            fileInfo.findNewestPattern = re.sub(r'T\d{6}', 'T*', filename)
             print("Retrieving newest file for {}... ".format(fileInfo.findNewestPattern), end='')
         else:
             print("Retrieving file {}... ".format(filename), end='')
