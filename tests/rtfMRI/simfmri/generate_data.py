@@ -68,6 +68,7 @@ def generate_data(cfgFile):
 
     print('Loading ' + noise_dict_filename)
     noise_dict = eval(noise_dict)
+    noise_dict['matched'] = 0
 
     runNum = 1
     scanNum = 0

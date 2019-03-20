@@ -130,7 +130,7 @@ class RtAttenClient(RtfMRIClient):
                 try:
                     imgDirDate = parser.parse(cfg.session.date)
                 except ValueError as err:
-                    raise RequestError('Unable to parse date string {}'.format(cfg.session.date))
+                    raise RequestError('Unable to parse date string {} {}'.format(cfg.session.date, err))
             datestr = imgDirDate.strftime("%Y%m%d")
             imgDirName = "{}.{}.{}".format(datestr, cfg.session.subjectName, cfg.session.subjectName)
             self.dirs.imgDir = os.path.join(cfg.session.imgDir, imgDirName)
@@ -357,6 +357,11 @@ class RtAttenClient(RtfMRIClient):
             outputReplyLines(reply.fields.outputlns, outputInfo)
             # self.retrieveBlkGrp(self.id_fields.sessionId, self.id_fields.runId, self.id_fields.blkGrpId)
         del self.id_fields.blkGrpId
+        # End Run
+        if self.webpipes is not None:
+            # send instructions to subject window display
+            cmd = {'cmd': 'subjectInstructions', 'value': 'Waiting for next run to start...'}
+            wcutils.clientWebpipeCmd(self.webpipes, cmd)
         # Train the model for this Run
         trainCfg = StructDict()
         if run.runId == 1:

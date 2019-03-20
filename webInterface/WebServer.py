@@ -77,6 +77,7 @@ class Web():
         Web.app = tornado.web.Application([
             (r'/', Web.UserHttp),
             (r'/login', Web.LoginHandler),
+            (r'/logout', Web.LogoutHandler),
             (r'/feedback', Web.SubjectHttp),  # shows image
             (r'/wsUser', Web.UserWebSocket),
             (r'/wsSubject', Web.SubjectWebSocket),
@@ -323,20 +324,19 @@ class Web():
                 Web.threadLock.release()
 
     class LoginHandler(tornado.web.RequestHandler):
-        error = ''
+        loginAttempts = {}
+        loginRetryDelay = 10
 
         def get(self):
             params = {
-                "error_msg": Web.LoginHandler.error,
+                "error_msg": '',
                 "nextpage": self.get_argument("next", "/")
             }
             full_path = os.path.join(Web.htmlDir, Web.webLoginPage)
             self.render(full_path,  **params)
 
         def post(self):
-            # print("%r %s" % (self.request, self.request.body.decode()))
-            # TODO - prevent more than 5 password attempts
-            Web.LoginHandler.error = ''
+            errorReply = None
             try:
                 login_name = self.get_argument("name")
                 login_passwd = self.get_argument("password")
@@ -348,20 +348,62 @@ class Web():
                 passwdFilename = os.path.join(certsDir, 'passwd')
                 passwdDict = loadPasswdFile(passwdFilename)
                 if login_name in passwdDict:
-                    hashed_passwd = passwdDict[login_name]
-                    # checkpw expects bytes array rather than string so use .encode()
-                    if bcrypt.checkpw(login_passwd.encode(), hashed_passwd.encode()) is True:
-                        self.set_secure_cookie("login", login_name, expires_days=maxDaysLoginCookieValid)
-                        self.redirect(self.get_query_argument('next', '/'))
-                        return
-                    else:
-                        Web.LoginHandler.error = 'Login Error: Incorrect Password'
+                    errorReply = self.checkRetry(login_name)
+                    if errorReply is None:
+                        hashed_passwd = passwdDict[login_name]
+                        # checkpw expects bytes array rather than string so use .encode()
+                        if bcrypt.checkpw(login_passwd.encode(), hashed_passwd.encode()) is True:
+                            # Remove failed attempts entry
+                            del Web.LoginHandler.loginAttempts[login_name]
+                            self.set_secure_cookie("login", login_name, expires_days=maxDaysLoginCookieValid)
+                            self.redirect(self.get_query_argument('next', '/'))
+                            return
+                        else:
+                            errorReply = 'Login Error: Login Incorrect'
                 else:
-                    Web.LoginHandler.error = 'Login Error: Invalid Username'
+                    errorReply = self.checkRetry('invalid_user')
+                    if errorReply is None:
+                        errorReply = 'Login Error: Login Incorrect'
             except Exception as err:
-                Web.LoginHandler.error = str(err)
-            assert Web.LoginHandler.error != '', "Assert: Web.LoginHandler.error not empty"
-            self.set_status(401, Web.LoginHandler.error)
+                errorReply = 'Exception: {} {}'.format(type(err), err)
+            assert errorReply is not None, "Assert: Web.LoginHandler.error not empty"
+            logging.warn('Login Failure: {}'.format(login_name))
+            params = {
+                "error_msg": errorReply,
+                "nextpage": self.get_query_argument('next', '/')
+            }
+            full_path = os.path.join(Web.htmlDir, Web.webLoginPage)
+            self.render(full_path,  **params)
+
+        def checkRetry(self, user):
+            '''Keep a dictionary with one entry per username. Any user not in the
+                passwd file will be entered as 'invalid_user'. Record login failure
+                count and timestamp for when the next retry is allowed. Reset failed
+                retry count on successful login. Return message with how many seconds
+                until next login attempt is allowed.
+            '''
+            now = time.time()
+            loginAttempts = Web.LoginHandler.loginAttempts
+            retryTime = now + Web.LoginHandler.loginRetryDelay
+            loginTry = loginAttempts.get(user)
+            if loginTry is not None:
+                failedLogins = loginTry.get('failedLogins', 0)
+                nextAllowedTime = loginTry.get('nextAllowedTime', now)
+                # print('user: {}, tries {}, nextTime {}'.format(user, failedLogins, nextAllowedTime))
+                if nextAllowedTime > now:
+                    delaySecs = loginTry['nextAllowedTime'] - now
+                    return 'Next login retry allowed in {} sec'.format(int(delaySecs))
+                loginTry['failedLogins'] = failedLogins + 1
+                loginTry['nextAllowedTime'] = retryTime
+                loginAttempts[user] = loginTry
+            else:
+                loginAttempts[user] = {'failedLogins': 1, 'nextAllowedTime': retryTime}
+            return None
+
+    class LogoutHandler(tornado.web.RequestHandler):
+        def get(self):
+            self.clear_cookie("login")
+            self.redirect("/login")
 
     class SubjectWebSocket(tornado.websocket.WebSocketHandler):
         # TODO - combine these in-common setups into helper functions

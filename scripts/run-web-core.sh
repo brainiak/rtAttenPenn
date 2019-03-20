@@ -31,8 +31,8 @@ if [ -z $USELOCALFILES ]; then
 fi
 
 # Check if face and scene image directories exist
-if [[ ! -d 'tmp/images/FACE' || ! -d 'tmp/images/SCENE' ]] ; then
-    echo "Expecting feedback images in ./tmp/images/FACE and ./tmp/images/SCENE"
+if [[ ! -d 'tmp/images/FACE_NEUTRAL' || ! -d 'tmp/images/FACE_NEGATIVE' || ! -d 'tmp/images/SCENE' ]] ; then
+    echo "Expecting feedback images in ./tmp/images/FACE_NEUTRAL,  ./tmp/images/FACE_NEGATIVE and ./tmp/images/SCENE"
     echo "Please create those directories, exiting ..."
     exit -1
 fi

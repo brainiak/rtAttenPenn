@@ -12,7 +12,7 @@
     </div>
 
     <p>RtAtten Login</p>
-    {{ error_msg }}
+    <p>{{ error_msg }}</p>
     <form action="/login?next={{nextpage}}" method="post">
       {% module xsrf_form_html() %}
       <div class="table">

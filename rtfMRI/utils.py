@@ -108,6 +108,11 @@ def copyFileWildcard(src, dst):
     return
 
 
+def fileCount(dir, pattern):
+    count = sum(1 for _ in glob.iglob(os.path.join(dir, pattern)))
+    return count
+
+
 def writeFile(filename, data):
     with open(filename, 'wb') as fh:
         bytesWritten = fh.write(data)

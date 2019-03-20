@@ -15,7 +15,7 @@ import shlex
 from PIL import Image, ImageDraw
 from pathlib import Path
 from base64 import b64encode
-from rtfMRI.utils import DebugLevels, copyFileWildcard
+from rtfMRI.utils import DebugLevels, copyFileWildcard, fileCount
 from rtfMRI.StructDict import StructDict, recurseCreateStructDict
 from rtfMRI.Errors import RequestError, StateError, InvocationError
 from rtAtten.RtAttenModel import getRunDir
@@ -49,8 +49,12 @@ class RtAttenWeb():
     registrationThread = None
     uploadImageThread = None
     fifoFileThread = None
-    numFaceFiles = 0
+    sceneImageDir = ''
+    faceNeutralImageDir = ''
+    faceNegativeImageDir = ''
     numSceneFiles = 0
+    numFaceNeutralFiles = 0
+    numFaceNegativeFiles = 0
 
     @staticmethod
     def init(params, cfg):
@@ -61,16 +65,18 @@ class RtAttenWeb():
         RtAttenWeb.cfg = cfg
         RtAttenWeb.stopRun = False
         RtAttenWeb.stopReg = False
-        # Get number of image files in FACE and SCENE directories
-        faceImagesDir = os.path.join(RtAttenWeb.feedbackdir, 'FACE')
-        sceneImagesDir = os.path.join(RtAttenWeb.feedbackdir, 'SCENE')
-        if not os.path.exists(faceImagesDir) or not os.path.exists(sceneImagesDir):
-            raise InvocationError('Directory for FACE or SCENE missing: {}, {}'.format(faceImagesDir, sceneImagesDir))
-        # TODO - list only .jpg files when doing count
-        RtAttenWeb.numFaceFiles = len(os.listdir(faceImagesDir))
-        RtAttenWeb.numSceneFiles = len(os.listdir(sceneImagesDir))
-        if RtAttenWeb.numFaceFiles == 0 or RtAttenWeb.numSceneFiles == 0:
-            raise StateError('FACE or SCENE image directory empty')
+        RtAttenWeb.sceneImageDir = os.path.join(RtAttenWeb.feedbackdir, 'SCENE')
+        RtAttenWeb.faceNeutralImageDir = os.path.join(RtAttenWeb.feedbackdir, 'FACE_NEUTRAL')
+        RtAttenWeb.faceNegativeImageDir = os.path.join(RtAttenWeb.feedbackdir, 'FACE_NEGATIVE')
+        try:
+            # Get number of jpg files in FACE and SCENE directories
+            RtAttenWeb.numSceneFiles = fileCount(RtAttenWeb.sceneImageDir, '*.jpg')
+            RtAttenWeb.numFaceNeutralFiles = fileCount(RtAttenWeb.faceNeutralImageDir, '*.jpg')
+            RtAttenWeb.numFaceNegativeFiles = fileCount(RtAttenWeb.faceNegativeImageDir, '*.jpg')
+        except Exception:
+            RtAttenWeb.numSceneFiles = 0
+            RtAttenWeb.numFaceNeutralFiles = 0
+            RtAttenWeb.numFaceNegativeFiles = 0
         RtAttenWeb.initialized = True
         RtAttenWeb.webServer.start(htmlDir=htmlDir,
                                    userCallback=RtAttenWeb.webUserCallback,
@@ -207,29 +213,52 @@ class RtAttenWeb():
             if cmd == 'webCommonDir':
                 response.filename = CommonOutputDir
             elif cmd == 'classificationResult':
-                predict = request['value']
-                runId = request['runId']
-                # predict has {'catsep': val, 'vol': val}
-                catsep = predict.get('catsep')
-                vol = predict.get('vol')
-                # Test for NaN by comparing value to itself, if not equal then it is NaN
-                if catsep is not None and catsep == catsep:
-                    image_b64Str = RtAttenWeb.createFeedbackImage(vol, catsep)
-                    cmd = {'cmd': 'feedbackImage', 'data': image_b64Str}
-                    RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
-                    # also update clinician window
-                    # change classification value range to 0 to 1 instead of -1 to 1
-                    # classVal = (catsep + 1) / 2
-                    cmd = {'cmd': 'classificationResult', 'classVal': catsep, 'vol': vol, 'runId': runId}
-                    RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(cmd))
+                try:
+                    predict = request['value']
+                    runId = request.get('runId')
+                    # predict has {'catsep': val, 'vol': val}
+                    catsep = predict.get('catsep')
+                    vol = predict.get('vol')
+                    # Test for NaN by comparing value to itself, if not equal then it is NaN
+                    if catsep is not None and catsep == catsep:
+                        image_b64Str = RtAttenWeb.createFeedbackImage(vol, catsep)
+                        cmd = {'cmd': 'feedbackImage', 'data': image_b64Str}
+                        RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
+                        # also update clinician window
+                        # change classification value range to 0 to 1 instead of -1 to 1
+                        # classVal = (catsep + 1) / 2
+                        cmd = {'cmd': 'classificationResult', 'classVal': catsep, 'vol': vol, 'runId': runId}
+                        RtAttenWeb.webServer.sendUserMsgFromThread(json.dumps(cmd))
+                except Exception as err:
+                    errStr = 'SendClassification Exception type {}: error {}:'.format(type(err), str(err))
+                    response = {'status': 400, 'error': errStr}
+                    RtAttenWeb.webServer.setUserError(errStr)
+                    logging.error('handleFifo Excpetion: {}'.format(errStr))
+                    raise err
+            elif cmd == 'subjectInstructions':
+                # forward to subject window
+                RtAttenWeb.webServer.sendSubjMsgFromThread(request)
         return response
 
     @staticmethod
     def createFeedbackImage(vol, catsep):
+        if not os.path.exists(RtAttenWeb.sceneImageDir) or \
+           not os.path.exists(RtAttenWeb.faceNeutralImageDir) or \
+           not os.path.exists(RtAttenWeb.faceNegativeImageDir):
+            raise InvocationError('Directory for FACE or SCENE missing: {} {} {}'.
+                format(RtAttenWeb.sceneImageDir, RtAttenWeb.faceNeutralImageDir, RtAttenWeb.faceNegativeImageDir))
+        if RtAttenWeb.numSceneFiles == 0 or \
+           RtAttenWeb.numFaceNeutralFiles == 0 or \
+           RtAttenWeb.numFaceNegativeFiles == 0:
+            raise StateError('Image Face/Scene directory missing jpg files')
         alpha = 0.5
+        sceneImagesDir = RtAttenWeb.sceneImageDir
+        numSceneFiles = RtAttenWeb.numSceneFiles
         if vol == 'train':
             # for training set image as 60% face, 40% scene
             alpha = 0.4
+            faceImagesDir = RtAttenWeb.faceNeutralImageDir
+            numFaceFiles = RtAttenWeb.numFaceNeutralFiles
         else:
             # calculate the biased alpha value
             gain = 2.3
@@ -237,11 +266,14 @@ class RtAttenWeb():
             y_shift = 0.12
             steepness = 0.9
             alpha = steepness / (1 + math.exp(-gain*(catsep-x_shift))) + y_shift
+            faceImagesDir = RtAttenWeb.faceNegativeImageDir
+            numFaceFiles = RtAttenWeb.numFaceNegativeFiles
+
         # Choose random number for which images to use
-        faceRndNum = random.randint(1, RtAttenWeb.numFaceFiles)
-        sceneRndNum = random.randint(1, RtAttenWeb.numSceneFiles)
-        faceFilename = os.path.join(RtAttenWeb.feedbackdir, 'FACE/{}.jpg'.format(faceRndNum))
-        sceneFilename = os.path.join(RtAttenWeb.feedbackdir, 'SCENE/{}.jpg'.format(sceneRndNum))
+        faceRndNum = random.randint(1, numFaceFiles)
+        sceneRndNum = random.randint(1, numSceneFiles)
+        faceFilename = os.path.join(faceImagesDir, '{}.jpg'.format(faceRndNum))
+        sceneFilename = os.path.join(sceneImagesDir, '{}.jpg'.format(sceneRndNum))
         faceImg = Image.open(faceFilename)
         sceneImg = Image.open(sceneFilename)
         # Blend the images together using the classification result value

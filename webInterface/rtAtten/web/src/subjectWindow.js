@@ -12,7 +12,7 @@ class SubjectDisplay extends React.Component {
     this.state = {
       connected: false,
       imageData: '',
-      message: 'Waiting for images...',
+      message: 'Waiting for run to start ...',
       error: '',
     }
     this.onDeckImageData = ''
@@ -48,6 +48,8 @@ class SubjectDisplay extends React.Component {
         console.log('ttlPulse')
         // update the subject image display
         // this.setState({ imageData: this.onDeckImageData })
+      } else if (cmd == 'subjectInstructions') {
+        this.setState({message: request['value'], imageData: ''})
       } else if (cmd == 'error') {
         console.log("## Got Error: " + request['error'])
         this.setState({error: request['error']})
