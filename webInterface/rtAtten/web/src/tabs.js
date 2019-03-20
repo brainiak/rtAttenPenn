@@ -28,11 +28,11 @@ class RtAtten extends React.Component {
       filesRemote: true,  // whether the webserver gets image files from a remote server or locally
       connected: false,
       error: '',
-      classVals: [[]], // classification results
+      classVals: [[], [{x:0, y:0}]], // classification results
       logLines: [],  // image classification log
       regLines: [],  // registration processing log
     }
-    this.classVals = [[], []]
+    this.classVals = [[], [{x:0, y:0}]]
     this.webSocket = null
     this.registrationTabIndex = 2
     this.onTabSelected = this.onTabSelected.bind(this);

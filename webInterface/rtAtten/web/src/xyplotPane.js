@@ -1,5 +1,6 @@
 const React = require('react')
-import {XYPlot, FlexibleXYPlot, XAxis, YAxis, HorizontalGridLines, LineSeries, LineMarkSeries} from 'react-vis';
+import {XYPlot, FlexibleXYPlot, XAxis, YAxis, ChartLabel, HorizontalGridLines, LineSeries, LineMarkSeries} from 'react-vis';
+
 
 function yTickFormat(val) {
   var label = ''
@@ -26,15 +27,18 @@ class XYPlotPane extends React.Component {
     var xRange = [xLow, xHigh]
     var uniqueKey = runId.toString() // + '.' + numPoints.toString()
     var plotColor = '#E0E0E0'
-    var plotMargins = {left: 60, right: 20, top: 10, bottom: 40}
+    var plotMargins = {left: 90, right: 25, top: 15, bottom: 70}
     var axesStyle = {
-      text: {stroke: 'none', fill: plotColor, fontSize: '0.9em'}
+      text: {stroke: 'none', fill: plotColor, fontSize: '1.5em'},
+      title: {stroke: 'none', fill: plotColor, fontSize: '1.5em'}
     }
+    // Note: I couldn't get ChartLabel style={} to change the text style
+    //  so instead it is set in react-vis.css .rv-xy-plot__axis__title
     return (
       <div key={uniqueKey}>
-        <p>Run {runId}</p>
+        <p style={{fontSize: '1.7em'}}>Run {runId}</p>
         <XYPlot
-          width={900}
+          width={1000}
           height={300}
           xDomain={xRange}
           yDomain={[-1, 1]}
@@ -45,10 +49,19 @@ class XYPlotPane extends React.Component {
             animation
             color={plotColor}
             data={runClassVals}/>
-          <XAxis style={axesStyle} tickTotal={11} title="TR" />
+          <XAxis style={axesStyle} tickTotal={11} />
+          <ChartLabel
+            text="TR"
+            className="x-label"
+            includeMargin={false}
+            xPercent={0.48}
+            yPercent={1.4}
+            style={{fill: plotColor, fontSize: 'large'}}
+          />
           <YAxis style={axesStyle} tickFormat={yTickFormat} tickPadding={5}/>
         </XYPlot>
         <br />
+        <hr />
       </div>
     )
   }
@@ -64,7 +77,8 @@ class XYPlotPane extends React.Component {
     return (
       <div>
         <br />
-        <p>Face/Scene Attention Classification vs. Trial</p>
+        <div style={{fontSize: '2em'}}>Scene - Face Classification vs TR</div>
+        <hr />
         {plots}
       </div>
     )
