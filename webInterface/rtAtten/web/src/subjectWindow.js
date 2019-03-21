@@ -40,16 +40,16 @@ class SubjectDisplay extends React.Component {
       var wsMsg = messageEvent.data;
       var request = JSON.parse(wsMsg)
       var cmd = request['cmd']
-      if (cmd == 'feedbackImage') {
-        this.onDeckImageData = request['data']
-        //  TODO remove this and only update on ttlPulse
-        this.setState({ imageData: this.onDeckImageData })
+      if (cmd == 'subjectDisplay') {
+        var msg = ('text' in request) ? request['text'] : ''
+        var img = ('data' in request) ? request['data'] : ''
+        this.onDeckImageData = img
+        // TODO - wait for ttl pulse before showing image
+        this.setState({imageData: img, message: msg})
       } else if (cmd == 'ttlPulse') {
         console.log('ttlPulse')
         // update the subject image display
         // this.setState({ imageData: this.onDeckImageData })
-      } else if (cmd == 'subjectInstructions') {
-        this.setState({message: request['value'], imageData: ''})
       } else if (cmd == 'error') {
         console.log("## Got Error: " + request['error'])
         this.setState({error: request['error']})

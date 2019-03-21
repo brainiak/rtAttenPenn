@@ -350,6 +350,10 @@ class RtAttenClient(RtfMRIClient):
                     logging.log(DebugLevels.L3, logStr)
                     outputReplyLines(reply.fields.outputlns, outputInfo)
                 del self.id_fields.trId
+                # End Block
+                if self.webpipes is not None:
+                    cmd = {'cmd': 'subjectDisplay', 'bgcolor': '#808080'}
+                    wcutils.clientWebpipeCmd(self.webpipes, cmd)
                 reply = self.sendCmdExpectSuccess(MsgEvent.EndBlock, blockCfg)
                 outputReplyLines(reply.fields.outputlns, outputInfo)
             del self.id_fields.blockId
@@ -360,7 +364,7 @@ class RtAttenClient(RtfMRIClient):
         # End Run
         if self.webpipes is not None:
             # send instructions to subject window display
-            cmd = {'cmd': 'subjectInstructions', 'value': 'Waiting for next run to start...'}
+            cmd = {'cmd': 'subjectDisplay', 'text': 'Waiting for next run to start...'}
             wcutils.clientWebpipeCmd(self.webpipes, cmd)
         # Train the model for this Run
         trainCfg = StructDict()

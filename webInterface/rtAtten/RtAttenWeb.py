@@ -222,7 +222,7 @@ class RtAttenWeb():
                     # Test for NaN by comparing value to itself, if not equal then it is NaN
                     if catsep is not None and catsep == catsep:
                         image_b64Str = RtAttenWeb.createFeedbackImage(vol, catsep)
-                        cmd = {'cmd': 'feedbackImage', 'data': image_b64Str}
+                        cmd = {'cmd': 'subjectDisplay', 'data': image_b64Str}
                         RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
                         # also update clinician window
                         # change classification value range to 0 to 1 instead of -1 to 1
@@ -235,10 +235,36 @@ class RtAttenWeb():
                     RtAttenWeb.webServer.setUserError(errStr)
                     logging.error('handleFifo Excpetion: {}'.format(errStr))
                     raise err
-            elif cmd == 'subjectInstructions':
+            elif cmd == 'subjectDisplay':
                 # forward to subject window
-                RtAttenWeb.webServer.sendSubjMsgFromThread(request)
+                color = request.get('bgcolor')
+                if color is not None:
+                    image_b64Str = RtAttenWeb.createSolidColorImage(color)
+                    cmd = {'cmd': 'subjectDisplay', 'data': image_b64Str}
+                    RtAttenWeb.webServer.sendSubjMsgFromThread(json.dumps(cmd))
+                else:
+                    RtAttenWeb.webServer.sendSubjMsgFromThread(request)
         return response
+
+    @staticmethod
+    def createSolidColorImage(color):
+        width = height = 256
+        img = Image.new("RGB", (width, height), color)
+        # add circle in center
+        draw = ImageDraw.Draw(img)
+        x_center = width / 2
+        y_center = height / 2
+        radius = 3
+        draw = ImageDraw.Draw(img)
+        draw.ellipse((x_center-radius, y_center-radius,
+                      x_center+radius, y_center+radius),
+                     fill="black", outline="black")
+        jpgBuf = io.BytesIO()
+        img.save(jpgBuf, format='jpeg')
+        jpgBytes = jpgBuf.getvalue()
+        b64Data = b64encode(jpgBytes)
+        b64StrData = b64Data.decode('utf-8')
+        return b64StrData
 
     @staticmethod
     def createFeedbackImage(vol, catsep):
