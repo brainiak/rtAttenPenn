@@ -97,9 +97,16 @@ class RtAttenClient(RtfMRIClient):
 
     def initSession(self, cfg):
         self.cfgValidation(cfg)
+        sessionDate = datetime.datetime.now()
+        dateStr = cfg.session.date.lower()
+        if dateStr != 'now' and dateStr != 'today':
+            try:
+                sessionDate = parser.parse(cfg.session.date)
+            except ValueError as err:
+                raise RequestError('Unable to parse date string {} {}'.format(cfg.session.date, err))
         if cfg.session.sessionId in (None, '') or cfg.session.useSessionTimestamp is True:
             cfg.session.useSessionTimestamp = True
-            cfg.session.sessionId = dateStr30(time.localtime())
+            cfg.session.sessionId = dateStr30(sessionDate.timetuple())
         else:
             cfg.session.useSessionTimestamp = False
 
@@ -124,14 +131,7 @@ class RtAttenClient(RtfMRIClient):
         if not os.path.exists(self.dirs.serverDataDir):
             os.makedirs(self.dirs.serverDataDir)
         if cfg.session.buildImgPath:
-            imgDirDate = datetime.datetime.now()
-            dateStr = cfg.session.date.lower()
-            if dateStr != 'now' and dateStr != 'today':
-                try:
-                    imgDirDate = parser.parse(cfg.session.date)
-                except ValueError as err:
-                    raise RequestError('Unable to parse date string {} {}'.format(cfg.session.date, err))
-            datestr = imgDirDate.strftime("%Y%m%d")
+            datestr = sessionDate.strftime("%Y%m%d")
             imgDirName = "{}.{}.{}".format(datestr, cfg.session.subjectName, cfg.session.subjectName)
             self.dirs.imgDir = os.path.join(cfg.session.imgDir, imgDirName)
         else:

@@ -36,8 +36,10 @@ def parseMatlabStruct(top_struct) -> MatlabStructDict:
 
 
 def loadMatFile(filename: str) -> MatlabStructDict:
+    if filename in (None, ''):
+        raise FileNotFoundError("loadMatFile: No Filename Specified")
     if not os.path.isfile(filename):
-        raise FileNotFoundError("File \'{}\' not found".format(filename))
+        raise FileNotFoundError("loadMatFile: File \'{}\' not found".format(filename))
     top_struct = sio.loadmat(filename)
     return parseMatlabStruct(top_struct)
 

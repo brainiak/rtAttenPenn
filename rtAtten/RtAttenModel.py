@@ -465,11 +465,10 @@ class RtAttenModel(BaseModel):
         dataDir = getSubjectDataDir(self.session.serverDataDir, fileInfo.subjectNum, fileInfo.subjectDay)
         fullFileName = os.path.join(dataDir, fileInfo.filename)
         if fileInfo.findNewestPattern not in (None, ''):
-            try:
-                fullFileName = utils.findNewestFile(dataDir, fileInfo.findNewestPattern)
-            except Exception as err:
+            fullFileName = utils.findNewestFile(dataDir, fileInfo.findNewestPattern)
+            if fullFileName is None:
                 reply = self.createReplyMessage(msg, MsgResult.Error)
-                reply.data = "FindNewestFile failed: %s: %s" % (fullFileName, str(err))
+                reply.data = "FindNewestFile failed: %s: no matches found" % (fullFileName)
                 return reply
         msg.fields.cfg = fullFileName
         reply = super().RetrieveData(msg)
