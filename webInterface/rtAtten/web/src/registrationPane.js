@@ -120,7 +120,7 @@ class RegistrationPane extends React.Component {
             <label className="cell5p">{this.props.regInfo['skullstrip']}</label>
           </p>
           <p className="row">
-            <label className="cell10p">Registartion</label>
+            <label className="cell10p">Registration</label>
             <label className="cell5p"></label>
             <input className="cell5p hidden" size="5" />
             <label className="cell5p"></label>

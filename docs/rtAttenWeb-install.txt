@@ -1,0 +1,107 @@
+sudo yum -y install git
+sudo yum -y install wget
+sudo yum -y install bzip2
+git clone https://github.com/brainiak/rtAttenPenn.git
+bash scripts/install-rtAtten.sh
+# install node.js and npm
+sudo yum install nodejs
+cd rtAtten/web
+npm install
+npm run build
+
+Add port 8888 to Azure inbound firewall rules for both web user computer and filewatcher computer
+
+sudo yum install epel-release
+# may have to manually install epel-release
+wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+yum install ./epel-release-latest-*.noarch.rpm
+
+sudo yum -y install tigervnc-server
+sudo yum -y install xclock
+sudo yum -y install xdotool
+
+cat <<EOT >> ~/.vnc/xstartup
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+#exec /etc/X11/xinit/xinitrc
+xsetroot -solid grey -cursor_name left_ptr
+xeyes
+EOT
+
+conda create --name websockify python=3.6
+pip install websockify
+
+openssl req -new -x509 -days 365 -nodes -out self.pem -keyout self.pem
+
+sudo mkdir /Data1
+sudo chown <user>:<user> /Data1
+ln -s /home/<user>/src/github/rtAttenPenn/rtAtten/registration/ reg_scripts
+
+# get dcm2nii tool
+cd ~/Downloads
+wget https://github.com/rordenlab/dcm2niix/releases/download/v1.0.20180622/dcm2niix_27-Jun-2018_lnx.zip
+unzip dcm2niix_27-Jun-2018_lnx.zip
+sudo mkdir -p /usr/local/bin
+ sudo cp ~<user>/Downloads/dcm2niix /usr/local/bin
+
+# Build dcm2niix didn't work, I get segmentation fault when running on images
+#git clone https://github.com/rordenlab/dcm2niix.git
+#sudo yum -y groupinstall 'Development Tools'
+#sudo yum -y install libstdc++-static
+#sudo yum -y install cmake
+#mkdir dcm2niix/build
+#cd dcm2niix/build
+#cmake ..
+#make
+#sudo make install
+## cp ../bin/dcm2niix /Tools
+
+# install FSL tools
+# installation instructions https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FslInstallation/Linux
+cd ~/Downloads
+wget https://fsl.fmrib.ox.ac.uk/fsldownloads/fslinstaller.py
+/usr/bin/python2.7 fslinstaller.py -d /Tools/fsl --quiet
+sudo yum -y install libpng12 libmng
+sudo yum install xorg-x11-fonts-Type1 # to show fonts correctly
+sudo yum install pigz
+sudo yum -y install openblas.x86_64 openblas-devel.x86_64
+sudo yum -y install freeglut-devel # might not be needed
+sudo yum install glx-utils  # glxgears and glxinfo, maybe not needed
+sudo yum -y install gtk2 # maybe not needed
+# To dispay on Mac with XQuartz must run this command in Mac shell or get X11 Gdk-ERROR
+defaults write org.macosforge.xquartz.X11 enable_iglx -bool true
+# in ~/.bash_profile
+# FSLDIR=/usr/local/fsl
+# PATH=${FSLDIR}/bin:${PATH}
+# export FSLDIR PATH
+# . ${FSLDIR}/etc/fslconf/fsl.sh
+
+# Install Matlab runtime
+ wget https://www.mathworks.com/supportfiles/downloads/R2014a/deployment_files/R2014a/installers/glnxa64/MCR_R2014a_glnxa64_installer.zip
+mkdir MCR
+mv MCR_R2014* MCR; cd MCR
+unzip MCR_2014*
+
+# At this point you actually need to sudo su and set the xauth so X11
+# can open up an installer window that allows you to accept the license
+xauth list $DISPLAY
+<xauth result>
+sudo su
+xauth add <xauth result>
+# in MCR directory
+bash install  # follow instructions for updating LD_LIBRARY_PATH
+# in ~/.bashrc
+# export LD_LIBRARY_PATH=.:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/runtime/glnxa64:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/bin/glnxa64:/usr/local/MATLAB/MATLAB_Compiler_Runtime/v83/sys/os/glnxa64
+
+# if you get a Gtk GModule warning like
+# (fsleyes:15552): Gtk-WARNING **: GModule (/usr/lib64/gtk-2.0/2.10.0/immodules/im-ibus.so)
+# Then you need to install the correct version of fsleyes, instructions here
+https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FSLeyes
+
+# RUNNING
+vncserver :1 -SecurityTypes None
+# note the command can't be localhost:6080, just 6080 or won't be able to connect from remote site
+conda activate websockify
+ websockify --cert certs/rtAtten.crt --key certs/rtAtten_private.key 6080 localhost:5901
+# websockify --cert self.pem 6080 localhost:5901
+python ClientMain.py -w -l -e tests/rtfMRI/syntheticDataCfg.toml
