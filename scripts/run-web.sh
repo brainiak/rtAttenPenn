@@ -7,7 +7,7 @@ while test $# -gt 0
 do
   case "$1" in
     -h)
-      echo "$0 [-e <toml_file>] [-ip <local_ip_or_hostname] [--localfiles] [--filewatcher [-u <username> -p <password>]]"
+      echo "$0 [-e <toml_file>] [-ip <local_ip_or_hostname>] [--server <remote_classification_server:port>] [--localfiles] [--filewatcher [-u <username> -p <password>]]"
       exit 0
       ;;
     --filewatcher) RUNFILEWATCHER=1

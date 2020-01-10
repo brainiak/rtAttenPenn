@@ -12,6 +12,8 @@ do
       ;;
     -ip) IP=$2
       ;;
+    --server) REMOTESERVER=$2
+      ;;
     --localfiles) USELOCALFILES=1
       ;;
   esac
@@ -28,6 +30,14 @@ R_PARAM=''
 if [ -z $USELOCALFILES ]; then
   # USELOCALFILES not set, use remote files
   R_PARAM='-r'
+fi
+
+S_PARAM=''
+if [ -z $REMOTESERVER ]; then
+  # REMOTESERVER not set, start classification server locally
+  S_PARAM='-l'
+else
+  S_PARAM="-s $REMOTESERVER"
 fi
 
 # Check if face and scene image directories exist
@@ -53,4 +63,4 @@ else
   bash scripts/make-sslcert.sh -ip $IP
 fi
 
-python WebMain.py -l -f 'tmp/images' $R_PARAM $CFG_PARAM
+python WebMain.py -f 'tmp/images' $S_PARAM $R_PARAM $CFG_PARAM

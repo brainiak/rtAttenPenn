@@ -59,8 +59,8 @@ class RtAttenWeb():
     @staticmethod
     def init(params, cfg):
         RtAttenWeb.rtserver = params.rtserver or RtAttenWeb.rtserver
-        RtAttenWeb.rtlocal = params.rtlocal or RtAttenWeb.rtlocal
-        RtAttenWeb.filesremote = params.filesremote or RtAttenWeb.filesremote
+        RtAttenWeb.rtlocal = params.rtlocal if (params.rtlocal is not None) else RtAttenWeb.rtlocal
+        RtAttenWeb.filesremote = params.filesremote if (params.filesremote is not None) else RtAttenWeb.filesremote
         RtAttenWeb.feedbackdir = params.feedbackdir or RtAttenWeb.feedbackdir
         RtAttenWeb.cfg = cfg
         RtAttenWeb.stopRun = False
