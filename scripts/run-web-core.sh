@@ -41,8 +41,8 @@ else
 fi
 
 # Check if face and scene image directories exist
-if [[ ! -d 'tmp/images/FACE_NEUTRAL' || ! -d 'tmp/images/FACE_NEGATIVE' || ! -d 'tmp/images/SCENE' ]] ; then
-    echo "Expecting feedback images in ./tmp/images/FACE_NEUTRAL,  ./tmp/images/FACE_NEGATIVE and ./tmp/images/SCENE"
+if [[ ! -d 'webInterface/images/FACE_NEUTRAL' || ! -d 'webInterface/images/FACE_NEGATIVE' || ! -d 'webInterface/images/SCENE' ]] ; then
+    echo "Expecting feedback images in ./webInterface/images/FACE_NEUTRAL,  ./webInterface/images/FACE_NEGATIVE and ./webInterface/images/SCENE"
     echo "Please create those directories, exiting ..."
     exit -1
 fi
@@ -63,4 +63,4 @@ else
   bash scripts/make-sslcert.sh -ip $IP
 fi
 
-python WebMain.py -f 'tmp/images' $S_PARAM $R_PARAM $CFG_PARAM
+python WebMain.py -f 'webInterface/images' $S_PARAM $R_PARAM $CFG_PARAM
