@@ -105,10 +105,28 @@ class RtAttenClient(RtfMRIClient):
             except ValueError as err:
                 raise RequestError('Unable to parse date string {} {}'.format(cfg.session.date, err))
         if cfg.session.sessionId in (None, '') or cfg.session.useSessionTimestamp is True:
+            # we didn't specify a session id because we want the session id to be the same as the scan date
             cfg.session.useSessionTimestamp = True
             cfg.session.sessionId = dateStr30(sessionDate.timetuple())
         else:
-            cfg.session.useSessionTimestamp = False
+            # cfg.session.useSessionTimestamp if true, then it will look for the newest files
+            # from that same date
+            # if cfg.session.useSessionTimestamp is false, you just want to use only specific files 
+            # from the exact session id
+            if cfg.session.sessionId in (None, ''):
+                raise InvocationError("You need to provide a session Id in the config file or change "
+                                      "your settings to set cfg.sesion.useSessionTimestamp to true.")
+            sessionStr = cfg.session.sessionId.lower()
+            if sessionStr == 'now' or sessionStr == 'today':
+                # we do specify now as the session id because we want the session files to be saved 
+                # with today's date even if it's different from the scanning date
+                currentDate = datetime.datetime.now()
+                cfg.session.sessionId = dateStr30(currentDate.timetuple())
+                cfg.session.useSessionTimestamp = True
+            else:
+                # we specified an exact session id that we want the files to be saved as
+                # the exact string will then be used to find the files for training
+                cfg.session.useSessionTimestamp = False
 
         logging.log(DebugLevels.L1, "## Start Session: %s, subNum%d subDay%d",
                     cfg.session.sessionId, cfg.session.subjectNum, cfg.session.subjectDay)
