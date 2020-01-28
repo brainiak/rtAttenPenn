@@ -22,7 +22,7 @@ class RtAtten extends React.Component {
     this.state = {
       config: {session: {}},
       configFileName: 'Default',
-      regConfig: {fParam: '0.6', makenii: true},
+      regConfig: {makenii: true},
       regInfo: {},
       runStatus: '',
       filesRemote: true,  // whether the webserver gets image files from a remote server or locally
@@ -94,10 +94,23 @@ class RtAtten extends React.Component {
     regGlobals.highresScan = this.getRegConfigItem('highresScan')
     regGlobals.functionalScan = this.getRegConfigItem('functionalScan')
     regGlobals.fParam = this.getRegConfigItem('fParam')
+    if (regGlobals.highresScan == '') {
+      // get value from toml config file is available
+      regGlobals.highresScan = this.getConfigItem('highresScan')
+    }
+    if (regGlobals.functionalScan == '') {
+      regGlobals.functionalScan = this.getConfigItem('functionalScan')
+    }
+    if (regGlobals.fParam == '') {
+      regGlobals.fParam = this.getConfigItem('fParam')
+    }
     regGlobals.makenii = this.getRegConfigItem('makenii')
     regGlobals.data_path = cfg.session.dataDir
-    regGlobals.dryrun = cfg.session.registrationDryRun.toString().toLowerCase()
     regGlobals.roi_name = "wholebrain_mask"
+    regGlobals.dryrun = this.getConfigItem('registrationDryRun').toString().toLowerCase()
+    if (regGlobals.dryrun == '') {
+      regGlobals.dryrun = "false"
+    }
     if (cfg.session.subjectName == undefined) {
       if (cfg.session.sessionNum == undefined) {
         this.setState({error: 'Configurations must define either subjectName or sessionNum to build subjectName'})
