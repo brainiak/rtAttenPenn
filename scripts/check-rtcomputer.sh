@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-dataDrive=/mnt/rtexport/RTexport_Current/
+#dataDrive=/mnt/rtexport/RTexport_Current/
+dataDrive=/mnt/Data/
 matlab=/opt/MATLAB/R2014a/bin/matlab
 
 # Check internet access
