@@ -16,7 +16,11 @@ import logging
 # rotate back to be in functional space - 90 degree counterclockwise rotation of the third dimension
 
 subjectNum = np.int(sys.argv[1])
-dayNum = np.int(sys.argv[2])
+dayNum = np.float(sys.argv[2])
+# check if it's just an integer --> if so, make it as an integer
+z = dayNum - np.floor(dayNum)
+if z == 0:
+    dayNum = np.int(dayNum)
 data_path = sys.argv[3]
 def plot3Dbrain(nslices,mask):
     plt.subplots()

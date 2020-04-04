@@ -446,7 +446,7 @@ class RtAttenWeb():
         try:
             regConfig = request['regConfig']
             regType = request['regType']
-            dayNum = int(regConfig['dayNum'])
+            dayNum = float(regConfig['dayNum'])
         except KeyError as err:
             RtAttenWeb.webServer.setUserError("Registration missing a parameter ('regConfig', 'regType', 'dayNum')")
             return
