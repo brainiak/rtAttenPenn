@@ -334,12 +334,6 @@ class RtAttenWeb():
                         val = os.path.normpath(CommonOutputDir + val)
                 fp.write(key + '=' + str(val) + '\n')
             fp.write('code_path=' + registrationDir)
-        # Save f param value to a file
-        fparam = regGlobals.get('fParam', None)
-        if fparam is not None:
-            fparamFilename = os.path.join(scriptPath, 'fparam.txt')
-            with open(fparamFilename, 'w') as fp:
-                fp.write('fparam: ' + str(fparam))
 
     @staticmethod
     def runSession():

@@ -54,6 +54,6 @@ fi
 
 echo="copying this version for safe keeping!"
 cp $code_path/reg_epi_day2.sh $data_path/subject$subjectNum/usedscripts/reg_epi_day2_$dayNum'.'sh
-
+cp $code_path/globals.sh $data_path/subject$subjectNum/usedscripts/globals_day$dayNum.sh
 
 cd $data_path

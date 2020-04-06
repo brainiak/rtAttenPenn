@@ -45,5 +45,5 @@ fi
 echo "copying this version of file into subject folder for safe keeping!"
 mkdir -pv $data_path/subject$subjectNum/usedscripts/
 cp $code_path/skullstrip_t1.sh $data_path/subject$subjectNum/usedscripts/skullstrip_T1.sh
-cp $code_path/globals.sh $data_path/subject$subjectNum/usedscripts/
+cp $code_path/globals.sh $data_path/subject$subjectNum/usedscripts/globals_day$dayNum.sh
 echo "done!"
