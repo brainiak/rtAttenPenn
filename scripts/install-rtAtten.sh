@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-clientAddr="128.112.0.0"
-serverAddr="128.112.102.11"
-servicePort="5200"
+# clientAddr=""
+# serverAddr=""
+# servicePort=""
 
 # Install git
 if [[ `command -v git` == "" ]]; then
@@ -56,17 +56,17 @@ fi
 conda update -y conda
 
 echo "INSTALL RTATTEN_PENN SOFTWARE"
-if [[ $PWD =~ rtAttenPenn$ ]]; then
+if [[ $PWD =~ rtAttenPenn_cloud$ ]]; then
     echo "Pull latest updates for rtAttenPenn"
     git pull
-elif [ -e ./rtAttenPenn ]; then
-    echo "Pull latest updates for rtAttenPenn"
-    cd rtAttenPenn/
+elif [ -e ./rtAttenPenn_cloud ]; then
+    echo "Pull latest updates for rtAttenPenn_cloud"
+    cd rtAttenPenn_cloud/
     git pull
 else
-    echo "Git clone rtAttenPenn"
-    git clone https://github.com/brainiak/rtAttenPenn.git
-    cd rtAttenPenn/
+    echo "Git clone rtAttenPenn_cloud"
+    git clone https://github.com/brainiak/rtAttenPenn_cloud.git
+    cd rtAttenPenn_cloud/
 fi
 
 if [ ! -e "environment.yml" ]; then
