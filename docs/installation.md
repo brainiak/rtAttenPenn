@@ -1,5 +1,5 @@
 ## Installing RtAtten Software ##
-- git clone https://github.com/brainiak/rtAttenPenn.git
+- git clone https://github.com/brainiak/rtAttenPenn_cloud.git
 - bash scripts/install-rtAtten.sh
 
 ### How to install self-signed ssl certificate to use with the web interface
