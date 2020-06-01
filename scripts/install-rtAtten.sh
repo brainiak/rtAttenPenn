@@ -74,8 +74,16 @@ if [ ! -e "environment.yml" ]; then
     exit -1;
 fi
 
+# Install npm
+pushd webInterface/rtAtten/web/
+npm install
+popd
+
 # Install rtfMRI and rtAtten
 conda env create -f environment.yml
+# Install websockify environment
+conda env create -f websockify.yml
+
 source activate rtAtten
 python setup.py install
 
