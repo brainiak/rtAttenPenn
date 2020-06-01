@@ -4,24 +4,25 @@
 # serverAddr=""
 # servicePort=""
 
-# Install git
-if [[ `command -v git` == "" ]]; then
-  if [[ "$OSTYPE" == "linux-gnu" ]]; then
-    os=`cat /etc/*release | grep ^NAME`
-    if echo $os | grep Ubuntu; then
-      sudo apt install -y git
-    elif echo $os | grep CentOS; then
-      sudo yum install -y git
-    elif echo $os | grep "Red Hat"; then
-        sudo yum install -y git
-    fi
-  elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # Assumes user has brew
-    brew install git
-  fi
-else
-  echo "Git already installed"
-fi
+# Install git before running this
+# if [[ `command -v git` == "" ]]; then
+#   if [[ "$OSTYPE" == "linux-gnu" ]]; then
+#     os=`cat /etc/*release | grep ^NAME`
+#     if echo $os | grep Ubuntu; then
+#       sudo apt install -y git
+#     elif echo $os | grep CentOS; then
+#       sudo yum install -y git
+#     elif echo $os | grep "Red Hat"; then
+#         sudo yum install -y git
+#     fi
+#   elif [[ "$OSTYPE" == "darwin"* ]]; then
+#     # Assumes user has brew
+#     brew install git
+#   fi
+# else
+#   echo "Git already installed"
+# fi
+
 
 if [[ `command -v conda` == "" ]]; then
     echo "INSTALL MINICONDA"
@@ -55,34 +56,29 @@ else
 fi
 conda update -y conda
 
-echo "INSTALL RTATTEN_PENN SOFTWARE"
-if [[ $PWD =~ rtAttenPenn_cloud$ ]]; then
-    echo "Pull latest updates for rtAttenPenn"
-    git pull
-elif [ -e ./rtAttenPenn_cloud ]; then
-    echo "Pull latest updates for rtAttenPenn_cloud"
-    cd rtAttenPenn_cloud/
-    git pull
-else
-    echo "Git clone rtAttenPenn_cloud"
-    git clone https://github.com/brainiak/rtAttenPenn_cloud.git
-    cd rtAttenPenn_cloud/
-fi
+# Clone git repo beforehand
+# echo "INSTALL RTATTEN_PENN SOFTWARE"
+# if [[ $PWD =~ rtAttenPenn_cloud$ ]]; then
+#     echo "Pull latest updates for rtAttenPenn"
+#     git pull
+# elif [ -e ./rtAttenPenn_cloud ]; then
+#     echo "Pull latest updates for rtAttenPenn_cloud"
+#     cd rtAttenPenn_cloud/
+#     git pull
+# else
+#     echo "Git clone rtAttenPenn_cloud"
+#     git clone https://github.com/brainiak/rtAttenPenn_cloud.git
+#     cd rtAttenPenn_cloud/
+# fi
 
 if [ ! -e "environment.yml" ]; then
     echo "Missing environment.yml file"
     exit -1;
 fi
 
-# Install npm
-pushd webInterface/rtAtten/web/
-npm install
-popd
 
 # Install rtfMRI and rtAtten
 conda env create -f environment.yml
-# Install websockify environment
-conda env create -f websockify.yml
 
 source activate rtAtten
 python setup.py install
@@ -105,7 +101,7 @@ source ~/.bashrc
 
 # For Server Only
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
-  # Install service
+  # Install service to start when VM starts
   sudo cp scripts/rtatten-server.service /usr/lib/systemd/system
   sudo systemctl enable rtatten-server
 
@@ -113,6 +109,7 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
   # sudo iptables -I INPUT 6 -p tcp -s $clientAddr/16 --dport $servicePort -j ACCEPT
   sudo iptables -I INPUT 6 -p tcp --dport 5200 -j ACCEPT
 fi
+
 
 # echo "START SERVER"
 #
