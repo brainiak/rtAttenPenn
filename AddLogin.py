@@ -1,3 +1,4 @@
+import os
 import sys
 import getpass
 import bcrypt
@@ -20,6 +21,8 @@ def addUserPassword(username, passwdDict):
 
 
 # Main Function
+command = 'touch {0}'.format(passwordFile)
+os.system(command)
 passwdDict = loadPasswdFile(passwordFile)
 username = input('Username: ')
 if username in passwdDict:

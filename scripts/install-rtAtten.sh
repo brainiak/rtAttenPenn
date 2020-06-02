@@ -85,7 +85,8 @@ python setup.py install
 
 # Install certificates
 pushd certs
-rm rtfMRI*
+openssl genrsa -out rtAtten_private.key 2048
+# rm rtfMRI*
 randNum=$RANDOM
 openssl req -newkey rsa:2048 -nodes -keyout rtfMRI_rsa-$randNum.private -x509 -days 365 -out rtfMRI-$randNum.crt \
   -subj "/C=US/ST=New Jersey/L=Princeton/O=Princeton University/CN=rtAtten"; \
@@ -95,9 +96,9 @@ popd # certs
 
 # Install conda autoenv
 # TODO: Assign this path to variable; we use it a lot
-$HOME/miniconda3/bin/python -m pip install conda-autoenv
-echo "source \$HOME/miniconda3/bin/conda_autoenv.sh" >> ~/.bashrc
-source ~/.bashrc
+#$HOME/miniconda3/bin/python -m pip install conda-autoenv
+#echo "source \$HOME/miniconda3/bin/conda_autoenv.sh" >> ~/.bashrc
+#source ~/.bashrc
 
 # For Server Only
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
@@ -107,7 +108,8 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
 
   # Set iptables
   # sudo iptables -I INPUT 6 -p tcp -s $clientAddr/16 --dport $servicePort -j ACCEPT
-  sudo iptables -I INPUT 6 -p tcp --dport 5200 -j ACCEPT
+  # We didn't need the line below when installing on the cloud server:
+  # sudo iptables -I INPUT 6 -p tcp --dport 5200 -j ACCEPT
 fi
 
 
