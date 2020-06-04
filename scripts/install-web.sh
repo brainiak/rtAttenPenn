@@ -65,7 +65,7 @@ sudo yum -y install openblas.x86_64 openblas-devel.x86_64
 sudo yum -y install freeglut-devel # might not be needed
 sudo yum -y install glx-utils  # glxgears and glxinfo, maybe not needed
 sudo yum -y install gtk2 # maybe not needed
-
+sudo yum -y install libquadmath-devel # this allows you to access libraries
 # Add fsl to path by editing ~/.bash_profile
 cat <<EOT >> ~/.bash_profile
 FSLDIR=/usr/local/fsl
