@@ -38,8 +38,8 @@ fi
 
 if [ -z $dryrun ] || [ $dryrun != true ]; then
   bet $highresFN.nii.gz $highresFN'_'brain.nii.gz -R -m -f $fParam -v
-  export DISPLAY=localhost:1; ( $VIEWCMD $highresFN.nii.gz $highresFN'_'brain.nii.gz $highresFN'_'brain_mask.nii.gz & )
-  move_window $VIEWCMD
+  export DISPLAY=:1; ( $VIEWCMD $highresFN.nii.gz $highresFN'_'brain.nii.gz $highresFN'_'brain_mask.nii.gz & )
+  #move_window $VIEWCMD
 fi
 
 echo "copying this version of file into subject folder for safe keeping!"

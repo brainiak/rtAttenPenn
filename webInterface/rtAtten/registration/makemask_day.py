@@ -51,8 +51,8 @@ def makeMask(subjectNum,dayNum,data_path):
     # nifti_exfunc='/Volumes/norman/amennen/TEMP_MAKE_MASK/exfunc_brain.nii.gz'
     # nifti_mask='/Volumes/norman/amennen/TEMP_MAKE_MASK/wholebrain_mask_exfunc.nii.gz'
 
-    exfunc_img = nibabel.load(nifti_exfunc).get_data()
-    mask_img = nibabel.load(nifti_mask).get_data()
+    exfunc_img = nibabel.load(nifti_exfunc).get_fdata()
+    mask_img = nibabel.load(nifti_mask).get_fdata()
     
     # now rotate each
     anatMaskRot = np.zeros(np.shape(exfunc_img))
