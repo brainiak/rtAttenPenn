@@ -22,6 +22,7 @@ z = dayNum - np.floor(dayNum)
 if z == 0:
     dayNum = np.int(dayNum)
 data_path = sys.argv[3]
+roi_name = sys.argv[4]
 def plot3Dbrain(nslices,mask):
     plt.subplots()
     for s in np.arange(nslices):
@@ -31,10 +32,8 @@ def plot3Dbrain(nslices,mask):
     return
 
 
-def makeMask(subjectNum,dayNum,data_path):
+def makeMask(subjectNum,dayNum,data_path,roi_name):
 
-
-    roi_name = 'wholebrain_mask'
 
     if dayNum==1:
         functionalFN = 'exfunc'
@@ -81,7 +80,7 @@ def makeMask(subjectNum,dayNum,data_path):
 def main():
 
     # MAKE FUNCTION HERE TO TAKE IN THE ARGUMENT OF SAVE PATH!
-    makeMask(subjectNum,dayNum,data_path)
+    makeMask(subjectNum,dayNum,data_path,roi_name)
 if __name__ == "__main__":
     # execute only if run as a script
     main()

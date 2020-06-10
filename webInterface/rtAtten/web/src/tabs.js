@@ -106,7 +106,7 @@ class RtAtten extends React.Component {
     }
     regGlobals.makenii = this.getRegConfigItem('makenii')
     regGlobals.data_path = cfg.session.dataDir
-    regGlobals.roi_name = "wholebrain_mask"
+    regGlobals.roi_name = cfg.session.roi_name
     regGlobals.dryrun = this.getConfigItem('registrationDryRun').toString().toLowerCase()
     if (regGlobals.dryrun == '') {
       regGlobals.dryrun = "false"

@@ -16,6 +16,6 @@ echo "moving into folder: $subject_save_path"
 echo "running python script to make mask"
 cd $code_path
 if [ -z $dryrun ] || [ $dryrun != true ]; then
- python makemask_day.py $subjectNum $dayNum $data_path
+ python makemask_day.py $subjectNum $dayNum $data_path $roi_name
 fi
 echo "done!"
