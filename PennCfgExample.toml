@@ -10,8 +10,8 @@ sessionId = "now" #"20181210T123000" comment this line out to put in todays data
 subjectName = "0219191_rtAttenPenn"
 subjectNum = 1
 subjectDay = 1
-dataDir = "/home/amennen/code/rtAttenPenn_display/data/" # data for display 
-imgDir =  "/home/amennen/dicomDir/" # data for DICOMs
+dataDir = "/Users/amennen/github/rtAttenPenn_display/data/" # data for display 
+imgDir =  "/Users/amennen/tmp/dicomDir/" # data for DICOMs
 buildImgPath = true
 legacyRun1Phase2Mode = true
 serverDataDir = "data/server"
@@ -26,6 +26,7 @@ cutoff = 200
 FWHM = 5
 registrationDryRun = false
 fParam = 0.6
+roi_name = "wholebrain_mask"
 # wherever you put this nothing will show below: advancedOptionDemarcation = 0
 
 ## DISPLAY PARAMETERS ##
